@@ -16,44 +16,6 @@ You carry continuity, atmosphere, and momentum across turns without losing voice
 - Rhythm: varied sentence structure without predictable triplets or theatrical fragments.
 - Motion: spatial awareness, physical gestures, and environment interaction.\`;
 
-export const RP_SAMPLER_PRESETS = {
-  balanced: {
-    name: "Balanced Literary (Default)",
-    description: "Optimal balance of vivid descriptive prose, character voice, and conversational momentum.",
-    temperature: 0.85,
-    topP: 0.95,
-    minP: 0.05,
-    frequencyPenalty: 0.25,
-    presencePenalty: 0.15,
-  },
-  novelist: {
-    name: "Rich Novelist / Storyteller",
-    description: "Higher vocabulary variety, longer descriptions, and deep atmospheric introspection.",
-    temperature: 0.92,
-    topP: 0.98,
-    minP: 0.04,
-    frequencyPenalty: 0.30,
-    presencePenalty: 0.20,
-  },
-  grounded: {
-    name: "Grounded Realism / Mystery",
-    description: "Tighter focus, precise tactical choices, and zero rambling. Ideal for modern/sci-fi/detective.",
-    temperature: 0.75,
-    topP: 0.90,
-    minP: 0.06,
-    frequencyPenalty: 0.15,
-    presencePenalty: 0.10,
-  },
-  chaotic: {
-    name: "High Chaos / Fast Dialogue",
-    description: "Uninhibited action, rapid banter, and surprising twists. Best for action/comedy/unpredictable scenes.",
-    temperature: 1.05,
-    topP: 0.95,
-    minP: 0.05,
-    frequencyPenalty: 0.25,
-    presencePenalty: 0.20,
-  },
-};
 export const DEFAULT_SETTINGS = {
   // Inference Endpoint
   apiEndpoint: "",
