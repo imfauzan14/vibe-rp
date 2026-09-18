@@ -320,15 +320,17 @@ After the thought block, output the public prose and dialogue.`);
     const { promptBudget } = this.resolveBudgets(settings);
     const all = Array.isArray(messages) ? messages : [];
     const outer = estimateTokens(systemPrompt) + (ledger ? estimateTokens(ledger) + 40 : 0);
-    const budget = Math.max(512, promptBudget - outer);
-
+    const overflow = outer >= promptBudget;
+    const overflowWarning = overflow
+      ? `System prompt and ledger (${outer} est. tokens) exceed configured prompt budget (${promptBudget} tokens).`
+      : "";
+    const budget = Math.max(256, promptBudget - outer);
     const pinned = all.length > 0 && all[0] && all[0].content ? [all[0]] : [];
     const start = Math.max(pinned.length, Math.min(consumed, all.length));
     const live = [];
     for (let i = start; i < all.length; i++) {
       if (all[i] && all[i].content) live.push(all[i]);
     }
-
     const pinnedTokens = countMessages(pinned);
     const tailBudget = Math.max(256, budget - pinnedTokens);
     const shakenLive = this.shakeThoughts(live, 2, Math.max(1500, Math.floor(tailBudget / 2)));
@@ -341,6 +343,8 @@ After the thought block, output the public prose and dialogue.`);
       compacted: false,
       promptTokens: outer + pinnedTokens + liveTokens,
       budget,
+      overflow,
+      overflowWarning,
     };
     if (liveTokens <= tailBudget) return unchanged;
 
@@ -355,6 +359,8 @@ After the thought block, output the public prose and dialogue.`);
       compacted: true,
       promptTokens: outer + pinnedTokens + countMessages(shakenLive.slice(cut)),
       budget,
+      overflow,
+      overflowWarning,
     };
   }
 
@@ -439,10 +445,14 @@ After the thought block, output the public prose and dialogue.`);
    * Streams one completion. Only non-neutral sampler values are sent, so an
    * untouched control cannot silently override a provider default.
    */
-  static async *streamDirect(settings, messages, onCleanChunk, onUsage) {
-    const { base, model, headers } = this.resolveEndpoint(settings);
-
-    const body = { model, messages, stream: true };
+  static buildRequestBody(settings, messages) {
+    const model = String(settings?.model || "").trim();
+    const body = {
+      model,
+      messages,
+      stream: true,
+      stream_options: { include_usage: true },
+    };
     if (typeof settings.temperature === "number") body.temperature = settings.temperature;
     if (typeof settings.topP === "number" && settings.topP < 1) body.top_p = settings.topP;
     if (typeof settings.minP === "number" && settings.minP > 0) body.min_p = settings.minP;
@@ -453,12 +463,17 @@ After the thought block, output the public prose and dialogue.`);
       body.presence_penalty = settings.presencePenalty;
     }
     if (typeof settings.maxTokens === "number") body.max_tokens = settings.maxTokens;
-    // Stable routing key. Never part of the rendered prefix, so it cannot break
-    // the cache; it only helps the provider land on the machine holding it.
     if (settings.cacheKey) body.prompt_cache_key = settings.cacheKey;
+    return body;
+  }
 
-    const res = await fetch(`${base}/chat/completions`, { method: "POST", headers, body: JSON.stringify(body) });
-    if (!res.ok) throw new Error(`API error (${res.status}): ${await res.text()}`);
+  /**
+   * Streams one completion. Only non-neutral sampler values are sent, so an
+   * untouched control cannot silently override a provider default.
+   */
+  static async *streamDirect(settings, messages, onCleanChunk, onUsage) {
+    const { base, headers } = this.resolveEndpoint(settings);
+    const body = this.buildRequestBody(settings, messages);
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
