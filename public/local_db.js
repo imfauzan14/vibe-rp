@@ -30,15 +30,20 @@ export const DEFAULT_SETTINGS = {
   frequencyPenalty: 0.25,
   presencePenalty: 0.15,
   maxTokens: 1200,
-  maxContextTokens: 16384, // Max context budget sent to LLM (triggers omp compaction when exceeded)
-  // Directives & Block 0 Jailbreak
+  // Total window: input + output. The engine subtracts maxTokens from this to
+  // size the prompt, so raising maxTokens shrinks the history budget.
+  maxContextTokens: 16384,
+
+  // Directives & Block 0 contract
   agentsContract: DEFAULT_AGENTS_CONTRACT,
 
-  // Cognitive Layer & Subagents
+  // Cognitive Layer
   enableSubagentThoughts: true,
-  thoughtModel: "", // blank = same as main model; legacy mirror below
-  useSeparateSubagentModel: false,
-  subagentModel: "",
+
+  // Stable provider routing key for this conversation. Sent as
+  // `prompt_cache_key`; it is not part of the rendered prompt, so it cannot
+  // invalidate a cached prefix and only improves cache-hit routing.
+  cacheKey: "",
 };
 
 const DB_NAME = "vibe_rp";

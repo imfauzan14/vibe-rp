@@ -304,14 +304,18 @@
               <input type="checkbox" id="popup-enable-thoughts" style="margin-top: 3px;" />
               <div>
                 <span style="font-size: 13px; font-weight: 500; color: var(--text-primary);">Character Inner Thoughts (&lt;thought&gt;)</span>
-                <p class="field-hint" style="margin-top: 2px;">When enabled, characters produce private cognitive monologues before speaking in scene.</p>
+                <p class="field-hint" style="margin-top: 2px;">When enabled, characters produce private cognitive monologues before speaking in scene. Thoughts from older turns are dropped automatically once the context budget is reached.</p>
               </div>
             </label>
-            <div id="popup-thought-model-wrap" style="padding-left: 24px; display: flex; flex-direction: column; gap: 4px;">
-              <label class="form-label" for="popup-subagent-model-select" style="font-size: 11.5px; color: var(--text-secondary);">Thought Reasoning Model</label>
-              <select id="popup-subagent-model-select" class="form-input" style="font-size: 12.5px;"></select>
-              <span class="field-hint">Route &lt;thought&gt; reasoning to a separate fast model, or leave as "Same as main model".</span>
-            </div>
+          </div>
+
+          <div class="form-field">
+            <label class="form-label" for="popup-cache-key">
+              <span>Prompt Cache Key</span>
+              <span style="font-size: 11px; color: var(--text-faint);">Optional</span>
+            </label>
+            <input type="text" id="popup-cache-key" class="form-input" placeholder="e.g. vibe-rp-story-01" maxlength="128">
+            <span class="field-hint">Sent as <code>prompt_cache_key</code> so the provider routes every turn of this story to the machine holding its cache. It is not part of the prompt. Leave blank for automatic routing.</span>
           </div>
 
           <div style="display: flex; justify-content: flex-end; margin-top: 12px; margin-bottom: 8px;">
@@ -504,12 +508,9 @@
       });
     }
 
-    function estimateTokens(text) {
-      if (!text) return 0;
-      const str = String(text);
-      const words = str.match(/\w+|[^\w\s]+/g);
-      return words ? Math.ceil(words.length * 1.25) : Math.ceil(str.length / 3.8);
-    }
+    // Single estimator shared with the engine, so the meter and the engine's
+    // budget decisions can never disagree.
+    const estimateTokens = (text) => BrowserChatEngine.estimateTokens(text);
 
     const urlParams = new URLSearchParams(window.location.search);
     let cardId = urlParams.get("cardId");
@@ -551,8 +552,7 @@
     const popupApiEndpoint = document.getElementById("popup-api-endpoint");
     const popupApiKey = document.getElementById("popup-api-key");
     const popupModelSelect = document.getElementById("popup-model-select");
-    const popupSubagentModelSelect = document.getElementById("popup-subagent-model-select");
-    const popupThoughtModelWrap = document.getElementById("popup-thought-model-wrap");
+    const popupCacheKey = document.getElementById("popup-cache-key");
     const popupFetchModelsBtn = document.getElementById("popup-fetch-models-btn");
     const popupEnableThoughts = document.getElementById("popup-enable-thoughts");
     const popupSaveEngineBtn = document.getElementById("popup-save-engine-btn");
@@ -669,23 +669,36 @@
       composerLiveStats.textContent = `${chars.toLocaleString()} chars · ~${tokens.toLocaleString()} tokens`;
     }
 
+    /**
+     * Context meter. Reports the prompt the engine will actually send against
+     * the prompt budget, and shows the output reservation separately, because
+     * lowering Max Response Tokens is what frees history space.
+     */
     function updateContextStats() {
       if (!composerContextStats) return;
-      let totalTokens = 0;
-      const directiveText = currentDirective?.content || settings.agentsContract || "";
-      totalTokens += estimateTokens(directiveText);
-      const d = activeCard.data || activeCard;
-      const cardText = [d.name, d.description, d.personality, d.scenario, d.mes_example, d.creator_notes, d.system_prompt].filter(Boolean).join(" ");
-      totalTokens += estimateTokens(cardText);
-      if (currentPersona) {
-        totalTokens += estimateTokens([currentPersona.name, currentPersona.description, currentPersona.template].filter(Boolean).join(" "));
-      }
-      (activeSession?.messages || []).forEach(m => {
-        totalTokens += estimateTokens(m.content || "");
+      const budgets = BrowserChatEngine.resolveBudgets(settings);
+
+      const systemPrompt = BrowserChatEngine.formatSystemPrompt(activeCard, currentPersona, {
+        ...settings,
+        agentsContract: currentDirective?.content || settings.agentsContract,
       });
-      const budget = settings.maxContextTokens || 8192;
-      const formatK = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : n);
-      composerContextStats.textContent = `Context: ~${formatK(totalTokens)} / ${formatK(budget)}`;
+      const consumed = Math.max(1, Number(activeSession?.consumed) || 1);
+      const plan = BrowserChatEngine.planContext({
+        systemPrompt,
+        messages: activeSession?.messages || [],
+        ledger: activeSession?.ledger || "",
+        consumed,
+        settings: settings,
+      });
+      const promptTokens = plan.promptTokens;
+      const formatK = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : String(n));
+      const pct = Math.min(999, Math.round((promptTokens / Math.max(1, plan.budget)) * 100));
+      const ledgerMark = activeSession?.ledger ? " · ledger" : "";
+      composerContextStats.textContent =
+        `Prompt: ~${formatK(promptTokens)} / ${formatK(plan.budget)} (${pct}%)${ledgerMark}` +
+        ` · Reserve ${formatK(budgets.reservedOutput)} out · Window ${formatK(budgets.contextWindow)}`;
+      composerContextStats.title =
+        `Prompt budget = context window ${budgets.contextWindow} − output reserve ${budgets.reservedOutput} − safety margin ${budgets.safetyMargin}.`;
     }
 
     async function refreshActivePresets() {
@@ -1021,7 +1034,7 @@
       if (directiveNameInput) setTimeout(() => directiveNameInput.focus(), 50);
     }
 
-    function renderPopupModels(models, selectedModel, thoughtModel) {
+    function renderPopupModels(models, selectedModel) {
       if (!popupModelSelect) return;
       const current = selectedModel || "";
       const set = new Set((models || []).filter(Boolean));
@@ -1042,34 +1055,16 @@
           popupModelSelect.appendChild(opt);
         });
       }
-
-      if (popupSubagentModelSelect) {
-        popupSubagentModelSelect.innerHTML = "";
-        const defaultOpt = document.createElement("option");
-        defaultOpt.value = "";
-        defaultOpt.textContent = "Same as main model";
-        popupSubagentModelSelect.appendChild(defaultOpt);
-
-        set.forEach(m => {
-          const opt = document.createElement("option");
-          opt.value = m;
-          opt.textContent = m;
-          if (m === thoughtModel) opt.selected = true;
-          popupSubagentModelSelect.appendChild(opt);
-        });
-      }
     }
 
     function loadEngineSettings() {
       const s = LocalDb.getSettings();
       if (popupApiEndpoint) popupApiEndpoint.value = s.apiEndpoint || "";
       if (popupApiKey) popupApiKey.value = s.apiKey || "";
+      if (popupCacheKey) popupCacheKey.value = s.cacheKey || "";
 
       const isThoughts = s.enableSubagentThoughts !== false;
       if (popupEnableThoughts) popupEnableThoughts.checked = isThoughts;
-      if (popupThoughtModelWrap) {
-        popupThoughtModelWrap.style.display = isThoughts ? "flex" : "none";
-      }
 
       const activeThoughtModel = s.thoughtModel || s.subagentModel || "";
       renderPopupModels(s.availableModels || [], s.model, activeThoughtModel);
@@ -1357,12 +1352,6 @@
       showToast(`System prompt "${name}" saved.`, "success");
     });
 
-    popupEnableThoughts?.addEventListener("change", () => {
-      if (popupThoughtModelWrap) {
-        popupThoughtModelWrap.style.display = popupEnableThoughts.checked ? "flex" : "none";
-      }
-    });
-
     popupSliderTemp?.addEventListener("input", () => {
       if (popupValTemp) popupValTemp.textContent = parseFloat(popupSliderTemp.value).toFixed(2);
     });
@@ -1390,12 +1379,11 @@
       s.apiEndpoint = popupApiEndpoint?.value.trim() ?? "";
       s.apiKey = popupApiKey?.value.trim() ?? "";
       s.model = popupModelSelect?.value ?? "";
+      s.cacheKey = popupCacheKey?.value.trim() ?? "";
       s.enableSubagentThoughts = popupEnableThoughts?.checked ?? s.enableSubagentThoughts;
-      s.thoughtModel = popupSubagentModelSelect?.value || "";
-      s.subagentModel = popupSubagentModelSelect?.value || "";
-      s.useSeparateSubagentModel = Boolean(popupSubagentModelSelect?.value);
       LocalDb.saveSettings(s);
       settings = s;
+      updateContextStats();
       showToast("Engine settings saved.", "success");
     });
 
@@ -1424,7 +1412,7 @@
         s.availableModels = models;
         LocalDb.saveSettings(s);
         settings = s;
-        renderPopupModels(models, popupModelSelect?.value, popupSubagentModelSelect?.value);
+        renderPopupModels(models, popupModelSelect?.value);
         showToast(`Fetched ${models.length} models.`, "success");
       } catch (err) {
         showToast(`Fetch models failed: ${err.message}`, "error");
