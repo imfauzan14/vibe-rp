@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "bun serve.js",
+    "build": "echo 'Static build ready'",
     "test": "bun test test/"
   },
   "devDependencies": {
