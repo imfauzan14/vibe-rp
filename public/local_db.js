@@ -14,7 +14,7 @@ You carry continuity, atmosphere, and momentum across turns without losing voice
 ## 2. Pacing & Tone
 - Energy: active, deliberate, carrying scene momentum.
 - Rhythm: varied sentence structure without predictable triplets or theatrical fragments.
-- Motion: spatial awareness, physical gestures, and environment interaction.\`;
+- Motion: spatial awareness, physical gestures, and environment interaction.`;
 
 export const DEFAULT_SETTINGS = {
   // Inference Endpoint
