@@ -392,8 +392,8 @@
               <span>Max Context Budget (Tokens)</span>
               <span id="popup-val-context" class="slider-value-badge">32768</span>
             </div>
-            <input type="range" id="popup-slider-context" class="form-slider" min="2048" max="65536" step="1024" value="32768">
-            <span class="field-hint">Context window limit. Triggers continuity ledger folding when active history approaches this budget.</span>
+            <input type="range" id="popup-slider-context" class="form-slider" min="2048" max="131072" step="2048" value="32768">
+            <span class="field-hint">Context window limit (up to 128K). Triggers continuity ledger folding when active history approaches this budget.</span>
 
           <div style="display: flex; justify-content: flex-end; margin-top: 14px; margin-bottom: 8px;">
             <button id="popup-save-params-btn" class="btn primary">Save Parameters</button>
