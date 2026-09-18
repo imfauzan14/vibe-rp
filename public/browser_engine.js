@@ -73,13 +73,14 @@ Use exactly these sections, omitting any that would be empty:
 ## Voice
 - [Register, tense, and stylistic commitments the prose must keep.]
 
-Rules:
+Rules to guarantee factual canon and zero hallucination:
 - Preserve every proper noun exactly as written. Never rename, merge, or drop a character.
-- Preserve concrete numbers, colours, materials, and measurements verbatim.
-- Record what is now true, not who said what. Fold dialogue into outcome.
-- Prefer the specific: "bronze key, bent at the bow" over "a key".
+- Preserve concrete numbers, colours, materials, inventory items, and wounds verbatim.
+- Record settled facts and physical truths only. Never infer unmentioned background or fabricate motivation.
+- Fold dialogue into objective outcomes: record what became true, not banter.
+- Prefer concrete specifics over abstractions: "bronze key, bent at the bow" over "a key".
 - Never invent a fact that is not in the transcript.
-- Keep it under 700 words. Cut atmosphere before cutting facts.`;
+- Keep it concise and under 700 words. Cut atmospheric commentary before cutting facts.`;
 
 export const SUMMARY_UPDATE_PROMPT = `The transcript above continues the story. Merge it into the prior ledger.
 
@@ -409,7 +410,7 @@ After the thought block, output the public prose and dialogue.`);
         },
       ],
       stream: false,
-      temperature: 0.3,
+      temperature: 0.1, // Near-zero temperature for strictly deterministic, hallucination-free factual extraction
       max_tokens: Math.max(512, Math.min(2048, maxOutput)),
     };
     if (settings && settings.cacheKey) body.prompt_cache_key = settings.cacheKey;
