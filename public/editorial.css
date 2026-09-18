@@ -392,14 +392,7 @@ textarea:focus {
   max-width: clamp(180px, 40vw, 420px);
   padding: 4px 10px 4px 6px;
   border-radius: 8px;
-  cursor: pointer !important;
-  transition: all 140ms ease;
   border: 1px solid transparent;
-}
-
-.hud-character-chip:hover {
-  background: var(--bg-surface);
-  border-color: var(--border-subtle);
 }
 
 .hud-avatar {

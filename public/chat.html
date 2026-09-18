@@ -25,15 +25,12 @@
           </a>
         </div>
 
-        <!-- Centered Character Persona Chip -->
+        <!-- Current Character -->
         <div class="hud-center">
-          <button class="hud-character-chip" id="hud-char-chip" type="button" title="View character profile and details" aria-label="View character profile and details" style="background: transparent; border: 1px solid transparent; cursor: pointer;">
+          <div class="hud-character-chip" id="hud-char-chip">
             <div class="hud-avatar" id="hud-char-avatar">C</div>
             <span class="hud-name" id="hud-char-name">Character</span>
-            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.6; margin-left: 2px;">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-          </button>
+          </div>
         </div>
 
         <div class="hud-right">
@@ -440,84 +437,6 @@
     </div>
   </div>
 
-  <!-- Character Preset Details Modal in Chat -->
-  <div class="modal-backdrop" id="detail-modal-backdrop"></div>
-  <div class="history-modal detail-modal" id="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-char-name">
-    <div class="modal-header">
-      <div>
-        <h2 style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Character Profile</h2>
-      </div>
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <button id="close-detail-btn" class="btn-icon" title="Close" aria-label="Close dialog">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </div>
-    </div>
-
-    <!-- View: Character Details -->
-    <div class="modal-body detail-body" id="detail-view-info">
-      <!-- Top Character Hero Section with Large Portrait and Clean Change Art Button -->
-      <div class="detail-hero-section">
-        <div class="detail-portrait-container">
-          <div class="detail-char-portrait" id="detail-char-avatar" role="button" tabindex="0" title="Click to replace character artwork" aria-label="Replace character artwork">
-            <div class="detail-char-portrait-inner" id="detail-char-portrait-inner">C</div>
-            <div class="portrait-hover-overlay">
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-                <circle cx="12" cy="13" r="4"/>
-              </svg>
-              <span>Replace Image</span>
-            </div>
-          </div>
-          <input type="file" id="detail-avatar-file-input" accept="image/*" style="display: none;">
-        </div>
-        <div class="detail-hero-meta">
-          <h3 id="detail-char-name" class="detail-hero-title">Character Name</h3>
-          <div id="detail-char-nickname" class="detail-hero-nickname" style="display: none;"></div>
-          <div id="detail-char-meta" class="detail-hero-creator">Creator · v1.0</div>
-          <div class="detail-tags" id="detail-tags"></div>
-        </div>
-      </div>
-
-      <!-- Tab Navigation for Detail Modal: About (left) vs Story (mid) vs Author Notes (right) -->
-      <nav class="detail-tab-nav" role="tablist">
-        <button type="button" class="detail-tab-btn active" id="detail-tab-btn-about" role="tab" aria-selected="true">
-          About
-        </button>
-        <button type="button" class="detail-tab-btn" id="detail-tab-btn-story" role="tab" aria-selected="false">
-          Story &amp; Hook
-        </button>
-        <button type="button" class="detail-tab-btn" id="detail-tab-btn-notes" role="tab" aria-selected="false">
-          Author Notes
-        </button>
-      </nav>
-
-      <!-- Pane 1: About Inspector -->
-      <div class="detail-pane" id="detail-pane-about">
-        <div id="detail-about-content"></div>
-      </div>
-
-      <!-- Pane 2: Story & Opening Hook -->
-      <div class="detail-pane" id="detail-pane-story" style="display: none;">
-        <div id="detail-story-content"></div>
-      </div>
-
-      <!-- Pane 3: Author Notes -->
-      <div class="detail-pane" id="detail-pane-notes" style="display: none;">
-        <div id="detail-notes-content"></div>
-      </div>
-    </div>
-    <div class="modal-footer detail-actions" id="detail-actions-footer">
-      <div style="display: flex; gap: 8px; flex: 1; justify-content: flex-end;">
-        <button id="detail-open-history-btn" class="btn ghost">Saved Chats</button>
-        <button id="close-detail-footer-btn" class="btn primary">Done</button>
-      </div>
-    </div>
-  </div>
-
   <script type="module">
     import { LocalDb } from "/local_db.js";
     import { BrowserChatEngine } from "/browser_engine.js";
@@ -602,10 +521,8 @@
     const sendBtn = document.getElementById("send-btn");
     const continueBtn = document.getElementById("continue-action-btn");
 
-    const hudCharChip = document.getElementById("hud-char-chip");
     const hudCharAvatar = document.getElementById("hud-char-avatar");
     const hudCharName = document.getElementById("hud-char-name");
-    const hudAvatarFileInput = document.getElementById("hud-avatar-file-input");
 
     const composerSpeakerPill = document.getElementById("composer-speaker-pill");
     const composerSpeakerAvatar = document.getElementById("composer-speaker-avatar");
@@ -744,339 +661,6 @@
     let currentPersona = null;
     let currentDirective = null;
 
-    // Detail Modal Elements in Chat
-    const detailModal = document.getElementById("detail-modal");
-    const detailBackdrop = document.getElementById("detail-modal-backdrop");
-    const closeDetailBtn = document.getElementById("close-detail-btn");
-    const closeDetailFooterBtn = document.getElementById("close-detail-footer-btn");
-    const detailOpenHistoryBtn = document.getElementById("detail-open-history-btn");
-    const detailCharAvatar = document.getElementById("detail-char-avatar");
-    const detailCharName = document.getElementById("detail-char-name");
-    const detailCharNickname = document.getElementById("detail-char-nickname");
-    const detailCharMeta = document.getElementById("detail-char-meta");
-    const detailTags = document.getElementById("detail-tags");
-    const detailTabBtnAbout = document.getElementById("detail-tab-btn-about");
-    const detailTabBtnStory = document.getElementById("detail-tab-btn-story");
-    const detailTabBtnNotes = document.getElementById("detail-tab-btn-notes");
-    const detailPaneAbout = document.getElementById("detail-pane-about");
-    const detailPaneStory = document.getElementById("detail-pane-story");
-    const detailPaneNotes = document.getElementById("detail-pane-notes");
-    const detailAboutContent = document.getElementById("detail-about-content");
-    const detailStoryContent = document.getElementById("detail-story-content");
-    const detailNotesContent = document.getElementById("detail-notes-content");
-    const detailChangeAvatarBtn = document.getElementById("detail-change-avatar-btn");
-    const detailAvatarFileInput = document.getElementById("detail-avatar-file-input");
-
-    function showDetailSubTab(tab) {
-      const isAbout = tab === "about";
-      const isStory = tab === "story";
-      const isNotes = tab === "notes";
-
-      detailTabBtnAbout?.classList.toggle("active", isAbout);
-      detailTabBtnAbout?.setAttribute("aria-selected", isAbout ? "true" : "false");
-      detailTabBtnStory?.classList.toggle("active", isStory);
-      detailTabBtnStory?.setAttribute("aria-selected", isStory ? "true" : "false");
-      detailTabBtnNotes?.classList.toggle("active", isNotes);
-      detailTabBtnNotes?.setAttribute("aria-selected", isNotes ? "true" : "false");
-
-      if (detailPaneAbout) detailPaneAbout.style.display = isAbout ? "flex" : "none";
-      if (detailPaneStory) detailPaneStory.style.display = isStory ? "flex" : "none";
-      if (detailPaneNotes) detailPaneNotes.style.display = isNotes ? "flex" : "none";
-    }
-
-    detailTabBtnAbout?.addEventListener("click", () => showDetailSubTab("about"));
-    detailTabBtnStory?.addEventListener("click", () => showDetailSubTab("story"));
-    detailTabBtnNotes?.addEventListener("click", () => showDetailSubTab("notes"));
-
-    function renderHudCharacter() {
-      const name = activeCard.data?.name || activeCard.name || "Character";
-      const avatarUrl = activeCard.avatar || activeCard.data?.avatar;
-      hudCharName.textContent = name;
-      if (avatarUrl && (avatarUrl.startsWith("data:") || avatarUrl.startsWith("http"))) {
-        hudCharAvatar.innerHTML = `<img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(name)}" style="width: 100%; height: 100%; object-fit: cover;">`;
-      } else {
-        hudCharAvatar.textContent = name.charAt(0).toUpperCase();
-      }
-      checkNameOverflow();
-    }
-
-    function fieldHtml(label, content, mono = false) {
-      if (!content || !content.trim()) return "";
-      const cls = mono ? ' class="mono"' : "";
-      return `<div class="detail-field"><label>${label}</label><p${cls}>${escapeHtml(content.trim())}</p></div>`;
-    }
-
-    function openDetailModal(card) {
-      if (!card) return;
-      const d = card.data || card;
-      const charName = d.name || "Unknown Persona";
-      const creator = d.creator || "Unknown";
-      const version = d.character_version || d.char_version || "1.0";
-      const cardAvatarUrl = card.avatar || card.data?.avatar;
-
-      // --- Portrait ---
-      const portraitInner = document.getElementById("detail-char-portrait-inner");
-      if (portraitInner) {
-        if (cardAvatarUrl && (cardAvatarUrl.startsWith("data:") || cardAvatarUrl.startsWith("http"))) {
-          portraitInner.innerHTML = `<img src="${escapeHtml(cardAvatarUrl)}" alt="${escapeHtml(charName)}" style="width: 100%; height: 100%; object-fit: cover;">`;
-        } else {
-          portraitInner.textContent = charName.charAt(0).toUpperCase();
-        }
-      } else {
-        if (cardAvatarUrl && (cardAvatarUrl.startsWith("data:") || cardAvatarUrl.startsWith("http"))) {
-          detailCharAvatar.innerHTML = `<img src="${escapeHtml(cardAvatarUrl)}" alt="${escapeHtml(charName)}" style="width: 100%; height: 100%; object-fit: cover;">`;
-        } else {
-          detailCharAvatar.textContent = charName.charAt(0).toUpperCase();
-        }
-      }
-
-      // --- Hero text ---
-      detailCharName.textContent = charName;
-
-      // Nickname (CCv3): show only if present and distinct from the main name
-      const nickname = String(d.nickname || "").trim();
-      if (detailCharNickname) {
-        if (nickname && nickname.toLowerCase() !== charName.toLowerCase()) {
-          detailCharNickname.textContent = `"${nickname}"`;
-          detailCharNickname.style.display = "";
-        } else {
-          detailCharNickname.style.display = "none";
-        }
-      }
-
-      detailCharMeta.textContent = `${creator} · v${version}`;
-      detailTags.innerHTML = (Array.isArray(d.tags) && d.tags.length ? d.tags : ["Scenario"])
-        .map(t => `<span>${escapeHtml(t)}</span>`).join("");
-
-      showDetailSubTab("about");
-
-      // ── Shared helpers ────────────────────────────────────────────────────────
-
-      function accordionItem(title, content, mono = false) {
-        const text = String(content ?? "").trim();
-        if (!text) return "";
-        return `
-          <details class="dossier-row">
-            <summary class="dossier-summary">
-              <div class="dossier-summary-left">
-                <span class="dossier-title">${title}</span>
-              </div>
-              <svg class="dossier-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
-            </summary>
-            <div class="dossier-body ${mono ? "mono" : ""}">${escapeHtml(text)}</div>
-          </details>
-        `;
-      }
-
-      function formatSampleDialogue(raw, name) {
-        if (!raw || !raw.trim()) return "";
-        let formatted = raw
-          .replace(/<START>/gi, "——— Conversation Sample ———\n")
-          .replace(/\{\{char\}\}/gi, name)
-          .replace(/\{\{user\}\}/gi, "You")
-          .trim();
-        if (formatted.startsWith("——— Conversation Sample ———\n")) {
-          formatted = formatted.substring("——— Conversation Sample ———\n".length).trim();
-        }
-        return formatted;
-      }
-
-      function buildVariationRows(items, labelPrefix) {
-        return items.map((alt, idx) => {
-          const cleaned = String(alt ?? "").trim();
-          const firstLine = cleaned.split('\n')[0].slice(0, 65);
-          const preview = firstLine.length >= 65 ? firstLine + "…" : firstLine;
-          return `
-            <details class="alt-variation-row">
-              <summary class="alt-variation-summary">
-                <div class="alt-variation-summary-left">
-                  <span class="alt-variation-badge">${labelPrefix} ${idx + 1}</span>
-                  <span class="alt-variation-preview">${escapeHtml(preview)}</span>
-                </div>
-                <svg class="alt-variation-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
-              </summary>
-              <div class="alt-variation-body">
-                <div>${escapeHtml(cleaned)}</div>
-              </div>
-            </details>
-          `;
-        }).join("");
-      }
-
-      // ── 1. Story & Hook tab ───────────────────────────────────────────────────
-      const firstMes = d.first_mes || "The door closes behind you. Silence settles into the corridor.";
-      let storyHtml = `
-        <div class="detail-story-prose-container">
-          <div class="detail-eyebrow-label">
-            <span>Opening Scene</span>
-            <span style="font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: normal; color: var(--text-faint);">First message in new chats</span>
-          </div>
-          <div class="detail-story-prose">${escapeHtml(firstMes)}</div>
-        </div>
-      `;
-
-      // Alternate openings
-      if (Array.isArray(d.alternate_greetings) && d.alternate_greetings.length > 0) {
-        storyHtml += `
-          <div class="detail-alt-openings">
-            <div class="detail-eyebrow-label">
-              <span>Alternate Openings (${d.alternate_greetings.length})</span>
-              <span style="font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: normal; color: var(--text-faint);">Click variation to read</span>
-            </div>
-            <div class="alt-variations-list">
-              ${buildVariationRows(d.alternate_greetings, "Variation")}
-            </div>
-          </div>
-        `;
-      }
-
-      // Group-only openings (CCv3 only)
-      if (Array.isArray(d.group_only_greetings) && d.group_only_greetings.length > 0) {
-        storyHtml += `
-          <div class="detail-group-openings">
-            <div class="detail-eyebrow-label">
-              <span>Group-Only Openings (${d.group_only_greetings.length})</span>
-              <span style="font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: normal; color: var(--text-faint);">Used in multi-character scenes</span>
-            </div>
-            <div class="alt-variations-list">
-              ${buildVariationRows(d.group_only_greetings, "Group")}
-            </div>
-          </div>
-        `;
-      }
-
-      if (detailStoryContent) detailStoryContent.innerHTML = storyHtml;
-
-      // ── 2. Author Notes tab ───────────────────────────────────────────────────
-      const notesText = String(d.creator_notes ?? "").trim();
-      let notesHtml = "";
-      if (notesText) {
-        notesHtml = `
-          <div class="detail-author-notes-container">
-            <div class="detail-eyebrow-label">
-              <span>Creator &amp; Author Guidance</span>
-              <span style="font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: normal; color: var(--text-faint);">From card creator</span>
-            </div>
-            <div class="detail-notes-prose">${escapeHtml(notesText)}</div>
-          </div>
-        `;
-      } else {
-        notesHtml = `
-          <div class="detail-notes-empty">
-            No author notes or creator guidance provided for this character.
-          </div>
-        `;
-      }
-
-      // Source attribution (CCv3: d.source is string[])
-      const sources = Array.isArray(d.source) ? d.source.filter(s => String(s).trim()) : [];
-      if (sources.length > 0) {
-        notesHtml += `
-          <div class="detail-source-row">
-            <div class="detail-source-label">Source</div>
-            <div class="detail-source-list">
-              ${sources.map(s => `<span class="detail-source-item">${escapeHtml(String(s).trim())}</span>`).join("")}
-            </div>
-          </div>
-        `;
-      }
-
-      if (detailNotesContent) detailNotesContent.innerHTML = notesHtml;
-
-      // ── 3. About tab ─────────────────────────────────────────────────────────
-      let lorebookNoticeHtml = "";
-      const lorebook = d.character_book;
-      const lorebookEntries = lorebook?.entries;
-      const entryCount = Array.isArray(lorebookEntries) ? lorebookEntries.length
-        : (lorebookEntries && typeof lorebookEntries === "object" ? Object.keys(lorebookEntries).length : 0);
-      if (entryCount > 0) {
-        lorebookNoticeHtml = `
-          <div class="detail-lorebook-notice">
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
-              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
-            </svg>
-            <div class="detail-lorebook-notice-body">
-              <div class="detail-lorebook-notice-title">Embedded World Info · ${entryCount} ${entryCount === 1 ? "entry" : "entries"}</div>
-              <div class="detail-lorebook-notice-sub">This card carries an embedded lorebook. Lore injection requires your inference endpoint to support it.</div>
-            </div>
-          </div>
-        `;
-      }
-
-      let accordionsHtml = "";
-      accordionsHtml += accordionItem("Description & Lore", d.description);
-      accordionsHtml += accordionItem("Personality & Traits", d.personality);
-      accordionsHtml += accordionItem("Scenario & World Setting", d.scenario);
-      accordionsHtml += accordionItem("Voice & Dialogue Samples", formatSampleDialogue(d.mes_example, charName));
-      accordionsHtml += accordionItem("System Prompt Instructions", d.system_prompt, true);
-      accordionsHtml += accordionItem("Post-History Instructions", d.post_history_instructions, true);
-
-      if (detailAboutContent) {
-        if (!accordionsHtml && !lorebookNoticeHtml) {
-          detailAboutContent.innerHTML = `
-            <div style="text-align: center; color: var(--text-faint); padding: 24px; font-size: 13px;">
-              No lore or prompt instructions recorded for this character.
-            </div>
-          `;
-        } else {
-          detailAboutContent.innerHTML = `
-            ${lorebookNoticeHtml}
-            ${accordionsHtml ? `<div class="dossier-rows-list">${accordionsHtml}</div>` : ""}
-          `;
-        }
-      }
-
-      detailModal?.classList.add("open");
-      detailBackdrop?.classList.add("open");
-    }
-
-    function closeDetailModal() {
-      detailModal?.classList.remove("open");
-      detailBackdrop?.classList.remove("open");
-    }
-
-    // Clicking topbar character chip opens Character Profile modal
-    hudCharChip?.addEventListener("click", () => openDetailModal(activeCard));
-    closeDetailBtn?.addEventListener("click", closeDetailModal);
-    closeDetailFooterBtn?.addEventListener("click", closeDetailModal);
-    detailBackdrop?.addEventListener("click", closeDetailModal);
-    detailOpenHistoryBtn?.addEventListener("click", () => {
-      closeDetailModal();
-      openHistoryModal();
-    });
-
-    detailChangeAvatarBtn?.addEventListener("click", () => detailAvatarFileInput?.click());
-    detailCharAvatar?.addEventListener("click", () => detailAvatarFileInput?.click());
-    detailCharAvatar?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        detailAvatarFileInput?.click();
-      }
-    });
-
-    detailAvatarFileInput?.addEventListener("change", async (e) => {
-      const file = e.target.files?.[0];
-      if (!file || !activeCard) return;
-      detailAvatarFileInput.value = "";
-      try {
-        const dataUrl = await compressAvatarImage(file, 384);
-        activeCard.avatar = dataUrl;
-        if (activeCard.data) activeCard.data.avatar = dataUrl;
-        await LocalDb.saveCard(activeCard);
-        openDetailModal(activeCard);
-        renderHudCharacter();
-        renderFeed();
-        showToast("Character portrait updated.", "success");
-      } catch (err) {
-        showToast("Failed to update portrait: " + err.message, "error");
-      }
-    });
-
     function updateLiveStats() {
       if (!composerLiveStats) return;
       const text = authorInput?.value || "";
@@ -1165,6 +749,18 @@
     const initialLetter = charName.charAt(0).toUpperCase();
 
     // Set HUD Header
+    function renderHudCharacter() {
+      const name = activeCard.data?.name || activeCard.name || "Character";
+      const avatarUrl = activeCard.avatar || activeCard.data?.avatar;
+      hudCharName.textContent = name;
+      if (avatarUrl && (avatarUrl.startsWith("data:") || avatarUrl.startsWith("http"))) {
+        hudCharAvatar.innerHTML = `<img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(name)}" style="width: 100%; height: 100%; object-fit: cover;">`;
+      } else {
+        hudCharAvatar.textContent = name.charAt(0).toUpperCase();
+      }
+      checkNameOverflow();
+    }
+
     renderHudCharacter();
 
     function checkNameOverflow() {
@@ -1174,7 +770,6 @@
         hudCharName.classList.remove("is-overflowing");
       }
     }
-    checkNameOverflow();
     window.addEventListener("resize", checkNameOverflow);
 
     // History Modal Open/Close
@@ -1857,9 +1452,7 @@
     // Global escape key handler with proper modal hierarchy
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
-      if (detailModal?.classList.contains("open")) {
-        closeDetailModal();
-      } else if (editorModalPersona?.classList.contains("open")) {
+      if (editorModalPersona?.classList.contains("open")) {
         closeEditorPersona();
       } else if (editorModalDirective?.classList.contains("open")) {
         closeEditorDirective();
