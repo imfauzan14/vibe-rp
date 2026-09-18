@@ -119,11 +119,13 @@ export class BrowserChatEngine {
     const pers = card ? card.data?.personality || card.personality : "";
     const scen = card ? card.data?.scenario || card.scenario : "";
     const mesEx = card ? card.data?.mes_example || card.mes_example : "";
+    const cardSystemPrompt = card ? card.data?.system_prompt || card.system_prompt : "";
+
+    if (cardSystemPrompt) parts.push(`[Character Core Directives:\n${cardSystemPrompt}]`);
     if (desc) parts.push(`[Description: ${desc}]`);
     if (pers) parts.push(`[Personality: ${pers}]`);
     if (scen) parts.push(`[Scenario: ${scen}]`);
     if (mesEx) parts.push(`[Dialogue Examples:\n${mesEx}]`);
-
     if (persona && persona.name) {
       const template = persona.template ? `\n${String(persona.template).trim()}` : "";
       parts.push(`[User Persona: ${persona.name}]\n${persona.description || ""}${template}`);
