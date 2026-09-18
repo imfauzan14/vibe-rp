@@ -1,0 +1,2350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Vibe RP</title>
+  <link rel="stylesheet" href="/editorial.css?v=20260918">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..500;1,6..72,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <div class="client-shell">
+    <!-- Center Stage -->
+    <main class="client-stage">
+      <!-- Top Stage HUD Bar -->
+      <header class="stage-hud">
+        <div class="hud-left">
+          <!-- Back to Previous Page / Character Catalog Button -->
+          <a href="/" class="btn-icon" title="Return to Character Catalog" id="back-catalog-btn">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+          </a>
+        </div>
+
+        <!-- Centered Character Persona Chip -->
+        <div class="hud-center">
+          <button class="hud-character-chip" id="hud-char-chip" type="button" title="View character profile and details" aria-label="View character profile and details" style="background: transparent; border: 1px solid transparent; cursor: pointer;">
+            <div class="hud-avatar" id="hud-char-avatar">C</div>
+            <span class="hud-name" id="hud-char-name">Character</span>
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.6; margin-left: 2px;">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+        </div>
+
+        <div class="hud-right">
+          <button id="toggle-context-drawer-btn" class="btn-icon" title="Chat Configuration & Saved Chats" aria-label="Chat Configuration & Saved Chats">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+            </svg>
+          </button>
+          <button id="toggle-settings-btn" class="btn-icon" title="Settings" aria-label="Settings">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0 .33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33-1.82V9a1.65 1.65 0 0 0-1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Rich Chat Message Feed -->
+      <div class="chat-feed" id="chat-feed">
+        <div class="chat-inner" id="chat-inner"></div>
+      </div>
+
+      <!-- SillyTavern Pro Composer Dock -->
+      <div class="composer-dock">
+        <div class="composer-box">
+          <textarea
+            id="author-input"
+            class="composer-textarea"
+            rows="3"
+            placeholder="Type your message or action... (Enter to send, Shift+Enter for new line)"></textarea>
+
+          <div class="composer-bar-bottom">
+            <div class="composer-shortcuts">
+              <div class="composer-speaker-pill" id="composer-speaker-pill" title="Active speaking persona">
+                <div class="composer-speaker-avatar" id="composer-speaker-avatar">U</div>
+                <span id="composer-persona-name">User</span>
+              </div>
+              <span class="composer-stat-sep">·</span>
+              <span id="composer-live-stats" class="composer-stat-item" title="Input character count and estimated token length">0 chars · ~0 tokens</span>
+              <span class="composer-stat-sep">·</span>
+              <span id="composer-context-stats" class="composer-stat-item" title="Estimated session context usage relative to token budget">Context: ~0 / 8.2k</span>
+            </div>
+            <div class="composer-actions">
+              <button id="continue-action-btn" class="btn ghost" style="padding: 4px 10px; font-size: 12px;" title="Prompt character to continue narrative">
+                ▶ Continue
+              </button>
+              <button id="send-btn" class="btn primary" style="padding: 6px 16px;">
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+  </div>
+
+  <!-- Saved Chats & History Pop-up Modal -->
+  <div class="modal-backdrop" id="history-modal-backdrop"></div>
+  <div class="history-modal settings-popup-modal" id="history-modal" role="dialog" aria-modal="true" aria-labelledby="history-modal-title">
+    <div class="modal-header">
+      <div>
+        <h2 id="history-modal-title" style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin: 0;">Saved Chats &amp; History</h2>
+        <p style="font-size: 11.5px; color: var(--text-faint); margin: 2px 0 0 0;">Switch between sessions, start fresh, or configure active scene presets.</p>
+      </div>
+      <button id="close-history-modal-btn" class="btn-icon" title="Close" aria-label="Close dialog">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <!-- Active Scene Configuration & Saved Chats -->
+      <div class="card-surface" style="display: flex; flex-direction: column; gap: 16px; padding: 16px;">
+        <!-- Scene Presets Section -->
+        <div>
+          <div style="font-size: 12px; font-weight: 600; color: var(--accent-char); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px;">Scene Presets for this Character</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div>
+              <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 6px; margin-bottom: 4px;">
+                <label class="form-label" for="history-persona-select" style="font-size: 11px; margin: 0;">Speaking Persona</label>
+                <button id="history-manage-personas-btn" class="btn ghost" style="padding: 1px 6px; font-size: 10.5px;">Manage</button>
+              </div>
+              <select id="history-persona-select" class="form-input" style="width: 100%; font-size: 12px;"></select>
+            </div>
+            <div>
+              <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 6px; margin-bottom: 4px;">
+                <label class="form-label" for="history-directive-select" style="font-size: 11px; margin: 0;">Craft Directive</label>
+                <button id="history-manage-directives-btn" class="btn ghost" style="padding: 1px 6px; font-size: 10.5px;">Manage</button>
+              </div>
+              <select id="history-directive-select" class="form-input" style="width: 100%; font-size: 12px;"></select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Saved Sessions Section -->
+        <div style="border-top: 1px solid var(--border-subtle); padding-top: 16px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+            <div style="font-size: 12px; font-weight: 600; color: var(--accent-char); text-transform: uppercase; letter-spacing: 0.05em;">Saved Sessions</div>
+            <button id="history-new-scene-btn" class="btn primary" style="padding: 5px 12px; font-size: 12px;">+ New Chat</button>
+          </div>
+          <div class="modal-thread-list" id="history-threads-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Persona Editor Modal -->
+  <div class="modal-backdrop" id="editor-modal-backdrop"></div>
+  <div class="history-modal settings-popup-modal" id="editor-modal" role="dialog" aria-modal="true" aria-labelledby="editor-persona-title">
+    <div class="modal-header">
+      <div>
+        <h2 id="editor-persona-title" style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin: 0;">Edit Persona</h2>
+        <p style="font-size: 11.5px; color: var(--text-faint); margin: 2px 0 0 0;">Configure your author identity and speaking traits.</p>
+      </div>
+      <button id="close-editor-modal-btn" class="btn-icon" title="Close" aria-label="Close dialog">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body" style="gap: 14px; padding: 18px 22px;">
+      <!-- Persona Hero Section (Matches Character Detail Pop-up) -->
+      <div class="persona-hero-section">
+        <div class="persona-portrait-container">
+          <div id="editor-persona-avatar-preview" class="persona-editor-avatar-box" role="button" tabindex="0" title="Click to replace persona photo" aria-label="Replace persona photo">
+            <div class="persona-avatar-inner" id="editor-persona-avatar-inner">
+              <span id="editor-persona-avatar-text">U</span>
+            </div>
+            <div class="portrait-hover-overlay">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+              </svg>
+              <span>Replace Image</span>
+            </div>
+          </div>
+          <button type="button" id="editor-persona-remove-avatar-btn" class="persona-remove-link" style="display: none;">Remove photo</button>
+          <input type="file" id="editor-persona-avatar-file" accept="image/*" style="display: none;">
+        </div>
+        <div class="persona-hero-fields">
+          <div class="persona-info-field">
+            <label for="editor-persona-name">Persona Name <span style="color: var(--accent-char);">*</span></label>
+            <input type="text" id="editor-persona-name" class="form-input" placeholder="e.g. Bal, King of Florin" maxlength="80">
+          </div>
+          <div class="persona-info-field">
+            <label for="editor-persona-desc">Role / Brief Description</label>
+            <input type="text" id="editor-persona-desc" class="form-input" placeholder="e.g. Ruler defending the realm" maxlength="200">
+          </div>
+        </div>
+      </div>
+
+      <!-- Persona Prompt & Definition -->
+      <div class="form-group" style="display:flex; flex-direction:column; gap:6px; flex: 1;">
+        <label for="editor-persona-template" style="color:var(--text-primary); font-size:12.5px; font-weight:600; margin:0;">
+          Persona Definition &amp; Instructions <span style="font-size: 11px; font-weight: 400; color: var(--text-faint);">(optional)</span>
+        </label>
+        <span style="font-size: 11.5px; color: var(--text-secondary); line-height: 1.4;">Context and dialogue traits injected into the Block 0 prompt prefix so the character recognizes who you are.</span>
+        <textarea id="editor-persona-template" class="form-textarea" rows="5" style="min-height: 120px; font-size: 13px; line-height: 1.5; resize: vertical;" placeholder="e.g. Bal is the reigning monarch of Florin. Speaks with measured, quiet authority. Cares deeply for his subjects and expects blunt honesty from his council."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer" style="padding: 12px 22px; border-top: 1px solid var(--border-subtle); display: flex; justify-content: flex-end; gap: 10px;">
+      <button id="cancel-editor-btn" class="btn ghost">Cancel</button>
+      <button id="save-editor-btn" class="btn primary" style="min-width: 130px;">Save Persona</button>
+    </div>
+  </div>
+
+  <!-- System Prompt Editor Modal -->
+  <div class="modal-backdrop" id="editor-modal-directive-backdrop"></div>
+  <div class="history-modal settings-popup-modal" id="editor-modal-directive" role="dialog" aria-modal="true" aria-labelledby="editor-directive-title">
+    <div class="modal-header">
+      <div>
+        <h2 id="editor-directive-title" style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin: 0;">Edit System Prompt</h2>
+        <p style="font-size: 11.5px; color: var(--text-faint); margin: 2px 0 0 0;">Craft contract rules injected into the Block 0 prefix.</p>
+      </div>
+      <button id="close-editor-modal-directive-btn" class="btn-icon" title="Close" aria-label="Close dialog">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body" style="gap: 14px; padding: 18px 22px;">
+      <div class="directive-header-grid">
+        <div class="form-group" style="display:flex; flex-direction:column; gap:4px;">
+          <label for="editor-directive-name" style="color:var(--text-faint); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; margin:0;">Directive Name <span style="color: var(--accent-char);">*</span></label>
+          <input type="text" id="editor-directive-name" class="form-input" placeholder="e.g. AGENTS.md Contract" maxlength="80">
+        </div>
+        <div class="form-group" style="display:flex; flex-direction:column; gap:4px;">
+          <label for="editor-directive-desc" style="color:var(--text-faint); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; margin:0;">Summary / Purpose</label>
+          <input type="text" id="editor-directive-desc" class="form-input" placeholder="e.g. Third person limited, anti-slop rules" maxlength="200">
+        </div>
+      </div>
+      <div class="form-group" style="display:flex; flex-direction:column; gap:6px; flex: 1;">
+        <label for="editor-directive-content" style="color:var(--text-primary); font-size:12.5px; font-weight:600; margin:0;">Contract Content / System Prompt <span style="color: var(--accent-char);">*</span></label>
+        <textarea id="editor-directive-content" class="form-textarea" rows="9" style="font-family: var(--font-mono); font-size: 12px; line-height: 1.55; min-height: 180px; height: 28vh; resize: vertical;" placeholder="System prompt instructions, bans, and formatting rules..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer" style="padding: 12px 22px; border-top: 1px solid var(--border-subtle); display: flex; justify-content: flex-end; gap: 10px;">
+      <button id="cancel-directive-btn" class="btn ghost">Cancel</button>
+      <button id="save-directive-btn" class="btn primary" style="min-width: 140px;">Save Directive</button>
+    </div>
+  </div>
+
+  <!-- Settings Popup Modal (Consistent across Library and Chat) -->
+  <div class="modal-backdrop" id="settings-popup-backdrop"></div>
+  <div class="history-modal settings-popup-modal" id="settings-popup" role="dialog" aria-modal="true" aria-labelledby="settings-popup-title">
+    <div class="modal-header">
+      <div>
+        <h2 id="settings-popup-title" style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin: 0;">Settings &amp; Presets</h2>
+        <p style="font-size: 11.5px; color: var(--text-faint); margin: 2px 0 0 0;">Inference engine, parameters, personas, and craft contracts.</p>
+      </div>
+      <button id="close-settings-popup-btn" class="btn-icon" title="Close" aria-label="Close dialog">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <!-- Tab Navigation -->
+      <nav class="settings-tab-nav" role="tablist">
+        <button class="settings-tab-btn active" data-tab="settings-engine-tab" role="tab" aria-selected="true">Engine</button>
+        <button class="settings-tab-btn" data-tab="settings-params-tab" role="tab" aria-selected="false">Parameters</button>
+        <button class="settings-tab-btn" data-tab="settings-personas-tab" role="tab" aria-selected="false">Personas</button>
+        <button class="settings-tab-btn" data-tab="settings-system-prompts-tab" role="tab" aria-selected="false">Directives</button>
+      </nav>
+
+      <!-- Engine & Model Tab -->
+      <section class="settings-tab-pane active" id="settings-engine-tab" role="tabpanel">
+        <div class="settings-guidance-card">
+          <div class="settings-guidance-title">Inference Engine &amp; Models</div>
+          <div class="settings-guidance-text">
+            Connect to any OpenAI-compatible completions API (e.g. OpenRouter, vLLM, Ollama, LM Studio). Credentials are stored locally in your browser's IndexedDB and never leave your machine.
+          </div>
+        </div>
+
+        <div class="form-panel" style="display: flex; flex-direction: column; gap: 16px;">
+          <div class="form-field">
+            <label class="form-label" for="popup-api-endpoint">
+              <span>API Base URL</span>
+              <span style="font-size: 11px; color: var(--text-faint);">OpenAI-compatible</span>
+            </label>
+            <input type="text" id="popup-api-endpoint" class="form-input" placeholder="https://api.example.com/v1">
+            <span class="field-hint">The base URL of your inference provider terminating in /v1</span>
+          </div>
+
+          <div class="form-field">
+            <label class="form-label" for="popup-api-key">
+              <span>API Key</span>
+              <span style="font-size: 11px; color: var(--text-faint);">Stored locally</span>
+            </label>
+            <input type="password" id="popup-api-key" class="form-input" placeholder="sk-...">
+            <span class="field-hint">Your API token or proxy secret. Stored strictly in local IndexedDB.</span>
+          </div>
+
+          <div class="form-field">
+            <div class="form-label">
+              <span>Primary Story Model</span>
+              <button id="popup-fetch-models-btn" class="btn ghost" style="padding: 2px 8px; font-size: 11px;">Fetch Models</button>
+            </div>
+            <select id="popup-model-select" class="form-input"><option value="">Select a model after fetching models</option></select>
+            <span class="field-hint">The primary model used to generate prose, narration, and character dialogue.</span>
+          </div>
+
+          <div class="card-surface" style="display: flex; flex-direction: column; gap: 10px; margin-top: 6px; margin-bottom: 4px;">
+            <label class="form-checkbox-row" style="cursor: pointer; display: flex; align-items: flex-start; gap: 10px;">
+              <input type="checkbox" id="popup-enable-thoughts" style="margin-top: 3px;" />
+              <div>
+                <span style="font-size: 13px; font-weight: 500; color: var(--text-primary);">Character Inner Thoughts (&lt;thought&gt;)</span>
+                <p class="field-hint" style="margin-top: 2px;">When enabled, characters produce private cognitive monologues before speaking in scene.</p>
+              </div>
+            </label>
+            <div id="popup-thought-model-wrap" style="padding-left: 24px; display: flex; flex-direction: column; gap: 4px;">
+              <label class="form-label" for="popup-subagent-model-select" style="font-size: 11.5px; color: var(--text-secondary);">Thought Reasoning Model</label>
+              <select id="popup-subagent-model-select" class="form-input" style="font-size: 12.5px;"></select>
+              <span class="field-hint">Route &lt;thought&gt; reasoning to a separate fast model, or leave as "Same as main model".</span>
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; margin-top: 12px; margin-bottom: 8px;">
+            <button id="popup-save-engine-btn" class="btn primary">Save Engine Settings</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Generation Parameters Tab -->
+      <section class="settings-tab-pane" id="settings-params-tab" role="tabpanel">
+        <div class="settings-guidance-card">
+          <div class="settings-guidance-title">Sampler &amp; Context Controls</div>
+          <div class="settings-guidance-text">
+            Balance creative unpredictability against narrative coherence. These sampling parameters are passed to the model on every inference request.
+          </div>
+        </div>
+
+        <div class="form-panel" style="display: flex; flex-direction: column; gap: 16px;">
+          <div class="form-field">
+            <div class="form-label">
+              <span>Temperature</span>
+              <span id="popup-val-temp" class="slider-value-badge">0.85</span>
+            </div>
+            <input type="range" id="popup-slider-temp" class="form-slider" min="0.1" max="2.0" step="0.05" value="0.85">
+            <span class="field-hint">Controls randomness. Lower (0.4–0.7) is focused and deterministic; higher (0.8–1.1) is creative and descriptive.</span>
+          </div>
+
+          <div class="form-field">
+            <div class="form-label">
+              <span>Top P (Nucleus Sampling)</span>
+              <span id="popup-val-topp" class="slider-value-badge">0.95</span>
+            </div>
+            <input type="range" id="popup-slider-topp" class="form-slider" min="0.1" max="1.0" step="0.05" value="0.95">
+            <span class="field-hint">Cumulative probability threshold. Only the smallest set of tokens whose cumulative probability exceeds P are considered.</span>
+          </div>
+
+          <div class="form-field">
+            <div class="form-label">
+              <span>Min P</span>
+              <span id="popup-val-minp" class="slider-value-badge">0.05</span>
+            </div>
+            <input type="range" id="popup-slider-minp" class="form-slider" min="0.0" max="0.5" step="0.01" value="0.05">
+            <span class="field-hint">Dynamic probability cutoff relative to the most likely token. Filters out nonsensical tail tokens without flattening prose.</span>
+          </div>
+
+          <div class="form-field">
+            <div class="form-label">
+              <span>Max Output Tokens</span>
+              <span id="popup-val-tokens" class="slider-value-badge">1200</span>
+            </div>
+            <input type="range" id="popup-slider-tokens" class="form-slider" min="200" max="4096" step="50" value="1200">
+            <span class="field-hint">Maximum token ceiling per generated turn. 1200 tokens ≈ 3–4 rich literary paragraphs.</span>
+          </div>
+
+          <div class="form-field">
+            <div class="form-label">
+              <span>Frequency Penalty</span>
+              <span id="popup-val-freq" class="slider-value-badge">0.25</span>
+            </div>
+            <input type="range" id="popup-slider-freq" class="form-slider" min="-2.0" max="2.0" step="0.05" value="0.25">
+            <span class="field-hint">Penalizes words based on frequency in output so far. Higher values reduce repetitive verbal tics.</span>
+          </div>
+
+          <div class="form-field">
+            <div class="form-label">
+              <span>Presence Penalty</span>
+              <span id="popup-val-pres" class="slider-value-badge">0.15</span>
+            </div>
+            <input type="range" id="popup-slider-pres" class="form-slider" min="-2.0" max="2.0" step="0.05" value="0.15">
+            <span class="field-hint">Penalizes tokens that have already appeared once, encouraging new topics and vocabulary.</span>
+          </div>
+
+          <div class="form-field">
+            <div class="form-label">
+              <span>Max Context Budget (Tokens)</span>
+              <span id="popup-val-context" class="slider-value-badge">16384</span>
+            </div>
+            <input type="range" id="popup-slider-context" class="form-slider" min="2048" max="65536" step="1024" value="16384">
+            <span class="field-hint">Context window limit. Triggers omp-style compaction (summarizes older middle turns) when history exceeds this limit.</span>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; margin-top: 14px; margin-bottom: 8px;">
+            <button id="popup-save-params-btn" class="btn primary">Save Parameters</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Personas Tab -->
+      <section class="settings-tab-pane" id="settings-personas-tab" role="tabpanel">
+        <div class="settings-guidance-card">
+          <div class="settings-guidance-title">User &amp; Author Personas</div>
+          <div class="settings-guidance-text">
+            Personas define who you are in roleplay and fiction scenes. Set one persona as <strong>Global Default</strong> to be automatically used in all new chats. You can also override personas per individual character card.
+          </div>
+        </div>
+
+        <div class="form-panel">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 8px;">
+            <div style="font-size: 11.5px; font-weight: 600; color: var(--accent-char); text-transform: uppercase; letter-spacing: 0.05em;">Saved Personas</div>
+            <button id="create-new-persona-btn" class="btn primary btn-sm" style="padding: 4px 12px; font-size: 12px;">+ Create Persona</button>
+          </div>
+          <div id="settings-personas-list" style="display: flex; flex-direction: column; gap: 10px;"></div>
+        </div>
+      </section>
+
+      <!-- System Prompts Tab -->
+      <section class="settings-tab-pane" id="settings-system-prompts-tab" role="tabpanel">
+        <div class="settings-guidance-card">
+          <div class="settings-guidance-title">Craft Directives (System Prompts)</div>
+          <div class="settings-guidance-text">
+            Directives are foundational system prompt contracts (such as <code>AGENTS.md</code>) injected into the Block 0 prefix. They strictly govern narrative voice, banned AI clichés, register consistency, and pacing.
+          </div>
+        </div>
+
+        <div class="form-panel">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 8px;">
+            <div style="font-size: 11.5px; font-weight: 600; color: var(--accent-char); text-transform: uppercase; letter-spacing: 0.05em;">Saved Directives</div>
+            <button id="create-new-sysprompt-btn" class="btn primary btn-sm" style="padding: 4px 12px; font-size: 12px;">+ New Directive</button>
+          </div>
+          <div id="settings-system-prompts-list" style="display: flex; flex-direction: column; gap: 10px;"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- Character Preset Details Modal in Chat -->
+  <div class="modal-backdrop" id="detail-modal-backdrop"></div>
+  <div class="history-modal detail-modal" id="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-char-name">
+    <div class="modal-header">
+      <div>
+        <h2 style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Character Profile</h2>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <button id="close-detail-btn" class="btn-icon" title="Close" aria-label="Close dialog">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- View: Character Details -->
+    <div class="modal-body detail-body" id="detail-view-info">
+      <!-- Top Character Hero Section with Large Portrait and Clean Change Art Button -->
+      <div class="detail-hero-section">
+        <div class="detail-portrait-container">
+          <div class="detail-char-portrait" id="detail-char-avatar" role="button" tabindex="0" title="Click to replace character artwork" aria-label="Replace character artwork">
+            <div class="detail-char-portrait-inner" id="detail-char-portrait-inner">C</div>
+            <div class="portrait-hover-overlay">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+              </svg>
+              <span>Replace Image</span>
+            </div>
+          </div>
+          <input type="file" id="detail-avatar-file-input" accept="image/*" style="display: none;">
+        </div>
+        <div class="detail-hero-meta">
+          <h3 id="detail-char-name" class="detail-hero-title">Character Name</h3>
+          <div id="detail-char-nickname" class="detail-hero-nickname" style="display: none;"></div>
+          <div id="detail-char-meta" class="detail-hero-creator">Creator · v1.0</div>
+          <div class="detail-tags" id="detail-tags"></div>
+        </div>
+      </div>
+
+      <!-- Tab Navigation for Detail Modal: About (left) vs Story (mid) vs Author Notes (right) -->
+      <nav class="detail-tab-nav" role="tablist">
+        <button type="button" class="detail-tab-btn active" id="detail-tab-btn-about" role="tab" aria-selected="true">
+          About
+        </button>
+        <button type="button" class="detail-tab-btn" id="detail-tab-btn-story" role="tab" aria-selected="false">
+          Story &amp; Hook
+        </button>
+        <button type="button" class="detail-tab-btn" id="detail-tab-btn-notes" role="tab" aria-selected="false">
+          Author Notes
+        </button>
+      </nav>
+
+      <!-- Pane 1: About Inspector -->
+      <div class="detail-pane" id="detail-pane-about">
+        <div id="detail-about-content"></div>
+      </div>
+
+      <!-- Pane 2: Story & Opening Hook -->
+      <div class="detail-pane" id="detail-pane-story" style="display: none;">
+        <div id="detail-story-content"></div>
+      </div>
+
+      <!-- Pane 3: Author Notes -->
+      <div class="detail-pane" id="detail-pane-notes" style="display: none;">
+        <div id="detail-notes-content"></div>
+      </div>
+    </div>
+    <div class="modal-footer detail-actions" id="detail-actions-footer">
+      <div style="display: flex; gap: 8px; flex: 1; justify-content: flex-end;">
+        <button id="detail-open-history-btn" class="btn ghost">Saved Chats</button>
+        <button id="close-detail-footer-btn" class="btn primary">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { LocalDb } from "/local_db.js";
+    import { BrowserChatEngine } from "/browser_engine.js";
+
+    function showToast(message, type = "info", duration = 3500) {
+      let container = document.querySelector(".studio-toast-container");
+      if (!container) {
+        container = document.createElement("div");
+        container.className = "studio-toast-container";
+        document.body.appendChild(container);
+      }
+      const toast = document.createElement("div");
+      toast.className = `studio-toast toast-${type}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+      requestAnimationFrame(() => toast.classList.add("show"));
+      setTimeout(() => {
+        toast.classList.remove("show");
+        setTimeout(() => toast.remove(), 200);
+      }, duration);
+    }
+    window.showToast = showToast;
+
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function compressAvatarImage(file, maxSize = 320) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            let w = img.width;
+            let h = img.height;
+            if (w > h) {
+              if (w > maxSize) {
+                h = Math.round((h * maxSize) / w);
+                w = maxSize;
+              }
+            } else {
+              if (h > maxSize) {
+                w = Math.round((w * maxSize) / h);
+                h = maxSize;
+              }
+            }
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL("image/webp", 0.85) || canvas.toDataURL("image/jpeg", 0.85));
+          };
+          img.onerror = () => resolve(e.target.result);
+          img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function estimateTokens(text) {
+      if (!text) return 0;
+      const str = String(text);
+      const words = str.match(/\w+|[^\w\s]+/g);
+      return words ? Math.ceil(words.length * 1.25) : Math.ceil(str.length / 3.8);
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    let cardId = urlParams.get("cardId");
+    let sessionId = urlParams.get("sessionId");
+
+    const chatFeed = document.getElementById("chat-feed");
+    const chatInner = document.getElementById("chat-inner");
+    const authorInput = document.getElementById("author-input");
+    const sendBtn = document.getElementById("send-btn");
+    const continueBtn = document.getElementById("continue-action-btn");
+
+    const hudCharChip = document.getElementById("hud-char-chip");
+    const hudCharAvatar = document.getElementById("hud-char-avatar");
+    const hudCharName = document.getElementById("hud-char-name");
+    const hudAvatarFileInput = document.getElementById("hud-avatar-file-input");
+
+    const composerSpeakerPill = document.getElementById("composer-speaker-pill");
+    const composerSpeakerAvatar = document.getElementById("composer-speaker-avatar");
+    const composerPersonaName = document.getElementById("composer-persona-name");
+    const composerLiveStats = document.getElementById("composer-live-stats");
+    const composerContextStats = document.getElementById("composer-context-stats");
+
+    // History Modal Elements
+    const historyModal = document.getElementById("history-modal");
+    const historyModalBackdrop = document.getElementById("history-modal-backdrop");
+    const closeHistoryModalBtn = document.getElementById("close-history-modal-btn");
+    const toggleHistoryModalBtn = document.getElementById("toggle-context-drawer-btn");
+    const historyThreadsList = document.getElementById("history-threads-list");
+    const historyNewSceneBtn = document.getElementById("history-new-scene-btn");
+    const historyPersonaSelect = document.getElementById("history-persona-select");
+    const historyDirectiveSelect = document.getElementById("history-directive-select");
+    const historyManagePersonasBtn = document.getElementById("history-manage-personas-btn");
+    const historyManageDirectivesBtn = document.getElementById("history-manage-directives-btn");
+
+    // Settings Popup Modal Elements
+    const settingsPopup = document.getElementById("settings-popup");
+    const settingsPopupBackdrop = document.getElementById("settings-popup-backdrop");
+    const toggleSettingsBtn = document.getElementById("toggle-settings-btn");
+    const closeSettingsPopupBtn = document.getElementById("close-settings-popup-btn");
+
+    const popupApiEndpoint = document.getElementById("popup-api-endpoint");
+    const popupApiKey = document.getElementById("popup-api-key");
+    const popupModelSelect = document.getElementById("popup-model-select");
+    const popupSubagentModelSelect = document.getElementById("popup-subagent-model-select");
+    const popupThoughtModelWrap = document.getElementById("popup-thought-model-wrap");
+    const popupFetchModelsBtn = document.getElementById("popup-fetch-models-btn");
+    const popupEnableThoughts = document.getElementById("popup-enable-thoughts");
+    const popupSaveEngineBtn = document.getElementById("popup-save-engine-btn");
+
+    const popupSliderTemp = document.getElementById("popup-slider-temp");
+    const popupValTemp = document.getElementById("popup-val-temp");
+    const popupSliderTopP = document.getElementById("popup-slider-topp");
+    const popupValTopP = document.getElementById("popup-val-topp");
+    const popupSliderMinP = document.getElementById("popup-slider-minp");
+    const popupValMinP = document.getElementById("popup-val-minp");
+    const popupSliderTokens = document.getElementById("popup-slider-tokens");
+    const popupValTokens = document.getElementById("popup-val-tokens");
+    const popupSliderFreq = document.getElementById("popup-slider-freq");
+    const popupValFreq = document.getElementById("popup-val-freq");
+    const popupSliderPres = document.getElementById("popup-slider-pres");
+    const popupValPres = document.getElementById("popup-val-pres");
+    const popupSliderContext = document.getElementById("popup-slider-context");
+    const popupValContext = document.getElementById("popup-val-context");
+    const popupSaveParamsBtn = document.getElementById("popup-save-params-btn");
+
+    const editorModalPersona = document.getElementById("editor-modal");
+    const editorModalPersonaBackdrop = document.getElementById("editor-modal-backdrop");
+    const closeEditorPersonaBtn = document.getElementById("close-editor-modal-btn");
+    const cancelEditorPersonaBtn = document.getElementById("cancel-editor-btn");
+    const saveEditorPersonaBtn = document.getElementById("save-editor-btn");
+    const editorPersonaTitle = document.getElementById("editor-persona-title");
+    const personaNameInput = document.getElementById("editor-persona-name");
+    const personaDescInput = document.getElementById("editor-persona-desc");
+    const personaTemplateInput = document.getElementById("editor-persona-template");
+
+    const editorPersonaAvatarPreview = document.getElementById("editor-persona-avatar-preview");
+    const editorPersonaUploadBtn = document.getElementById("editor-persona-upload-btn");
+    const editorPersonaRemoveAvatarBtn = document.getElementById("editor-persona-remove-avatar-btn");
+    const editorPersonaAvatarFile = document.getElementById("editor-persona-avatar-file");
+    let currentEditPersonaAvatar = null;
+
+    editorPersonaAvatarPreview?.addEventListener("click", () => editorPersonaAvatarFile?.click());
+    editorPersonaAvatarPreview?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        editorPersonaAvatarFile?.click();
+      }
+    });
+    editorPersonaUploadBtn?.addEventListener("click", () => editorPersonaAvatarFile?.click());
+
+    editorPersonaAvatarFile?.addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      editorPersonaAvatarFile.value = "";
+      try {
+        const dataUrl = await compressAvatarImage(file, 256);
+        currentEditPersonaAvatar = dataUrl;
+        updatePersonaAvatarPreview();
+      } catch (err) {
+        showToast("Failed to load image: " + err.message, "error");
+      }
+    });
+
+    editorPersonaRemoveAvatarBtn?.addEventListener("click", () => {
+      currentEditPersonaAvatar = null;
+      updatePersonaAvatarPreview();
+    });
+
+    personaNameInput?.addEventListener("input", () => {
+      if (!currentEditPersonaAvatar) updatePersonaAvatarPreview();
+    });
+
+    function updatePersonaAvatarPreview() {
+      if (!editorPersonaAvatarPreview) return;
+      const targetInner = document.getElementById("editor-persona-avatar-inner") || editorPersonaAvatarPreview;
+      if (currentEditPersonaAvatar && (currentEditPersonaAvatar.startsWith("data:") || currentEditPersonaAvatar.startsWith("http"))) {
+        targetInner.innerHTML = `<img src="${escapeHtml(currentEditPersonaAvatar)}" alt="Persona avatar" style="width:100%;height:100%;object-fit:cover;">`;
+        if (editorPersonaRemoveAvatarBtn) editorPersonaRemoveAvatarBtn.style.display = "inline-block";
+      } else {
+        const letter = (personaNameInput?.value.trim().charAt(0) || "U").toUpperCase();
+        targetInner.innerHTML = `<span id="editor-persona-avatar-text">${escapeHtml(letter)}</span>`;
+        if (editorPersonaRemoveAvatarBtn) editorPersonaRemoveAvatarBtn.style.display = "none";
+      }
+    }
+
+    const editorModalDirective = document.getElementById("editor-modal-directive");
+    const editorModalDirectiveBackdrop = document.getElementById("editor-modal-directive-backdrop");
+    const closeEditorDirectiveBtn = document.getElementById("close-editor-modal-directive-btn");
+    const cancelEditorDirectiveBtn = document.getElementById("cancel-directive-btn");
+    const saveEditorDirectiveBtn = document.getElementById("save-directive-btn");
+    const editorDirectiveTitle = document.getElementById("editor-directive-title");
+    const directiveNameInput = document.getElementById("editor-directive-name");
+    const directiveDescInput = document.getElementById("editor-directive-desc");
+    const directiveContentInput = document.getElementById("editor-directive-content");
+
+    let currentEditPersonaId = null;
+    let currentEditDirectiveId = null;
+
+    let settings = LocalDb.getSettings();
+    window.addEventListener("settings-saved", (e) => {
+      settings = e.detail;
+      updateContextStats();
+    });
+
+    const cards = await LocalDb.getAllCards();
+    let activeCard = cards.find(c => c.id === cardId) || cards[0];
+    if (!activeCard) {
+      window.location.href = "/";
+      throw new Error("No character cards found. Redirecting to library...");
+    }
+    let currentPersona = null;
+    let currentDirective = null;
+
+    // Detail Modal Elements in Chat
+    const detailModal = document.getElementById("detail-modal");
+    const detailBackdrop = document.getElementById("detail-modal-backdrop");
+    const closeDetailBtn = document.getElementById("close-detail-btn");
+    const closeDetailFooterBtn = document.getElementById("close-detail-footer-btn");
+    const detailOpenHistoryBtn = document.getElementById("detail-open-history-btn");
+    const detailCharAvatar = document.getElementById("detail-char-avatar");
+    const detailCharName = document.getElementById("detail-char-name");
+    const detailCharNickname = document.getElementById("detail-char-nickname");
+    const detailCharMeta = document.getElementById("detail-char-meta");
+    const detailTags = document.getElementById("detail-tags");
+    const detailTabBtnAbout = document.getElementById("detail-tab-btn-about");
+    const detailTabBtnStory = document.getElementById("detail-tab-btn-story");
+    const detailTabBtnNotes = document.getElementById("detail-tab-btn-notes");
+    const detailPaneAbout = document.getElementById("detail-pane-about");
+    const detailPaneStory = document.getElementById("detail-pane-story");
+    const detailPaneNotes = document.getElementById("detail-pane-notes");
+    const detailAboutContent = document.getElementById("detail-about-content");
+    const detailStoryContent = document.getElementById("detail-story-content");
+    const detailNotesContent = document.getElementById("detail-notes-content");
+    const detailChangeAvatarBtn = document.getElementById("detail-change-avatar-btn");
+    const detailAvatarFileInput = document.getElementById("detail-avatar-file-input");
+
+    function showDetailSubTab(tab) {
+      const isAbout = tab === "about";
+      const isStory = tab === "story";
+      const isNotes = tab === "notes";
+
+      detailTabBtnAbout?.classList.toggle("active", isAbout);
+      detailTabBtnAbout?.setAttribute("aria-selected", isAbout ? "true" : "false");
+      detailTabBtnStory?.classList.toggle("active", isStory);
+      detailTabBtnStory?.setAttribute("aria-selected", isStory ? "true" : "false");
+      detailTabBtnNotes?.classList.toggle("active", isNotes);
+      detailTabBtnNotes?.setAttribute("aria-selected", isNotes ? "true" : "false");
+
+      if (detailPaneAbout) detailPaneAbout.style.display = isAbout ? "flex" : "none";
+      if (detailPaneStory) detailPaneStory.style.display = isStory ? "flex" : "none";
+      if (detailPaneNotes) detailPaneNotes.style.display = isNotes ? "flex" : "none";
+    }
+
+    detailTabBtnAbout?.addEventListener("click", () => showDetailSubTab("about"));
+    detailTabBtnStory?.addEventListener("click", () => showDetailSubTab("story"));
+    detailTabBtnNotes?.addEventListener("click", () => showDetailSubTab("notes"));
+
+    function renderHudCharacter() {
+      const name = activeCard.data?.name || activeCard.name || "Character";
+      const avatarUrl = activeCard.avatar || activeCard.data?.avatar;
+      hudCharName.textContent = name;
+      if (avatarUrl && (avatarUrl.startsWith("data:") || avatarUrl.startsWith("http"))) {
+        hudCharAvatar.innerHTML = `<img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(name)}" style="width: 100%; height: 100%; object-fit: cover;">`;
+      } else {
+        hudCharAvatar.textContent = name.charAt(0).toUpperCase();
+      }
+      checkNameOverflow();
+    }
+
+    function fieldHtml(label, content, mono = false) {
+      if (!content || !content.trim()) return "";
+      const cls = mono ? ' class="mono"' : "";
+      return `<div class="detail-field"><label>${label}</label><p${cls}>${escapeHtml(content.trim())}</p></div>`;
+    }
+
+    function openDetailModal(card) {
+      if (!card) return;
+      const d = card.data || card;
+      const charName = d.name || "Unknown Persona";
+      const creator = d.creator || "Unknown";
+      const version = d.character_version || d.char_version || "1.0";
+      const cardAvatarUrl = card.avatar || card.data?.avatar;
+
+      // --- Portrait ---
+      const portraitInner = document.getElementById("detail-char-portrait-inner");
+      if (portraitInner) {
+        if (cardAvatarUrl && (cardAvatarUrl.startsWith("data:") || cardAvatarUrl.startsWith("http"))) {
+          portraitInner.innerHTML = `<img src="${escapeHtml(cardAvatarUrl)}" alt="${escapeHtml(charName)}" style="width: 100%; height: 100%; object-fit: cover;">`;
+        } else {
+          portraitInner.textContent = charName.charAt(0).toUpperCase();
+        }
+      } else {
+        if (cardAvatarUrl && (cardAvatarUrl.startsWith("data:") || cardAvatarUrl.startsWith("http"))) {
+          detailCharAvatar.innerHTML = `<img src="${escapeHtml(cardAvatarUrl)}" alt="${escapeHtml(charName)}" style="width: 100%; height: 100%; object-fit: cover;">`;
+        } else {
+          detailCharAvatar.textContent = charName.charAt(0).toUpperCase();
+        }
+      }
+
+      // --- Hero text ---
+      detailCharName.textContent = charName;
+
+      // Nickname (CCv3): show only if present and distinct from the main name
+      const nickname = String(d.nickname || "").trim();
+      if (detailCharNickname) {
+        if (nickname && nickname.toLowerCase() !== charName.toLowerCase()) {
+          detailCharNickname.textContent = `"${nickname}"`;
+          detailCharNickname.style.display = "";
+        } else {
+          detailCharNickname.style.display = "none";
+        }
+      }
+
+      detailCharMeta.textContent = `${creator} · v${version}`;
+      detailTags.innerHTML = (Array.isArray(d.tags) && d.tags.length ? d.tags : ["Scenario"])
+        .map(t => `<span>${escapeHtml(t)}</span>`).join("");
+
+      showDetailSubTab("about");
+
+      // ── Shared helpers ────────────────────────────────────────────────────────
+
+      function accordionItem(title, content, mono = false) {
+        const text = String(content ?? "").trim();
+        if (!text) return "";
+        return `
+          <details class="dossier-row">
+            <summary class="dossier-summary">
+              <div class="dossier-summary-left">
+                <span class="dossier-title">${title}</span>
+              </div>
+              <svg class="dossier-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </summary>
+            <div class="dossier-body ${mono ? "mono" : ""}">${escapeHtml(text)}</div>
+          </details>
+        `;
+      }
+
+      function formatSampleDialogue(raw, name) {
+        if (!raw || !raw.trim()) return "";
+        let formatted = raw
+          .replace(/<START>/gi, "——— Conversation Sample ———\n")
+          .replace(/\{\{char\}\}/gi, name)
+          .replace(/\{\{user\}\}/gi, "You")
+          .trim();
+        if (formatted.startsWith("——— Conversation Sample ———\n")) {
+          formatted = formatted.substring("——— Conversation Sample ———\n".length).trim();
+        }
+        return formatted;
+      }
+
+      function buildVariationRows(items, labelPrefix) {
+        return items.map((alt, idx) => {
+          const cleaned = String(alt ?? "").trim();
+          const firstLine = cleaned.split('\n')[0].slice(0, 65);
+          const preview = firstLine.length >= 65 ? firstLine + "…" : firstLine;
+          return `
+            <details class="alt-variation-row">
+              <summary class="alt-variation-summary">
+                <div class="alt-variation-summary-left">
+                  <span class="alt-variation-badge">${labelPrefix} ${idx + 1}</span>
+                  <span class="alt-variation-preview">${escapeHtml(preview)}</span>
+                </div>
+                <svg class="alt-variation-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </summary>
+              <div class="alt-variation-body">
+                <div>${escapeHtml(cleaned)}</div>
+              </div>
+            </details>
+          `;
+        }).join("");
+      }
+
+      // ── 1. Story & Hook tab ───────────────────────────────────────────────────
+      const firstMes = d.first_mes || "The door closes behind you. Silence settles into the corridor.";
+      let storyHtml = `
+        <div class="detail-story-prose-container">
+          <div class="detail-eyebrow-label">
+            <span>Opening Scene</span>
+            <span style="font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: normal; color: var(--text-faint);">First message in new chats</span>
+          </div>
+          <div class="detail-story-prose">${escapeHtml(firstMes)}</div>
+        </div>
+      `;
+
+      // Alternate openings
+      if (Array.isArray(d.alternate_greetings) && d.alternate_greetings.length > 0) {
+        storyHtml += `
+          <div class="detail-alt-openings">
+            <div class="detail-eyebrow-label">
+              <span>Alternate Openings (${d.alternate_greetings.length})</span>
+              <span style="font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: normal; color: var(--text-faint);">Click variation to read</span>
+            </div>
+            <div class="alt-variations-list">
+              ${buildVariationRows(d.alternate_greetings, "Variation")}
+            </div>
+          </div>
+        `;
+      }
+
+      // Group-only openings (CCv3 only)
+      if (Array.isArray(d.group_only_greetings) && d.group_only_greetings.length > 0) {
+        storyHtml += `
+          <div class="detail-group-openings">
+            <div class="detail-eyebrow-label">
+              <span>Group-Only Openings (${d.group_only_greetings.length})</span>
+              <span style="font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: normal; color: var(--text-faint);">Used in multi-character scenes</span>
+            </div>
+            <div class="alt-variations-list">
+              ${buildVariationRows(d.group_only_greetings, "Group")}
+            </div>
+          </div>
+        `;
+      }
+
+      if (detailStoryContent) detailStoryContent.innerHTML = storyHtml;
+
+      // ── 2. Author Notes tab ───────────────────────────────────────────────────
+      const notesText = String(d.creator_notes ?? "").trim();
+      let notesHtml = "";
+      if (notesText) {
+        notesHtml = `
+          <div class="detail-author-notes-container">
+            <div class="detail-eyebrow-label">
+              <span>Creator &amp; Author Guidance</span>
+              <span style="font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: normal; color: var(--text-faint);">From card creator</span>
+            </div>
+            <div class="detail-notes-prose">${escapeHtml(notesText)}</div>
+          </div>
+        `;
+      } else {
+        notesHtml = `
+          <div class="detail-notes-empty">
+            No author notes or creator guidance provided for this character.
+          </div>
+        `;
+      }
+
+      // Source attribution (CCv3: d.source is string[])
+      const sources = Array.isArray(d.source) ? d.source.filter(s => String(s).trim()) : [];
+      if (sources.length > 0) {
+        notesHtml += `
+          <div class="detail-source-row">
+            <div class="detail-source-label">Source</div>
+            <div class="detail-source-list">
+              ${sources.map(s => `<span class="detail-source-item">${escapeHtml(String(s).trim())}</span>`).join("")}
+            </div>
+          </div>
+        `;
+      }
+
+      if (detailNotesContent) detailNotesContent.innerHTML = notesHtml;
+
+      // ── 3. About tab ─────────────────────────────────────────────────────────
+      let lorebookNoticeHtml = "";
+      const lorebook = d.character_book;
+      const lorebookEntries = lorebook?.entries;
+      const entryCount = Array.isArray(lorebookEntries) ? lorebookEntries.length
+        : (lorebookEntries && typeof lorebookEntries === "object" ? Object.keys(lorebookEntries).length : 0);
+      if (entryCount > 0) {
+        lorebookNoticeHtml = `
+          <div class="detail-lorebook-notice">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+            </svg>
+            <div class="detail-lorebook-notice-body">
+              <div class="detail-lorebook-notice-title">Embedded World Info · ${entryCount} ${entryCount === 1 ? "entry" : "entries"}</div>
+              <div class="detail-lorebook-notice-sub">This card carries an embedded lorebook. Lore injection requires your inference endpoint to support it.</div>
+            </div>
+          </div>
+        `;
+      }
+
+      let accordionsHtml = "";
+      accordionsHtml += accordionItem("Description & Lore", d.description);
+      accordionsHtml += accordionItem("Personality & Traits", d.personality);
+      accordionsHtml += accordionItem("Scenario & World Setting", d.scenario);
+      accordionsHtml += accordionItem("Voice & Dialogue Samples", formatSampleDialogue(d.mes_example, charName));
+      accordionsHtml += accordionItem("System Prompt Instructions", d.system_prompt, true);
+      accordionsHtml += accordionItem("Post-History Instructions", d.post_history_instructions, true);
+
+      if (detailAboutContent) {
+        if (!accordionsHtml && !lorebookNoticeHtml) {
+          detailAboutContent.innerHTML = `
+            <div style="text-align: center; color: var(--text-faint); padding: 24px; font-size: 13px;">
+              No lore or prompt instructions recorded for this character.
+            </div>
+          `;
+        } else {
+          detailAboutContent.innerHTML = `
+            ${lorebookNoticeHtml}
+            ${accordionsHtml ? `<div class="dossier-rows-list">${accordionsHtml}</div>` : ""}
+          `;
+        }
+      }
+
+      detailModal?.classList.add("open");
+      detailBackdrop?.classList.add("open");
+    }
+
+    function closeDetailModal() {
+      detailModal?.classList.remove("open");
+      detailBackdrop?.classList.remove("open");
+    }
+
+    // Clicking topbar character chip opens Character Profile modal
+    hudCharChip?.addEventListener("click", () => openDetailModal(activeCard));
+    closeDetailBtn?.addEventListener("click", closeDetailModal);
+    closeDetailFooterBtn?.addEventListener("click", closeDetailModal);
+    detailBackdrop?.addEventListener("click", closeDetailModal);
+    detailOpenHistoryBtn?.addEventListener("click", () => {
+      closeDetailModal();
+      openHistoryModal();
+    });
+
+    detailChangeAvatarBtn?.addEventListener("click", () => detailAvatarFileInput?.click());
+    detailCharAvatar?.addEventListener("click", () => detailAvatarFileInput?.click());
+    detailCharAvatar?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        detailAvatarFileInput?.click();
+      }
+    });
+
+    detailAvatarFileInput?.addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file || !activeCard) return;
+      detailAvatarFileInput.value = "";
+      try {
+        const dataUrl = await compressAvatarImage(file, 384);
+        activeCard.avatar = dataUrl;
+        if (activeCard.data) activeCard.data.avatar = dataUrl;
+        await LocalDb.saveCard(activeCard);
+        openDetailModal(activeCard);
+        renderHudCharacter();
+        renderFeed();
+        showToast("Character portrait updated.", "success");
+      } catch (err) {
+        showToast("Failed to update portrait: " + err.message, "error");
+      }
+    });
+
+    function updateLiveStats() {
+      if (!composerLiveStats) return;
+      const text = authorInput?.value || "";
+      const chars = text.length;
+      const tokens = estimateTokens(text);
+      composerLiveStats.textContent = `${chars.toLocaleString()} chars · ~${tokens.toLocaleString()} tokens`;
+    }
+
+    function updateContextStats() {
+      if (!composerContextStats) return;
+      let totalTokens = 0;
+      const directiveText = currentDirective?.content || settings.agentsContract || "";
+      totalTokens += estimateTokens(directiveText);
+      const d = activeCard.data || activeCard;
+      const cardText = [d.name, d.description, d.personality, d.scenario, d.mes_example, d.creator_notes, d.system_prompt].filter(Boolean).join(" ");
+      totalTokens += estimateTokens(cardText);
+      if (currentPersona) {
+        totalTokens += estimateTokens([currentPersona.name, currentPersona.description, currentPersona.template].filter(Boolean).join(" "));
+      }
+      (activeSession?.messages || []).forEach(m => {
+        totalTokens += estimateTokens(m.content || "");
+      });
+      const budget = settings.maxContextTokens || 8192;
+      const formatK = (n) => (n >= 1000 ? (n / 1000).toFixed(1) + "k" : n);
+      composerContextStats.textContent = `Context: ~${formatK(totalTokens)} / ${formatK(budget)}`;
+    }
+
+    async function refreshActivePresets() {
+      currentPersona = await LocalDb.resolvePersonaForCard(activeCard);
+      currentDirective = await LocalDb.resolveDirectiveForCard(activeCard);
+
+      const allPersonas = await LocalDb.getAllPersonas();
+      const defPersona = await LocalDb.getDefaultPersona();
+      const cardPersonaId = activeCard.userPersonaId || activeCard.data?.userPersonaId || "";
+      if (historyPersonaSelect) {
+        historyPersonaSelect.innerHTML = `<option value="">Global Default (${escapeHtml(defPersona.name)})</option>` +
+          allPersonas.map(p => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}${p.isDefault ? " (Global)" : ""}</option>`).join("");
+        historyPersonaSelect.value = cardPersonaId;
+      }
+
+      const allDirectives = await LocalDb.getAllDirectives();
+      const defDirective = await LocalDb.getDefaultDirective();
+      const cardDirectiveId = activeCard.directivePresetId || activeCard.data?.directivePresetId || "";
+      if (historyDirectiveSelect) {
+        historyDirectiveSelect.innerHTML = `<option value="">Global Default (${escapeHtml(defDirective.name)})</option>` +
+          allDirectives.map(d => `<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)}${d.isDefault ? " (Global)" : ""}</option>`).join("");
+        historyDirectiveSelect.value = cardDirectiveId;
+      }
+
+      const activePersonaName = currentPersona?.name || "User";
+      if (composerPersonaName) {
+        composerPersonaName.textContent = activePersonaName;
+      }
+      if (composerSpeakerAvatar) {
+        const pAvatar = currentPersona?.avatar;
+        if (pAvatar && (pAvatar.startsWith("data:") || pAvatar.startsWith("http"))) {
+          composerSpeakerAvatar.innerHTML = `<img src="${escapeHtml(pAvatar)}" alt="${escapeHtml(activePersonaName)}" style="width: 100%; height: 100%; object-fit: cover;">`;
+        } else {
+          composerSpeakerAvatar.textContent = (currentPersona?.name ? currentPersona.name.charAt(0).toUpperCase() : "U");
+        }
+      }
+      authorInput.placeholder = `Write as ${activePersonaName}... (Enter to send · Shift+Enter for a new line)`;
+      updateLiveStats();
+      updateContextStats();
+    }
+
+    historyPersonaSelect?.addEventListener("change", async () => {
+      const val = historyPersonaSelect.value;
+      activeCard.userPersonaId = val;
+      if (activeCard.data) activeCard.data.userPersonaId = val;
+      await LocalDb.saveCard(activeCard);
+      await refreshActivePresets();
+      renderFeed();
+    });
+
+    historyDirectiveSelect?.addEventListener("change", async () => {
+      const val = historyDirectiveSelect.value;
+      activeCard.directivePresetId = val;
+      if (activeCard.data) activeCard.data.directivePresetId = val;
+      await LocalDb.saveCard(activeCard);
+      await refreshActivePresets();
+      updateContextStats();
+    });
+
+    const charName = activeCard.data?.name || activeCard.name || "Character";
+    const initialLetter = charName.charAt(0).toUpperCase();
+
+    // Set HUD Header
+    renderHudCharacter();
+
+    function checkNameOverflow() {
+      if (hudCharName.scrollWidth > hudCharName.clientWidth) {
+        hudCharName.classList.add("is-overflowing");
+      } else {
+        hudCharName.classList.remove("is-overflowing");
+      }
+    }
+    checkNameOverflow();
+    window.addEventListener("resize", checkNameOverflow);
+
+    // History Modal Open/Close
+    function openHistoryModal() {
+      closeSettingsPopup();
+      closeEditorPersona();
+      closeEditorDirective();
+      renderHistoryThreads();
+      if (historyModal) historyModal.classList.add("open");
+      if (historyModalBackdrop) historyModalBackdrop.classList.add("open");
+    }
+
+    function closeHistoryModal() {
+      if (historyModal) historyModal.classList.remove("open");
+      if (historyModalBackdrop) historyModalBackdrop.classList.remove("open");
+    }
+
+    toggleHistoryModalBtn?.addEventListener("click", openHistoryModal);
+    closeHistoryModalBtn?.addEventListener("click", closeHistoryModal);
+    historyModalBackdrop?.addEventListener("click", closeHistoryModal);
+
+    historyManagePersonasBtn?.addEventListener("click", () => {
+      closeHistoryModal();
+      openSettingsPopup("settings-personas-tab");
+    });
+
+    historyManageDirectivesBtn?.addEventListener("click", () => {
+      closeHistoryModal();
+      openSettingsPopup("settings-system-prompts-tab");
+    });
+
+    let sessions = await LocalDb.getSessionsForCard(activeCard.id);
+    let activeSession = sessions.find(s => s.id === sessionId) || sessions[0];
+
+    if (!activeSession) {
+      activeSession = {
+        id: sessionId || `sess_${Date.now()}`,
+        cardId: activeCard.id,
+        title: "Chapter 1: The Initial Approach",
+        messages: [
+          {
+            id: "msg_init",
+            role: "assistant",
+            content: activeCard.data?.first_mes || activeCard.first_mes || "The door closes behind you. Silence settles into the corridor.",
+            timestamp: Date.now()
+          }
+        ],
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+      await LocalDb.saveSession(activeSession);
+      sessions = [activeSession];
+    }
+
+    // Chat name rename
+    function enterThreadRename(sess, titleEl) {
+      const oldTitle = sess.title || "";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "thread-title-input";
+      input.value = oldTitle;
+      input.maxLength = 80;
+      input.setAttribute("aria-label", "Rename chat");
+      titleEl.replaceWith(input);
+      input.focus();
+      input.select();
+      let settled = false;
+      const finish = (save) => {
+        if (settled) return;
+        settled = true;
+        const next = (save ? input.value.trim() : oldTitle) || "Untitled Chat";
+        sess.title = next;
+        sess.updatedAt = Date.now();
+        if (sess.id === activeSession.id) activeSession.title = next;
+        LocalDb.saveSession(sess);
+        renderHistoryThreads();
+      };
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") finish(true);
+        else if (e.key === "Escape") finish(false);
+      });
+      input.addEventListener("blur", () => finish(true));
+    }
+
+    async function renderHistoryThreads() {
+      sessions = await LocalDb.getSessionsForCard(activeCard.id);
+      if (!historyThreadsList) return;
+      historyThreadsList.innerHTML = "";
+
+      if (sessions.length === 0) {
+        historyThreadsList.innerHTML = `
+          <div style="text-align: center; padding: 28px 16px; color: var(--text-faint); font-size: 13px;">
+            No saved chats for this character yet. Click <strong>+ New Chat</strong> above to begin a session.
+          </div>
+        `;
+        return;
+      }
+
+      sessions.forEach(sess => {
+        const row = document.createElement("div");
+        row.className = "modal-thread-row";
+        if (sess.id === activeSession.id) {
+          row.style.background = "var(--bg-elevated)";
+        }
+        const count = sess.messages?.length || 0;
+        const dateStr = sess.updatedAt ? new Date(sess.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' }) : "";
+
+        row.innerHTML = `
+          <div style="min-width: 0; flex: 1;">
+            <div class="thread-title editable-title" style="${sess.id === activeSession.id ? 'color: var(--accent-char); font-weight: 600;' : ''}">${escapeHtml(sess.title || "Untitled Chat")}</div>
+            <div class="thread-meta">${count} ${count === 1 ? "message" : "messages"} · ${dateStr}</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            ${sessions.length > 1 ? `
+              <button class="del-btn" title="Delete Chat" aria-label="Delete Chat">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2 2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+              </button>
+            ` : ""}
+            ${sess.id === activeSession.id
+              ? `<span data-badge="active">Active</span>`
+              : `<button class="switch-btn">Switch</button>`}
+          </div>
+        `;
+
+        const titleEl = row.querySelector(".thread-title");
+        titleEl.addEventListener("click", (e) => {
+          e.stopPropagation();
+          enterThreadRename(sess, titleEl);
+        });
+
+        const switchBtn = row.querySelector(".switch-btn");
+        switchBtn?.addEventListener("click", () => {
+          activeSession = sess;
+          renderFeed();
+          closeHistoryModal();
+          showToast(`Switched to "${sess.title}".`, "info");
+        });
+
+        const delBtn = row.querySelector(".del-btn");
+        delBtn?.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          if (confirm(`Delete chat "${sess.title}"?`)) {
+            await LocalDb.deleteSession(sess.id);
+            sessions = sessions.filter(s => s.id !== sess.id);
+            if (activeSession.id === sess.id) {
+              if (sessions.length === 0) { window.location.href = "/"; return; }
+              activeSession = sessions[0];
+              renderFeed();
+            }
+            renderHistoryThreads();
+            showToast("Chat deleted.", "info");
+          }
+        });
+
+        historyThreadsList.appendChild(row);
+      });
+    }
+
+    historyNewSceneBtn?.addEventListener("click", async () => {
+      const count = sessions.length;
+      const newSess = {
+        id: `sess_${Date.now()}`,
+        cardId: activeCard.id,
+        title: `Chat ${count + 1}`,
+        messages: [
+          {
+            id: `msg_${Date.now()}`,
+            role: "assistant",
+            content: activeCard.data?.first_mes || activeCard.first_mes || "The door closes behind you. Silence settles into the corridor.",
+            timestamp: Date.now()
+          }
+        ],
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+      await LocalDb.saveSession(newSess);
+      sessions.push(newSess);
+      activeSession = newSess;
+      renderFeed();
+      closeHistoryModal();
+      showToast("New chat started.", "success");
+    });
+
+    // Settings Popup Controller
+    function closeEditorPersona() {
+      if (editorModalPersona) editorModalPersona.classList.remove("open");
+      if (editorModalPersonaBackdrop) editorModalPersonaBackdrop.classList.remove("open");
+      currentEditPersonaId = null;
+      currentEditPersonaAvatar = null;
+    }
+
+    function closeEditorDirective() {
+      if (editorModalDirective) editorModalDirective.classList.remove("open");
+      if (editorModalDirectiveBackdrop) editorModalDirectiveBackdrop.classList.remove("open");
+      currentEditDirectiveId = null;
+    }
+
+    async function openEditorPersona(personaId = null) {
+      closeEditorDirective();
+      currentEditPersonaId = personaId;
+
+      if (personaId) {
+        if (editorPersonaTitle) editorPersonaTitle.textContent = "Edit Persona";
+        const persona = await LocalDb.getPersona(personaId);
+        if (persona) {
+          if (personaNameInput) personaNameInput.value = persona.name || "";
+          if (personaDescInput) personaDescInput.value = persona.description || "";
+          if (personaTemplateInput) personaTemplateInput.value = persona.template || "";
+          currentEditPersonaAvatar = persona.avatar || null;
+        }
+      } else {
+        if (editorPersonaTitle) editorPersonaTitle.textContent = "Create Persona";
+        if (personaNameInput) personaNameInput.value = "";
+        if (personaDescInput) personaDescInput.value = "";
+        if (personaTemplateInput) personaTemplateInput.value = "";
+        currentEditPersonaAvatar = null;
+      }
+      updatePersonaAvatarPreview();
+
+      if (editorModalPersona) editorModalPersona.classList.add("open");
+      if (editorModalPersonaBackdrop) editorModalPersonaBackdrop.classList.add("open");
+      if (personaNameInput) setTimeout(() => personaNameInput.focus(), 50);
+    }
+
+    async function openEditorDirective(directiveId = null) {
+      closeEditorPersona();
+      currentEditDirectiveId = directiveId;
+
+      if (directiveId) {
+        if (editorDirectiveTitle) editorDirectiveTitle.textContent = "Edit System Prompt";
+        const directive = await LocalDb.getDirective(directiveId);
+        if (directive) {
+          if (directiveNameInput) directiveNameInput.value = directive.name || "";
+          if (directiveDescInput) directiveDescInput.value = directive.description || "";
+          if (directiveContentInput) directiveContentInput.value = directive.content || "";
+        }
+      } else {
+        if (editorDirectiveTitle) editorDirectiveTitle.textContent = "Create System Prompt";
+        if (directiveNameInput) directiveNameInput.value = "";
+        if (directiveDescInput) directiveDescInput.value = "";
+        if (directiveContentInput) directiveContentInput.value = "";
+      }
+
+      if (editorModalDirective) editorModalDirective.classList.add("open");
+      if (editorModalDirectiveBackdrop) editorModalDirectiveBackdrop.classList.add("open");
+      if (directiveNameInput) setTimeout(() => directiveNameInput.focus(), 50);
+    }
+
+    function renderPopupModels(models, selectedModel, thoughtModel) {
+      if (!popupModelSelect) return;
+      const current = selectedModel || "";
+      const set = new Set((models || []).filter(Boolean));
+      if (current) set.add(current);
+
+      popupModelSelect.innerHTML = "";
+      if (!set.size) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "Select a model after fetching models";
+        popupModelSelect.appendChild(opt);
+      } else {
+        set.forEach(m => {
+          const opt = document.createElement("option");
+          opt.value = m;
+          opt.textContent = m;
+          if (m === current) opt.selected = true;
+          popupModelSelect.appendChild(opt);
+        });
+      }
+
+      if (popupSubagentModelSelect) {
+        popupSubagentModelSelect.innerHTML = "";
+        const defaultOpt = document.createElement("option");
+        defaultOpt.value = "";
+        defaultOpt.textContent = "Same as main model";
+        popupSubagentModelSelect.appendChild(defaultOpt);
+
+        set.forEach(m => {
+          const opt = document.createElement("option");
+          opt.value = m;
+          opt.textContent = m;
+          if (m === thoughtModel) opt.selected = true;
+          popupSubagentModelSelect.appendChild(opt);
+        });
+      }
+    }
+
+    function loadEngineSettings() {
+      const s = LocalDb.getSettings();
+      if (popupApiEndpoint) popupApiEndpoint.value = s.apiEndpoint || "";
+      if (popupApiKey) popupApiKey.value = s.apiKey || "";
+
+      const isThoughts = s.enableSubagentThoughts !== false;
+      if (popupEnableThoughts) popupEnableThoughts.checked = isThoughts;
+      if (popupThoughtModelWrap) {
+        popupThoughtModelWrap.style.display = isThoughts ? "flex" : "none";
+      }
+
+      const activeThoughtModel = s.thoughtModel || s.subagentModel || "";
+      renderPopupModels(s.availableModels || [], s.model, activeThoughtModel);
+    }
+
+    function loadParamsSettings() {
+      const s = LocalDb.getSettings();
+      if (popupSliderTemp) {
+        popupSliderTemp.value = s.temperature ?? 0.85;
+        if (popupValTemp) popupValTemp.textContent = parseFloat(popupSliderTemp.value).toFixed(2);
+      }
+      if (popupSliderTopP) {
+        popupSliderTopP.value = s.topP ?? 0.95;
+        if (popupValTopP) popupValTopP.textContent = parseFloat(popupSliderTopP.value).toFixed(2);
+      }
+      if (popupSliderMinP) {
+        popupSliderMinP.value = s.minP ?? 0.05;
+        if (popupValMinP) popupValMinP.textContent = parseFloat(popupSliderMinP.value).toFixed(2);
+      }
+      if (popupSliderTokens) {
+        popupSliderTokens.value = s.maxTokens ?? 1200;
+        if (popupValTokens) popupValTokens.textContent = popupSliderTokens.value;
+      }
+      if (popupSliderFreq) {
+        popupSliderFreq.value = s.frequencyPenalty ?? 0.25;
+        if (popupValFreq) popupValFreq.textContent = parseFloat(popupSliderFreq.value).toFixed(2);
+      }
+      if (popupSliderPres) {
+        popupSliderPres.value = s.presencePenalty ?? 0.15;
+        if (popupValPres) popupValPres.textContent = parseFloat(popupSliderPres.value).toFixed(2);
+      }
+      if (popupSliderContext) {
+        popupSliderContext.value = s.maxContextTokens ?? 16384;
+        if (popupValContext) popupValContext.textContent = popupSliderContext.value;
+      }
+    }
+
+    function openSettingsPopup(tabId = null) {
+      closeHistoryModal();
+      closeEditorPersona();
+      closeEditorDirective();
+
+      loadEngineSettings();
+      loadParamsSettings();
+      loadPersonasList();
+      loadSystemPromptsList();
+
+      if (settingsPopup) settingsPopup.classList.add("open");
+      if (settingsPopupBackdrop) settingsPopupBackdrop.classList.add("open");
+
+      if (tabId && settingsPopup) {
+        const tabBtn = settingsPopup.querySelector(`[data-tab="${tabId}"]`);
+        tabBtn?.click();
+      } else {
+        const firstTab = settingsPopup?.querySelector(".settings-tab-btn");
+        if (firstTab) setTimeout(() => firstTab.focus(), 50);
+      }
+    }
+
+    function closeSettingsPopup() {
+      closeEditorPersona();
+      closeEditorDirective();
+      if (settingsPopup) settingsPopup.classList.remove("open");
+      if (settingsPopupBackdrop) settingsPopupBackdrop.classList.remove("open");
+      refreshActivePresets();
+    }
+
+    toggleSettingsBtn?.addEventListener("click", () => openSettingsPopup());
+    closeSettingsPopupBtn?.addEventListener("click", closeSettingsPopup);
+    settingsPopupBackdrop?.addEventListener("click", closeSettingsPopup);
+
+    const settingsTabNavs = settingsPopup?.querySelectorAll(".settings-tab-nav");
+    settingsTabNavs?.forEach(nav => {
+      nav.addEventListener("click", (e) => {
+        const target = e.target.closest(".settings-tab-btn");
+        if (!target) return;
+        const tabId = target.dataset.tab;
+        if (!tabId) return;
+
+        nav.querySelectorAll(".settings-tab-btn").forEach(b => {
+          b.classList.remove("active");
+          b.setAttribute("aria-selected", "false");
+        });
+        target.classList.add("active");
+        target.setAttribute("aria-selected", "true");
+
+        const allPanes = nav.closest('.modal-body').querySelectorAll(".settings-tab-pane");
+        allPanes.forEach(p => p.classList.remove("active"));
+        const activePane = document.getElementById(tabId);
+        if (activePane) {
+          activePane.classList.remove("active");
+          void activePane.offsetWidth;
+          activePane.classList.add("active");
+        }
+      });
+    });
+
+    async function loadPersonasList() {
+      const container = document.getElementById("settings-personas-list");
+      if (!container) return;
+
+      const personas = await LocalDb.getAllPersonas();
+      container.innerHTML = "";
+
+      if (personas.length === 0) {
+        container.innerHTML = `<div style="text-align:center;color:var(--text-secondary);padding:24px;border:1px dashed var(--border-subtle);border-radius:8px;">No personas created yet. Click "+ Create New Persona" below to create one.</div>`;
+        return;
+      }
+
+      personas.forEach(p => {
+        const row = document.createElement("div");
+        row.className = "card-surface";
+        row.style.display = "flex";
+        row.style.flexDirection = "column";
+        row.style.gap = "8px";
+        row.style.textAlign = "left";
+
+        const isAvatarImg = p.avatar && (p.avatar.startsWith("data:") || p.avatar.startsWith("http"));
+        const avatarInner = isAvatarImg
+          ? `<img src="${escapeHtml(p.avatar)}" alt="${escapeHtml(p.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+          : escapeHtml((p.avatar || p.name?.charAt(0) || "U").toUpperCase());
+        const isDefault = Boolean(p.isDefault);
+
+        row.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+            <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+              <div style="width:28px;height:28px;border-radius:50%;background:var(--bg-card);border:1px solid var(--border-muted);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--accent-char);flex-shrink:0;overflow:hidden;">
+                ${avatarInner}
+              </div>
+              <div style="min-width:0;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <strong style="color:var(--text-primary);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(p.name || "Unnamed Persona")}</strong>
+                  ${isDefault ? '<span class="badge-default">Default</span>' : ''}
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+              ${!isDefault ? `<button class="btn ghost" data-delete-persona="${p.id}" title="Delete Persona" style="color:var(--danger, #e06c75);">Delete</button>` : ''}
+              ${!isDefault ? `<button class="btn ghost" data-default-persona="${p.id}" title="Set as Global Default">Set Default</button>` : ''}
+              <button class="btn ghost" data-edit-persona="${p.id}" title="Edit Persona">Edit</button>
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--text-secondary);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">
+            ${escapeHtml(p.description || p.template || "No bio or scenario roleplay prompt defined.")}
+          </div>
+        `;
+
+        row.querySelector(`[data-default-persona="${p.id}"]`)?.addEventListener("click", async () => {
+          await LocalDb.setDefaultPersona(p.id);
+          showToast(`"${p.name}" set as global default persona.`, "info");
+          await loadPersonasList();
+          await refreshActivePresets();
+        });
+
+        row.querySelector(`[data-edit-persona="${p.id}"]`)?.addEventListener("click", () => {
+          openEditorPersona(p.id);
+        });
+
+        row.querySelector(`[data-delete-persona="${p.id}"]`)?.addEventListener("click", async () => {
+          if (confirm(`Delete persona "${p.name}"?`)) {
+            await LocalDb.deletePersona(p.id);
+            showToast("Persona deleted.", "info");
+            await loadPersonasList();
+            await refreshActivePresets();
+          }
+        });
+
+        container.appendChild(row);
+      });
+    }
+
+    async function loadSystemPromptsList() {
+      const container = document.getElementById("settings-system-prompts-list");
+      if (!container) return;
+
+      const directives = await LocalDb.getAllDirectives();
+      container.innerHTML = "";
+
+      if (directives.length === 0) {
+        container.innerHTML = `<div style="text-align:center;color:var(--text-secondary);padding:24px;border:1px dashed var(--border-subtle);border-radius:8px;">No system prompts created yet. Click "+ New Craft Directive" below to create one.</div>`;
+        return;
+      }
+
+      directives.forEach(d => {
+        const row = document.createElement("div");
+        row.className = "card-surface";
+        row.style.display = "flex";
+        row.style.flexDirection = "column";
+        row.style.gap = "8px";
+        row.style.textAlign = "left";
+
+        const isDefault = Boolean(d.isDefault);
+
+        row.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+            <div style="min-width:0;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <strong style="color:var(--text-primary);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(d.name || "Unnamed Directive")}</strong>
+                ${isDefault ? '<span class="badge-default">Default</span>' : ''}
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+              ${!isDefault ? `<button class="btn ghost" data-delete-directive="${d.id}" title="Delete Directive" style="color:var(--danger, #e06c75);">Delete</button>` : ''}
+              ${!isDefault ? `<button class="btn ghost" data-default-directive="${d.id}" title="Set as Global Default">Set Default</button>` : ''}
+              <button class="btn ghost" data-edit-directive="${d.id}" title="Edit Directive">Edit</button>
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--text-secondary);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">
+            ${escapeHtml(d.description || (d.content ? d.content.slice(0, 100) + "..." : "No description provided."))}
+          </div>
+        `;
+
+        row.querySelector(`[data-default-directive="${d.id}"]`)?.addEventListener("click", async () => {
+          await LocalDb.setDefaultDirective(d.id);
+          showToast(`"${d.name}" set as global craft directive.`, "info");
+          await loadSystemPromptsList();
+          await refreshActivePresets();
+        });
+
+        row.querySelector(`[data-edit-directive="${d.id}"]`)?.addEventListener("click", () => {
+          openEditorDirective(d.id);
+        });
+
+        row.querySelector(`[data-delete-directive="${d.id}"]`)?.addEventListener("click", async () => {
+          if (confirm(`Delete directive "${d.name}"?`)) {
+            await LocalDb.deleteDirective(d.id);
+            showToast("Directive deleted.", "info");
+            await loadSystemPromptsList();
+            await refreshActivePresets();
+          }
+        });
+
+        container.appendChild(row);
+      });
+    }
+
+    saveEditorPersonaBtn?.addEventListener("click", async () => {
+      const name = personaNameInput?.value.trim() || "";
+      const desc = personaDescInput?.value.trim() || "";
+      const template = personaTemplateInput?.value || "";
+
+      if (!name) {
+        showToast("Persona name is required.", "error");
+        personaNameInput?.focus();
+        return;
+      }
+
+      const personaData = {
+        id: currentEditPersonaId || "persona_" + Date.now(),
+        name,
+        description: desc,
+        template,
+        avatar: currentEditPersonaAvatar || undefined
+      };
+
+      await LocalDb.savePersona(personaData);
+      await loadPersonasList();
+      await refreshActivePresets();
+      closeEditorPersona();
+      showToast(`Persona "${name}" saved.`, "success");
+    });
+
+    saveEditorDirectiveBtn?.addEventListener("click", async () => {
+      const name = directiveNameInput?.value.trim() || "";
+      const desc = directiveDescInput?.value.trim() || "";
+      const content = directiveContentInput?.value || "";
+
+      if (!name) {
+        showToast("System prompt name is required.", "error");
+        directiveNameInput?.focus();
+        return;
+      }
+
+      const directiveData = {
+        id: currentEditDirectiveId || "directive_" + Date.now(),
+        name,
+        description: desc,
+        content
+      };
+
+      await LocalDb.saveDirective(directiveData);
+      await loadSystemPromptsList();
+      await refreshActivePresets();
+      closeEditorDirective();
+      showToast(`System prompt "${name}" saved.`, "success");
+    });
+
+    popupEnableThoughts?.addEventListener("change", () => {
+      if (popupThoughtModelWrap) {
+        popupThoughtModelWrap.style.display = popupEnableThoughts.checked ? "flex" : "none";
+      }
+    });
+
+    popupSliderTemp?.addEventListener("input", () => {
+      if (popupValTemp) popupValTemp.textContent = parseFloat(popupSliderTemp.value).toFixed(2);
+    });
+    popupSliderTopP?.addEventListener("input", () => {
+      if (popupValTopP) popupValTopP.textContent = parseFloat(popupSliderTopP.value).toFixed(2);
+    });
+    popupSliderMinP?.addEventListener("input", () => {
+      if (popupValMinP) popupValMinP.textContent = parseFloat(popupSliderMinP.value).toFixed(2);
+    });
+    popupSliderTokens?.addEventListener("input", () => {
+      if (popupValTokens) popupValTokens.textContent = popupSliderTokens.value;
+    });
+    popupSliderFreq?.addEventListener("input", () => {
+      if (popupValFreq) popupValFreq.textContent = parseFloat(popupSliderFreq.value).toFixed(2);
+    });
+    popupSliderPres?.addEventListener("input", () => {
+      if (popupValPres) popupValPres.textContent = parseFloat(popupSliderPres.value).toFixed(2);
+    });
+    popupSliderContext?.addEventListener("input", () => {
+      if (popupValContext) popupValContext.textContent = popupSliderContext.value;
+    });
+
+    popupSaveEngineBtn?.addEventListener("click", () => {
+      const s = LocalDb.getSettings();
+      s.apiEndpoint = popupApiEndpoint?.value.trim() ?? "";
+      s.apiKey = popupApiKey?.value.trim() ?? "";
+      s.model = popupModelSelect?.value ?? "";
+      s.enableSubagentThoughts = popupEnableThoughts?.checked ?? s.enableSubagentThoughts;
+      s.thoughtModel = popupSubagentModelSelect?.value || "";
+      s.subagentModel = popupSubagentModelSelect?.value || "";
+      s.useSeparateSubagentModel = Boolean(popupSubagentModelSelect?.value);
+      LocalDb.saveSettings(s);
+      settings = s;
+      showToast("Engine settings saved.", "success");
+    });
+
+    popupSaveParamsBtn?.addEventListener("click", () => {
+      const s = LocalDb.getSettings();
+      s.temperature = parseFloat(popupSliderTemp?.value ?? s.temperature);
+      s.topP = parseFloat(popupSliderTopP?.value ?? s.topP);
+      s.minP = parseFloat(popupSliderMinP?.value ?? (s.minP ?? 0.05));
+      s.maxTokens = parseInt(popupSliderTokens?.value ?? s.maxTokens, 10);
+      s.frequencyPenalty = parseFloat(popupSliderFreq?.value ?? s.frequencyPenalty);
+      s.presencePenalty = parseFloat(popupSliderPres?.value ?? s.presencePenalty);
+      s.maxContextTokens = parseInt(popupSliderContext?.value ?? s.maxContextTokens, 10);
+      LocalDb.saveSettings(s);
+      settings = s;
+      showToast("Generation parameters saved.", "success");
+    });
+
+    popupFetchModelsBtn?.addEventListener("click", async () => {
+      popupFetchModelsBtn.textContent = "Fetching...";
+      popupFetchModelsBtn.disabled = true;
+      try {
+        const endpoint = popupApiEndpoint?.value.trim() || undefined;
+        const key = popupApiKey?.value.trim() || undefined;
+        const models = await BrowserChatEngine.fetchAvailableModels(endpoint, key);
+        const s = LocalDb.getSettings();
+        s.availableModels = models;
+        LocalDb.saveSettings(s);
+        settings = s;
+        renderPopupModels(models, popupModelSelect?.value, popupSubagentModelSelect?.value);
+        showToast(`Fetched ${models.length} models.`, "success");
+      } catch (err) {
+        showToast(`Fetch models failed: ${err.message}`, "error");
+      } finally {
+        popupFetchModelsBtn.textContent = "Fetch Models";
+        popupFetchModelsBtn.disabled = false;
+      }
+    });
+
+    closeEditorPersonaBtn?.addEventListener("click", closeEditorPersona);
+    cancelEditorPersonaBtn?.addEventListener("click", closeEditorPersona);
+    editorModalPersonaBackdrop?.addEventListener("click", closeEditorPersona);
+
+    closeEditorDirectiveBtn?.addEventListener("click", closeEditorDirective);
+    cancelEditorDirectiveBtn?.addEventListener("click", closeEditorDirective);
+    editorModalDirectiveBackdrop?.addEventListener("click", closeEditorDirective);
+
+    document.getElementById("create-new-persona-btn")?.addEventListener("click", () => {
+      openEditorPersona(null);
+    });
+    document.getElementById("create-new-sysprompt-btn")?.addEventListener("click", () => {
+      openEditorDirective(null);
+    });
+
+    // Global escape key handler with proper modal hierarchy
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      if (detailModal?.classList.contains("open")) {
+        closeDetailModal();
+      } else if (editorModalPersona?.classList.contains("open")) {
+        closeEditorPersona();
+      } else if (editorModalDirective?.classList.contains("open")) {
+        closeEditorDirective();
+      } else if (settingsPopup?.classList.contains("open")) {
+        closeSettingsPopup();
+      } else if (historyModal?.classList.contains("open")) {
+        closeHistoryModal();
+      }
+    });
+
+
+    function formatProse(text) {
+      if (!text) return "";
+      // Strip em-dashes per anti-slop rules
+      let s = String(text)
+        .replace(/—/g, ", ")
+        .replace(/--/g, ", ");
+
+      // 1. Extract and protect code blocks
+      const codeBlocks = [];
+      s = s.replace(/```([a-zA-Z0-9_-]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+        const placeholder = `%%CODE_BLOCK_${codeBlocks.length}%%`;
+        codeBlocks.push(`<pre class="prose-code-block"><code class="${lang ? 'language-' + escapeHtml(lang) : ''}">${escapeHtml(code.trim())}</code></pre>`);
+        return `\n\n${placeholder}\n\n`;
+      });
+
+      // 2. Extract and protect inline code
+      const inlineCodes = [];
+      s = s.replace(/`([^`\n]+)`/g, (_, code) => {
+        const placeholder = `%%INLINE_CODE_${inlineCodes.length}%%`;
+        inlineCodes.push(`<code class="prose-inline-code">${escapeHtml(code)}</code>`);
+        return placeholder;
+      });
+
+      // 3. Escape raw HTML for all non-code content
+      s = escapeHtml(s);
+
+      // 4. Horizontal rules / scene breaks (---, ***, ___ on own line)
+      s = s.replace(/^(?:---|\*\*\*|___)\s*$/gm, '<hr class="prose-hr">');
+
+      // 5. Blockquotes (handling &gt; since escapeHtml escaped >)
+      s = s.replace(/^(?:&gt;|>)[ \t]?(.*)$/gm, '<blockquote class="prose-quote">$1</blockquote>');
+
+      // 6. Headers (at start of line)
+      s = s.replace(/^### (.*$)/gim, '<h3 class="prose-h3">$1</h3>');
+      s = s.replace(/^## (.*$)/gim, '<h2 class="prose-h2">$1</h2>');
+      s = s.replace(/^# (.*$)/gim, '<h1 class="prose-h1">$1</h1>');
+
+      // 7. Bold + Italic: ***text*** or ___text___
+      s = s.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+      s = s.replace(/___([^_]+)___/g, '<strong><em>$1</em></strong>');
+
+      // Bold: **text** or __text__
+      s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      s = s.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+
+      // Italic: *text* or _text_
+      s = s.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+      s = s.replace(/_([^_]+)_/g, '<em>$1</em>');
+
+      // Strikethrough: ~~text~~
+      s = s.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+
+      // Note: We deliberately do NOT wrap dialogue in <q> tags.
+      // In browsers, <q> automatically inserts quotes, causing duplicate quotes (""...""").
+      // Plain text quotes render naturally, cleanly, and consistently across all platforms.
+
+      // 8. Split into paragraphs on double-newlines
+      const chunks = s.split(/\n{2,}/);
+      const formatted = chunks.map(chunk => {
+        const trimmed = chunk.trim();
+        if (!trimmed) return "";
+        // If it starts with a block tag or code placeholder, don't wrap in <p>
+        if (/^<(h1|h2|h3|blockquote|pre|hr)/i.test(trimmed) || trimmed.startsWith('%%CODE_BLOCK_')) {
+          return trimmed;
+        }
+        return `<p>${trimmed.replace(/\n/g, "<br>")}</p>`;
+      }).filter(Boolean);
+
+      let result = formatted.join("");
+
+      // Merge consecutive blockquotes into one cohesive block
+      result = result.replace(/<\/blockquote>\s*<blockquote class="prose-quote">/g, '<br>');
+
+      // 9. Restore inline code
+      inlineCodes.forEach((codeHtml, i) => {
+        result = result.replace(`%%INLINE_CODE_${i}%%`, codeHtml);
+      });
+
+      // 10. Restore code blocks
+      codeBlocks.forEach((blockHtml, i) => {
+        result = result.replace(`%%CODE_BLOCK_${i}%%`, blockHtml);
+      });
+
+      return result;
+    }
+
+    function openInlineEdit(cardEl, msg, idx) {
+      const contentCol = cardEl.querySelector(".msg-content-col");
+      if (!contentCol || cardEl.classList.contains("is-editing")) return;
+
+      cardEl.classList.add("is-editing");
+
+      const originalProseEl = contentCol.querySelector(".msg-prose");
+      const originalActionTray = contentCol.querySelector(".msg-action-tray");
+      if (originalProseEl) originalProseEl.style.display = "none";
+      if (originalActionTray) originalActionTray.style.display = "none";
+
+      const editorEl = document.createElement("div");
+      editorEl.className = "inline-msg-editor";
+      editorEl.innerHTML = `
+        <textarea class="inline-edit-textarea" aria-label="Edit message">${escapeHtml(msg.content)}</textarea>
+        <div class="inline-edit-preview msg-prose" style="display: none;"></div>
+        <div class="inline-edit-toolbar">
+          <div class="inline-edit-hints">
+            <span class="edit-hint-key">Ctrl+Enter</span> save · <span class="edit-hint-key">Esc</span> cancel
+          </div>
+          <div class="inline-edit-actions">
+            <button class="btn ghost btn-sm toggle-preview-btn">Preview</button>
+            <button class="btn ghost btn-sm cancel-edit-btn">Cancel</button>
+            <button class="btn primary btn-sm save-edit-btn">Save</button>
+          </div>
+        </div>
+      `;
+
+      contentCol.appendChild(editorEl);
+
+      const textarea = editorEl.querySelector(".inline-edit-textarea");
+      const preview = editorEl.querySelector(".inline-edit-preview");
+      const previewBtn = editorEl.querySelector(".toggle-preview-btn");
+      const saveBtn = editorEl.querySelector(".save-edit-btn");
+      const cancelBtn = editorEl.querySelector(".cancel-edit-btn");
+
+      const autoResize = () => {
+        textarea.style.height = "auto";
+        textarea.style.height = Math.max(90, textarea.scrollHeight + 4) + "px";
+      };
+      autoResize();
+      textarea.addEventListener("input", autoResize);
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+      const cancel = () => {
+        editorEl.remove();
+        cardEl.classList.remove("is-editing");
+        if (originalProseEl) originalProseEl.style.display = "";
+        if (originalActionTray) originalActionTray.style.display = "";
+      };
+
+      const save = async () => {
+        const val = textarea.value.trim();
+        if (val) {
+          msg.content = val;
+          await LocalDb.saveSession(activeSession);
+          renderFeed();
+          showToast("Message updated.", "success", 2000);
+        } else {
+          cancel();
+        }
+      };
+
+      let isPreviewing = false;
+      previewBtn.addEventListener("click", () => {
+        isPreviewing = !isPreviewing;
+        if (isPreviewing) {
+          preview.innerHTML = formatProse(textarea.value);
+          preview.style.display = "block";
+          textarea.style.display = "none";
+          previewBtn.textContent = "Edit";
+        } else {
+          preview.style.display = "none";
+          textarea.style.display = "block";
+          previewBtn.textContent = "Preview";
+          autoResize();
+          textarea.focus();
+        }
+      });
+
+      saveBtn.addEventListener("click", save);
+      cancelBtn.addEventListener("click", cancel);
+
+      textarea.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          save();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          cancel();
+        }
+      });
+    }
+
+    function renderFeed() {
+      chatInner.innerHTML = "";
+      const messages = activeSession?.messages || [];
+
+      if (messages.length === 0) {
+        chatInner.innerHTML = `
+          <div class="studio-empty-state">
+            <h3>Scene Ready</h3>
+            <p>Silence settles over the scene. Type an opening prompt or action below, or ask ${escapeHtml(charName)} to begin.</p>
+            <button class="btn primary" id="empty-state-continue-btn" style="padding: 8px 18px;">
+              Prompt ${escapeHtml(charName)} to Begin
+            </button>
+          </div>
+        `;
+        chatInner.querySelector("#empty-state-continue-btn")?.addEventListener("click", () => continueTurn());
+        return;
+      }
+
+      messages.forEach((msg, idx) => {
+        const isUser = msg.role === "user";
+        const isLastAssistant = !isUser && idx === activeSession.messages.length - 1;
+        const userSpeaker = currentPersona?.name || "You";
+        const speaker = isUser ? userSpeaker : charName;
+        const roleTag = isUser ? "USER" : "ASSISTANT";
+
+        let avatarHtml = "";
+        if (isUser) {
+          const uAvatar = currentPersona?.avatar;
+          if (uAvatar && (uAvatar.startsWith("data:") || uAvatar.startsWith("http"))) {
+            avatarHtml = `<img src="${escapeHtml(uAvatar)}" alt="${escapeHtml(userSpeaker)}" style="width:100%;height:100%;object-fit:cover;border-radius:6px;">`;
+          } else {
+            avatarHtml = escapeHtml(currentPersona?.name ? currentPersona.name.charAt(0).toUpperCase() : "U");
+          }
+        } else {
+          const cAvatar = activeCard.avatar || activeCard.data?.avatar;
+          if (cAvatar && (cAvatar.startsWith("data:") || cAvatar.startsWith("http"))) {
+            avatarHtml = `<img src="${escapeHtml(cAvatar)}" alt="${escapeHtml(charName)}" style="width:100%;height:100%;object-fit:cover;border-radius:6px;">`;
+          } else {
+            avatarHtml = escapeHtml(initialLetter);
+          }
+        }
+
+        const msgTokens = estimateTokens(msg.content);
+        const tokenTagHtml = `<span class="msg-token-tag">~${msgTokens.toLocaleString()} tokens</span>`;
+
+        let content = msg.content;
+        let thoughtHtml = "";
+
+        const thoughtMatch = content.match(/<thought(?:\s+character="([^"]*)")?>([\s\S]*?)<\/thought>/i);
+        if (thoughtMatch) {
+          const char = thoughtMatch[1] || charName;
+          const thoughtBody = escapeHtml(thoughtMatch[2].trim());
+          content = content.replace(/<thought[\s\S]*?<\/thought>/i, "").trim();
+          thoughtHtml = `
+            <details class="msg-thought">
+              <summary class="msg-thought-summary">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
+                </svg>
+                ${escapeHtml(char)}'s Thought
+              </summary>
+              <div class="msg-thought-body">${thoughtBody}</div>
+            </details>
+          `;
+        }
+
+        const cardEl = document.createElement("div");
+        cardEl.className = `msg-card ${isUser ? "user" : "assistant"}`;
+        cardEl.dataset.msgId = msg.id;
+
+        const timeStr = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "";
+
+        cardEl.innerHTML = `
+          <div class="msg-avatar-col">
+            <div class="msg-avatar">${avatarHtml}</div>
+          </div>
+          <div class="msg-content-col">
+            <div class="msg-header-row">
+              <div class="msg-speaker-wrap">
+                <span class="msg-speaker">${escapeHtml(speaker)}</span>
+                <span class="msg-role-tag">${roleTag}</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                ${tokenTagHtml}
+                <span class="msg-timestamp">${timeStr}</span>
+              </div>
+            </div>
+
+            ${thoughtHtml}
+
+            <div class="msg-prose">${formatProse(content)}</div>
+
+            <div class="msg-action-tray">
+              ${activeSession.messages.length > 1 ? `<button class="action-chip danger del-btn" title="Delete message">Delete</button>` : ""}
+              <div style="display: flex; align-items: center; gap: 6px; margin-left: auto;">
+                <button class="action-chip copy-btn" title="Copy text">Copy</button>
+                <button class="action-chip edit-btn" title="Edit message">Edit</button>
+                ${isLastAssistant ? `<button class="action-chip reroll-btn" style="color: var(--accent-char); font-weight: 600;" title="Reroll this response">↻ Reroll</button>` : ""}
+              </div>
+            </div>
+          </div>
+        `;
+
+        const copyBtn = cardEl.querySelector(".copy-btn");
+        copyBtn?.addEventListener("click", () => {
+          navigator.clipboard.writeText(msg.content.replace(/<thought[\s\S]*?<\/thought>/i, "").trim());
+          copyBtn.textContent = "Copied!";
+          setTimeout(() => { copyBtn.textContent = "Copy"; }, 1500);
+        });
+
+        const delBtn = cardEl.querySelector(".del-btn");
+        delBtn?.addEventListener("click", async () => {
+          if (confirm("Delete this message?")) {
+            activeSession.messages.splice(idx, 1);
+            await LocalDb.saveSession(activeSession);
+            renderFeed();
+          }
+        });
+
+        const editBtn = cardEl.querySelector(".edit-btn");
+        editBtn?.addEventListener("click", () => {
+          openInlineEdit(cardEl, msg, idx);
+        });
+
+        const rerollBtn = cardEl.querySelector(".reroll-btn");
+        rerollBtn?.addEventListener("click", () => rerollLastTurn());
+
+        chatInner.appendChild(cardEl);
+      });
+
+      chatFeed.scrollTop = chatFeed.scrollHeight;
+      updateContextStats();
+    }
+
+    function updateSendBtnState() {
+      const hasText = authorInput.value.trim().length > 0;
+      sendBtn.disabled = !hasText;
+      sendBtn.style.opacity = hasText ? "1" : "0.5";
+      sendBtn.style.pointerEvents = hasText ? "auto" : "none";
+    }
+
+    authorInput.addEventListener("input", () => {
+      authorInput.style.height = "auto";
+      authorInput.style.height = Math.min(authorInput.scrollHeight, 200) + "px";
+      updateSendBtnState();
+      updateLiveStats();
+    });
+
+    authorInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        if (authorInput.value.trim().length > 0) {
+          submitTurn();
+        }
+      }
+    });
+
+    sendBtn.addEventListener("click", () => submitTurn());
+    continueBtn.addEventListener("click", () => continueTurn());
+    updateSendBtnState();
+    updateLiveStats();
+
+    async function submitTurn() {
+      const text = authorInput.value.trim();
+      if (!text) return;
+
+      authorInput.value = "";
+      authorInput.style.height = "auto";
+      authorInput.disabled = true;
+      sendBtn.disabled = true;
+      continueBtn.disabled = true;
+      continueBtn.style.opacity = "0.5";
+      continueBtn.style.pointerEvents = "none";
+      updateLiveStats();
+      const userMsg = {
+        id: `msg_${Date.now()}`,
+        role: "user",
+        content: text,
+        timestamp: Date.now()
+      };
+      activeSession.messages.push(userMsg);
+      renderFeed();
+
+      await streamAssistantResponse(text);
+    }
+
+    async function continueTurn() {
+      authorInput.disabled = true;
+      sendBtn.disabled = true;
+      continueBtn.disabled = true;
+      continueBtn.style.opacity = "0.5";
+      continueBtn.style.pointerEvents = "none";
+      await streamAssistantResponse("[Continue the scene naturally]");
+    }
+
+    async function rerollLastTurn() {
+      const msgs = activeSession.messages;
+      if (msgs.length === 0) return;
+      
+      let lastUserPrompt = "";
+      if (msgs[msgs.length - 1].role === "assistant") {
+        msgs.pop();
+        if (msgs.length > 0 && msgs[msgs.length - 1].role === "user") {
+          lastUserPrompt = msgs[msgs.length - 1].content;
+        }
+      }
+      renderFeed();
+      await streamAssistantResponse(lastUserPrompt || "[Reroll the scene]");
+    }
+
+    async function streamAssistantResponse(promptHint) {
+      const assistantMsg = {
+        id: `msg_${Date.now() + 1}`,
+        role: "assistant",
+        content: "",
+        timestamp: Date.now()
+      };
+      activeSession.messages.push(assistantMsg);
+
+      const cAvatar = activeCard.avatar || activeCard.data?.avatar;
+      const streamAvatarHtml = (cAvatar && (cAvatar.startsWith("data:") || cAvatar.startsWith("http")))
+        ? `<img src="${escapeHtml(cAvatar)}" alt="${escapeHtml(charName)}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 6px;">`
+        : escapeHtml(initialLetter);
+
+      const streamCard = document.createElement("div");
+      streamCard.className = "msg-card assistant";
+      streamCard.innerHTML = `
+        <div class="msg-avatar-col">
+          <div class="msg-avatar">${streamAvatarHtml}</div>
+        </div>
+        <div class="msg-content-col">
+          <div class="msg-header-row">
+            <div class="msg-speaker-wrap">
+              <span class="msg-speaker">${escapeHtml(charName)}</span>
+              <span class="msg-role-tag">GENERATING</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="msg-token-tag" id="live-stream-tokens">~0 tokens</span>
+            </div>
+          </div>
+          <div class="msg-prose" id="live-stream-target">...</div>
+        </div>
+      `;
+      chatInner.appendChild(streamCard);
+      chatFeed.scrollTop = chatFeed.scrollHeight;
+
+      const liveTarget = document.getElementById("live-stream-target");
+      let scrollScheduled = false;
+
+      try {
+        await BrowserChatEngine.streamTurn({
+          card: activeCard,
+          session: activeSession,
+          settings: settings,
+          persona: currentPersona,
+          agentsContract: currentDirective?.content || settings.agentsContract,
+          userPrompt: promptHint,
+          onChunk: (chunk) => {
+            assistantMsg.content += chunk;
+            liveTarget.innerHTML = formatProse(
+              assistantMsg.content.replace(/<thought[\s\S]*?<\/thought>/gi, "")
+            );
+            const liveTokensEl = document.getElementById("live-stream-tokens");
+            if (liveTokensEl) {
+              liveTokensEl.textContent = `~${estimateTokens(assistantMsg.content).toLocaleString()} tokens`;
+            }
+            if (!scrollScheduled) {
+              scrollScheduled = true;
+              requestAnimationFrame(() => {
+                chatFeed.scrollTop = chatFeed.scrollHeight;
+                scrollScheduled = false;
+              });
+            }
+          }
+        });
+
+        activeSession.updatedAt = Date.now();
+        await LocalDb.saveSession(activeSession);
+      } catch (err) {
+        showToast("Inference failed: " + err.message, "error");
+      } finally {
+        renderFeed();
+        authorInput.disabled = false;
+        continueBtn.disabled = false;
+        continueBtn.style.opacity = "1";
+        continueBtn.style.pointerEvents = "auto";
+        updateSendBtnState();
+        updateLiveStats();
+        authorInput.focus();
+      }
+    }
+    await refreshActivePresets();
+    renderFeed();
+  </script>
+</body>
+</html>

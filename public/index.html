@@ -1,0 +1,2265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Vibe RP - Character Catalog</title>
+  <link rel="stylesheet" href="/editorial.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..500;1,6..72,400&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <div class="library-shell">
+    <!-- Top Navigation -->
+    <header class="library-header">
+      <div class="header-left">
+        <a href="/" class="brand-badge" title="Vibe RP" aria-label="Vibe RP: Go to character library">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17" />
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+          </svg>
+          <span class="brand-text">Vibe RP</span>
+        </a>
+      </div>
+      <div class="header-actions">
+        <button class="btn primary" id="import-btn" aria-label="Import character card">+ Import Card</button>
+        <input type="file" id="card-file-input" accept=".json,.jsonc,.png,.webp,.txt" style="display: none;" aria-hidden="true">
+        <button id="toggle-settings-btn" class="btn-icon" title="Settings" aria-label="Open settings">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0 .33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="library-content">
+      <div class="library-inner">
+        <div class="library-toolbar">
+          <div>
+            <h1 class="library-title">Character Library</h1>
+            <p class="library-subtitle">Select a character to continue an existing conversation or start a new one.</p>
+          </div>
+          <div class="library-toolbar-actions">
+            <input type="text" id="library-search" class="form-input search-input" placeholder="Search characters…" aria-label="Search characters">
+          </div>
+        </div>
+
+        <!-- Catalog Grid -->
+        <div class="card-grid" id="card-grid"></div>
+        
+        <!-- Empty State (no characters) -->
+        <div id="catalog-empty-state" class="empty-state" style="display: none;">
+          <svg class="empty-state-icon" viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+          </svg>
+          <h3 class="text-h2">No characters yet</h3>
+          <p style="color: var(--text-faint); font-size: var(--text-sm); margin-bottom: var(--space-4);">
+            Import your first character card to begin roleplaying.
+          </p>
+          <button id="empty-import-btn" class="btn primary">+ Import Card</button>
+        </div>
+        
+        <!-- Loading Skeleton (shows while fetching) -->
+        <div id="catalog-loading-skeleton" class="card-grid" style="display: none;">
+          <div class="skeleton" style="height: 220px; border-radius: 8px;"></div>
+          <div class="skeleton" style="height: 220px; border-radius: 8px;"></div>
+          <div class="skeleton" style="height: 220px; border-radius: 8px;"></div>
+          <div class="skeleton" style="height: 220px; border-radius: 8px;"></div>
+          <div class="skeleton" style="height: 220px; border-radius: 8px;"></div>
+          <div class="skeleton" style="height: 220px; border-radius: 8px;"></div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+
+  <!-- Character Preset Details Modal -->
+  <div class="modal-backdrop" id="detail-modal-backdrop"></div>
+  <div class="history-modal detail-modal" id="detail-modal" role="dialog" aria-modal="true" aria-labelledby="detail-char-name">
+    <div class="modal-header">
+      <div>
+        <h2 style="font-size: 14px; font-weight: 600; color: var(--text-primary); margin: 0;">Character Profile</h2>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <button id="detail-back-btn" class="btn ghost btn-sm" style="display: none; align-items: center; gap: 4px;" title="Back to Character Details" aria-label="Back to character details">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+          Back
+        </button>
+        <button id="close-detail-btn" class="btn-icon" title="Close" aria-label="Close dialog">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- View 1: Character Details -->
+    <div class="modal-body detail-body" id="detail-view-info">
+      <!-- Top Character Hero Section with Large Portrait and Clean Change Art Button -->
+      <div class="detail-hero-section">
+        <div class="detail-portrait-container">
+          <div class="detail-char-portrait" id="detail-char-avatar" role="button" tabindex="0" title="Click to replace character artwork" aria-label="Replace character artwork">
+            <div class="detail-char-portrait-inner" id="detail-char-portrait-inner">C</div>
+            <div class="portrait-hover-overlay">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+              </svg>
+              <span>Replace Image</span>
+            </div>
+          </div>
+          <input type="file" id="detail-avatar-file-input" accept="image/*" style="display: none;">
+        </div>
+        <div class="detail-hero-meta">
+          <h3 id="detail-char-name" class="detail-hero-title">Character Name</h3>
+          <div id="detail-char-nickname" class="detail-hero-nickname" style="display: none;"></div>
+          <div id="detail-char-meta" class="detail-hero-creator">Creator · v1.0</div>
+          <div class="detail-tags" id="detail-tags"></div>
+        </div>
+      </div>
+
+      <!-- Tab Navigation for Detail Modal: About (left) vs Story (mid) vs Author Notes (right) -->
+      <nav class="detail-tab-nav" role="tablist">
+        <button type="button" class="detail-tab-btn active" id="detail-tab-btn-about" role="tab" aria-selected="true">
+          About
+        </button>
+        <button type="button" class="detail-tab-btn" id="detail-tab-btn-story" role="tab" aria-selected="false">
+          Story &amp; Hook
+        </button>
+        <button type="button" class="detail-tab-btn" id="detail-tab-btn-notes" role="tab" aria-selected="false">
+          Author Notes
+        </button>
+      </nav>
+
+      <!-- Pane 1: About Inspector -->
+      <div class="detail-pane" id="detail-pane-about">
+        <div id="detail-about-content"></div>
+      </div>
+
+      <!-- Pane 2: Story & Opening Hook -->
+      <div class="detail-pane" id="detail-pane-story" style="display: none;">
+        <div id="detail-story-content"></div>
+      </div>
+
+      <!-- Pane 3: Author Notes -->
+      <div class="detail-pane" id="detail-pane-notes" style="display: none;">
+        <div id="detail-notes-content"></div>
+      </div>
+    </div>
+    <div class="modal-footer detail-actions" id="detail-actions-footer">
+      <button id="detail-delete-btn" class="btn-icon btn-danger-ghost" style="width: 34px; height: 34px; flex-shrink: 0;" title="Delete Character" aria-label="Delete Character">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        </svg>
+      </button>
+      <div style="display: flex; gap: 8px; flex: 1; justify-content: flex-end;">
+        <button id="detail-open-history-btn" class="btn ghost">Saved Chats (<span id="detail-history-count">0</span>)</button>
+        <button id="detail-start-new-btn" class="btn primary" style="flex: 1; max-width: 220px;">+ New Chat</button>
+      </div>
+    </div>
+
+    <!-- View 2: Saved Conversations (Direct swap within same modal, zero stacking, zero double backdrop) -->
+    <div class="modal-body detail-body" id="detail-view-history" style="display: none; padding: 16px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 8px;">
+        <div>
+          <span style="font-size: 13px; font-weight: 600; color: var(--text-primary);">Saved Chats</span>
+          <p style="font-size: 11px; color: var(--text-faint); margin: 2px 0 0 0;">Select a chat to resume or start a new one.</p>
+        </div>
+        <button id="history-view-new-btn" class="btn primary" style="padding: 4px 10px; font-size: 11px;">+ New Chat</button>
+      </div>
+      <div class="modal-thread-list" id="convos-thread-list" style="max-height: 420px; overflow-y: auto;"></div>
+    </div>
+  </div>
+
+  <!-- Duplicate Character Import Dialog -->
+  <div class="modal-backdrop" id="dup-modal-backdrop"></div>
+  <div class="history-modal" id="dup-modal" style="max-width: 400px; width: 90vw;">
+    <div class="modal-header" style="height: auto; padding: 16px;">
+      <div>
+        <div style="font-size: 13px; font-weight: 600; color: var(--text-primary);" id="dup-modal-title">Character already exists</div>
+        <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;" id="dup-modal-subtitle"></div>
+      </div>
+    </div>
+    <div class="modal-body" style="padding: 0 16px 16px; display: flex; flex-direction: column; gap: 8px;">
+      <button id="dup-replace-btn" class="btn primary" style="justify-content: flex-start; text-align: left; padding: 10px 14px; height: auto; flex-direction: column; align-items: flex-start;">
+        <span style="font-weight: 600;">Replace preset</span>
+        <span style="font-size: 11px; opacity: 0.75; margin-top: 2px;">Update the character data. All conversations are kept.</span>
+      </button>
+      <button id="dup-add-btn" class="btn ghost" style="justify-content: flex-start; text-align: left; padding: 10px 14px; height: auto; flex-direction: column; align-items: flex-start;">
+        <span style="font-weight: 600;">Add as separate preset</span>
+        <span style="font-size: 11px; opacity: 0.75; margin-top: 2px;">Keep both. The new one will appear alongside the existing one.</span>
+      </button>
+      <button id="dup-abort-btn" class="btn ghost" style="margin-top: 4px; opacity: 0.7;">Cancel import</button>
+    </div>
+  </div>
+  <script type="module">
+    import { LocalDb } from "/local_db.js";
+
+    function showToast(message, type = "info", duration = 3500) {
+      let container = document.querySelector(".studio-toast-container");
+      if (!container) {
+        container = document.createElement("div");
+        container.className = "studio-toast-container";
+        document.body.appendChild(container);
+      }
+      const toast = document.createElement("div");
+      toast.className = `studio-toast toast-${type}`;
+      toast.setAttribute("role", "alert");
+      toast.textContent = message;
+      container.appendChild(toast);
+      requestAnimationFrame(() => toast.classList.add("show"));
+      setTimeout(() => {
+        toast.classList.remove("show");
+        setTimeout(() => toast.remove(), 200);
+      }, duration);
+    }
+    window.showToast = showToast;
+
+    const cardGrid = document.getElementById("card-grid");
+    const importBtn = document.getElementById("import-btn");
+    const cardFileInput = document.getElementById("card-file-input");
+    const searchInput = document.getElementById("library-search");
+
+    const detailStartNewBtn = document.getElementById("detail-start-new-btn");
+    const detailOpenHistoryBtn = document.getElementById("detail-open-history-btn");
+    const detailHistoryCount = document.getElementById("detail-history-count");
+    const detailBackBtn = document.getElementById("detail-back-btn");
+    const detailViewInfo = document.getElementById("detail-view-info");
+    const detailViewHistory = document.getElementById("detail-view-history");
+    const detailActionsFooter = document.getElementById("detail-actions-footer");
+    const historyViewNewBtn = document.getElementById("history-view-new-btn");
+    const convosThreadList = document.getElementById("convos-thread-list");
+    const dupModal = document.getElementById("dup-modal");
+    const dupModalBackdrop = document.getElementById("dup-modal-backdrop");
+    const dupModalTitle = document.getElementById("dup-modal-title");
+    const dupModalSubtitle = document.getElementById("dup-modal-subtitle");
+    const dupReplaceBtn = document.getElementById("dup-replace-btn");
+    const dupAddBtn = document.getElementById("dup-add-btn");
+    const dupAbortBtn = document.getElementById("dup-abort-btn");
+    const detailModal = document.getElementById("detail-modal");
+    const detailBackdrop = document.getElementById("detail-modal-backdrop");
+    const closeDetailBtn = document.getElementById("close-detail-btn");
+    const detailCharAvatar = document.getElementById("detail-char-avatar");
+    const detailCharName = document.getElementById("detail-char-name");
+    const detailCharNickname = document.getElementById("detail-char-nickname");
+    const detailCharMeta = document.getElementById("detail-char-meta");
+    const detailTags = document.getElementById("detail-tags");
+    const detailTabBtnAbout = document.getElementById("detail-tab-btn-about");
+    const detailTabBtnStory = document.getElementById("detail-tab-btn-story");
+    const detailTabBtnNotes = document.getElementById("detail-tab-btn-notes");
+    const detailPaneAbout = document.getElementById("detail-pane-about");
+    const detailPaneStory = document.getElementById("detail-pane-story");
+    const detailPaneNotes = document.getElementById("detail-pane-notes");
+    const detailAboutContent = document.getElementById("detail-about-content");
+    const detailStoryContent = document.getElementById("detail-story-content");
+    const detailNotesContent = document.getElementById("detail-notes-content");
+    const detailDeleteBtn = document.getElementById("detail-delete-btn");
+
+    function showDetailSubTab(tab) {
+      const isAbout = tab === "about";
+      const isStory = tab === "story";
+      const isNotes = tab === "notes";
+
+      detailTabBtnAbout?.classList.toggle("active", isAbout);
+      detailTabBtnAbout?.setAttribute("aria-selected", isAbout ? "true" : "false");
+      detailTabBtnStory?.classList.toggle("active", isStory);
+      detailTabBtnStory?.setAttribute("aria-selected", isStory ? "true" : "false");
+      detailTabBtnNotes?.classList.toggle("active", isNotes);
+      detailTabBtnNotes?.setAttribute("aria-selected", isNotes ? "true" : "false");
+
+      if (detailPaneAbout) detailPaneAbout.style.display = isAbout ? "flex" : "none";
+      if (detailPaneStory) detailPaneStory.style.display = isStory ? "flex" : "none";
+      if (detailPaneNotes) detailPaneNotes.style.display = isNotes ? "flex" : "none";
+    }
+
+    detailTabBtnAbout?.addEventListener("click", () => showDetailSubTab("about"));
+    detailTabBtnStory?.addEventListener("click", () => showDetailSubTab("story"));
+    detailTabBtnNotes?.addEventListener("click", () => showDetailSubTab("notes"));
+
+    let allCards = [];
+    let selectedModalCard = null;
+    let activeDetailCard = null;
+    
+    // Empty state and skeleton references
+    const emptyState = document.getElementById("catalog-empty-state");
+    const loadingSkeleton = document.getElementById("catalog-loading-skeleton");
+
+    function escapeHtml(s) {
+      return String(s ?? "")
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function compressAvatarImage(file, maxSize = 320) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            let w = img.width;
+            let h = img.height;
+            if (w > h) {
+              if (w > maxSize) {
+                h = Math.round((h * maxSize) / w);
+                w = maxSize;
+              }
+            } else {
+              if (h > maxSize) {
+                w = Math.round((w * maxSize) / h);
+                h = maxSize;
+              }
+            }
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL("image/webp", 0.85) || canvas.toDataURL("image/jpeg", 0.85));
+          };
+          img.onerror = () => resolve(e.target.result);
+          img.src = e.target.result;
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function fieldHtml(label, value, mono) {
+      const v = String(value ?? "").trim();
+      if (!v) return "";
+      return `<div class="detail-field"><label>${label}</label><p class="${mono ? "mono" : ""}">${escapeHtml(v)}</p></div>`;
+    }
+
+    function closeDetailModal() {
+      detailModal.classList.remove("open");
+      detailBackdrop.classList.remove("open");
+      showDetailView("info");
+      activeDetailCard = null;
+    }
+
+    let currentDetailView = "info";
+
+    function showDetailView(view) {
+      currentDetailView = view;
+      if (view === "history") {
+        detailViewInfo.style.display = "none";
+        if (detailActionsFooter) detailActionsFooter.style.display = "none";
+        detailViewHistory.style.display = "flex";
+        detailViewHistory.classList.remove("tab-fade-active");
+        void detailViewHistory.offsetWidth;
+        detailViewHistory.classList.add("tab-fade-active");
+        detailBackBtn.style.display = "inline-flex";
+        closeDetailBtn.style.display = "none";
+      } else {
+        detailViewInfo.style.display = "flex";
+        if (detailActionsFooter) detailActionsFooter.style.display = "flex";
+        detailViewInfo.classList.remove("tab-fade-active");
+        void detailViewInfo.offsetWidth;
+        detailViewInfo.classList.add("tab-fade-active");
+        detailViewHistory.style.display = "none";
+        detailBackBtn.style.display = "none";
+        closeDetailBtn.style.display = "inline-flex";
+      }
+    }
+
+    detailBackBtn.addEventListener("click", () => showDetailView("info"));
+    closeDetailBtn.addEventListener("click", closeDetailModal);
+
+    detailBackdrop.addEventListener("click", () => {
+      if (currentDetailView === "history") {
+        showDetailView("info");
+      } else {
+        closeDetailModal();
+      }
+    });
+
+    async function startNewConversation(card, customOpening = null) {
+      const count = (await LocalDb.getSessionsForCard(card.id)).length;
+      const initialOpening = customOpening || card.data?.first_mes || card.first_mes || "The door closes behind you. Silence settles into the corridor.";
+      const newSess = {
+        id: `sess_${Date.now()}`,
+        cardId: card.id,
+        title: `Chat ${count + 1}`,
+        messages: [
+          {
+            id: `msg_${Date.now()}`,
+            role: "assistant",
+            content: initialOpening,
+            timestamp: Date.now()
+          }
+        ],
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+      await LocalDb.saveSession(newSess);
+      window.location.href = `/chat?cardId=${encodeURIComponent(card.id)}&sessionId=${encodeURIComponent(newSess.id)}`;
+    }
+
+    async function openDetailModal(card) {
+      activeDetailCard = card;
+      const d = card.data || card;
+      const charName = d.name || "Unknown Persona";
+      const creator = d.creator || "Unknown";
+      const version = d.character_version || d.char_version || "1.0";
+      const cardAvatarUrl = card.avatar || card.data?.avatar;
+
+      // --- Portrait ---
+      const portraitInner = document.getElementById("detail-char-portrait-inner");
+      if (portraitInner) {
+        if (cardAvatarUrl && (cardAvatarUrl.startsWith("data:") || cardAvatarUrl.startsWith("http"))) {
+          portraitInner.innerHTML = `<img src="${escapeHtml(cardAvatarUrl)}" alt="${escapeHtml(charName)}" style="width: 100%; height: 100%; object-fit: cover;">`;
+        } else {
+          portraitInner.textContent = charName.charAt(0).toUpperCase();
+        }
+      } else {
+        if (cardAvatarUrl && (cardAvatarUrl.startsWith("data:") || cardAvatarUrl.startsWith("http"))) {
+          detailCharAvatar.innerHTML = `<img src="${escapeHtml(cardAvatarUrl)}" alt="${escapeHtml(charName)}" style="width: 100%; height: 100%; object-fit: cover;">`;
+        } else {
+          detailCharAvatar.textContent = charName.charAt(0).toUpperCase();
+        }
+      }
+
+      // --- Hero text ---
+      detailCharName.textContent = charName;
+
+      // Nickname (CCv3): show only if present and distinct from the main name
+      const nickname = String(d.nickname || "").trim();
+      if (detailCharNickname) {
+        if (nickname && nickname.toLowerCase() !== charName.toLowerCase()) {
+          detailCharNickname.textContent = `"${nickname}"`;
+          detailCharNickname.style.display = "";
+        } else {
+          detailCharNickname.style.display = "none";
+        }
+      }
+
+      detailCharMeta.textContent = `${creator} · v${version}`;
+      detailTags.innerHTML = (Array.isArray(d.tags) && d.tags.length ? d.tags : ["Scenario"])
+        .map(t => `<span>${escapeHtml(t)}</span>`).join("");
+
+      showDetailSubTab("about");
+
+      // ── Shared helpers ────────────────────────────────────────────────────────
+
+      function accordionItem(title, content, mono = false) {
+        const text = String(content ?? "").trim();
+        if (!text) return "";
+        return `
+          <details class="dossier-row">
+            <summary class="dossier-summary">
+              <div class="dossier-summary-left">
+                <span class="dossier-title">${title}</span>
+              </div>
+              <svg class="dossier-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </summary>
+            <div class="dossier-body ${mono ? "mono" : ""}">${escapeHtml(text)}</div>
+          </details>
+        `;
+      }
+
+      function formatSampleDialogue(raw, name) {
+        if (!raw || !raw.trim()) return "";
+        let formatted = raw
+          .replace(/<START>/gi, "——— Conversation Sample ———\n")
+          .replace(/\{\{char\}\}/gi, name)
+          .replace(/\{\{user\}\}/gi, "You")
+          .trim();
+        if (formatted.startsWith("——— Conversation Sample ———\n")) {
+          formatted = formatted.substring("——— Conversation Sample ———\n".length).trim();
+        }
+        return formatted;
+      }
+
+      // Shared collapsible variation row builder (no "start chat" button — used by group openings)
+      function buildVariationRows(items, labelPrefix) {
+        return items.map((alt, idx) => {
+          const cleaned = String(alt ?? "").trim();
+          const firstLine = cleaned.split('\n')[0].slice(0, 65);
+          const preview = firstLine.length >= 65 ? firstLine + "…" : firstLine;
+          return `
+            <details class="alt-variation-row">
+              <summary class="alt-variation-summary">
+                <div class="alt-variation-summary-left">
+                  <span class="alt-variation-badge">${labelPrefix} ${idx + 1}</span>
+                  <span class="alt-variation-preview">${escapeHtml(preview)}</span>
+                </div>
+                <svg class="alt-variation-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </summary>
+              <div class="alt-variation-body">
+                <div>${escapeHtml(cleaned)}</div>
+              </div>
+            </details>
+          `;
+        }).join("");
+      }
+
+      // ── 1. Story & Hook tab ───────────────────────────────────────────────────
+      const firstMes = d.first_mes || "The door closes behind you. Silence settles into the corridor.";
+      let storyHtml = `
+        <div class="detail-story-prose-container">
+          <div class="detail-eyebrow-label">
+            <span>Opening Scene</span>
+            <span style="font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: normal; color: var(--text-faint);">First message in new chats</span>
+          </div>
+          <div class="detail-story-prose">${escapeHtml(firstMes)}</div>
+        </div>
+      `;
+
+      // Alternate openings (CCv1/v2/v3)
+      if (Array.isArray(d.alternate_greetings) && d.alternate_greetings.length > 0) {
+        storyHtml += `
+          <div class="detail-alt-openings">
+            <div class="detail-eyebrow-label">
+              <span>Alternate Openings (${d.alternate_greetings.length})</span>
+              <span style="font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: normal; color: var(--text-faint);">Click variation to read</span>
+            </div>
+            <div class="alt-variations-list">
+              ${d.alternate_greetings.map((alt, idx) => {
+                const cleaned = String(alt ?? "").trim();
+                const firstLine = cleaned.split('\n')[0].slice(0, 65);
+                const preview = firstLine.length >= 65 ? firstLine + "…" : firstLine;
+                return `
+                  <details class="alt-variation-row">
+                    <summary class="alt-variation-summary">
+                      <div class="alt-variation-summary-left">
+                        <span class="alt-variation-badge">Variation ${idx + 1}</span>
+                        <span class="alt-variation-preview">${escapeHtml(preview)}</span>
+                      </div>
+                      <svg class="alt-variation-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                      </svg>
+                    </summary>
+                    <div class="alt-variation-body">
+                      <div>${escapeHtml(cleaned)}</div>
+                      <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+                        <button type="button" class="btn ghost btn-sm btn-start-alt-chat" data-alt-index="${idx}" style="font-size: 11.5px; padding: 3px 10px;">
+                          Start Chat With This Opening
+                        </button>
+                      </div>
+                    </div>
+                  </details>
+                `;
+              }).join("")}
+            </div>
+          </div>
+        `;
+      }
+
+      // Group-only openings (CCv3 only)
+      if (Array.isArray(d.group_only_greetings) && d.group_only_greetings.length > 0) {
+        storyHtml += `
+          <div class="detail-group-openings">
+            <div class="detail-eyebrow-label">
+              <span>Group-Only Openings (${d.group_only_greetings.length})</span>
+              <span style="font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: normal; color: var(--text-faint);">Used in multi-character scenes</span>
+            </div>
+            <div class="alt-variations-list">
+              ${buildVariationRows(d.group_only_greetings, "Group")}
+            </div>
+          </div>
+        `;
+      }
+
+      if (detailStoryContent) {
+        detailStoryContent.innerHTML = storyHtml;
+        detailStoryContent.querySelectorAll(".btn-start-alt-chat").forEach(btn => {
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const idx = parseInt(btn.dataset.altIndex, 10);
+            const customOpening = d.alternate_greetings[idx];
+            if (customOpening) {
+              closeDetailModal();
+              startNewConversation(card, customOpening);
+            }
+          });
+        });
+      }
+
+      // ── 2. Author Notes tab ───────────────────────────────────────────────────
+      const notesText = String(d.creator_notes ?? "").trim();
+      let notesHtml = "";
+      if (notesText) {
+        notesHtml = `
+          <div class="detail-author-notes-container">
+            <div class="detail-eyebrow-label">
+              <span>Creator &amp; Author Guidance</span>
+              <span style="font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: normal; color: var(--text-faint);">From card creator</span>
+            </div>
+            <div class="detail-notes-prose">${escapeHtml(notesText)}</div>
+          </div>
+        `;
+      } else {
+        notesHtml = `
+          <div class="detail-notes-empty">
+            No author notes or creator guidance provided for this character.
+          </div>
+        `;
+      }
+
+      // Source attribution (CCv3: d.source is string[])
+      const sources = Array.isArray(d.source) ? d.source.filter(s => String(s).trim()) : [];
+      if (sources.length > 0) {
+        notesHtml += `
+          <div class="detail-source-row">
+            <div class="detail-source-label">Source</div>
+            <div class="detail-source-list">
+              ${sources.map(s => `<span class="detail-source-item">${escapeHtml(String(s).trim())}</span>`).join("")}
+            </div>
+          </div>
+        `;
+      }
+
+      if (detailNotesContent) detailNotesContent.innerHTML = notesHtml;
+
+      // ── 3. About tab ─────────────────────────────────────────────────────────
+      let lorebookNoticeHtml = "";
+      const lorebook = d.character_book;
+      const lorebookEntries = lorebook?.entries;
+      const entryCount = Array.isArray(lorebookEntries) ? lorebookEntries.length
+        : (lorebookEntries && typeof lorebookEntries === "object" ? Object.keys(lorebookEntries).length : 0);
+      if (entryCount > 0) {
+        lorebookNoticeHtml = `
+          <div class="detail-lorebook-notice">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+            </svg>
+            <div class="detail-lorebook-notice-body">
+              <div class="detail-lorebook-notice-title">Embedded World Info · ${entryCount} ${entryCount === 1 ? "entry" : "entries"}</div>
+              <div class="detail-lorebook-notice-sub">This card carries an embedded lorebook. Lore injection requires your inference endpoint to support it.</div>
+            </div>
+          </div>
+        `;
+      }
+
+      let accordionsHtml = "";
+      accordionsHtml += accordionItem("Description & Lore", d.description);
+      accordionsHtml += accordionItem("Personality & Traits", d.personality);
+      accordionsHtml += accordionItem("Scenario & World Setting", d.scenario);
+      accordionsHtml += accordionItem("Voice & Dialogue Samples", formatSampleDialogue(d.mes_example, charName));
+      accordionsHtml += accordionItem("System Prompt Instructions", d.system_prompt, true);
+      accordionsHtml += accordionItem("Post-History Instructions", d.post_history_instructions, true);
+
+      if (detailAboutContent) {
+        if (!accordionsHtml && !lorebookNoticeHtml) {
+          detailAboutContent.innerHTML = `
+            <div style="text-align: center; color: var(--text-faint); padding: 24px; font-size: 13px;">
+              No lore or prompt instructions recorded for this character.
+            </div>
+          `;
+        } else {
+          detailAboutContent.innerHTML = `
+            ${lorebookNoticeHtml}
+            ${accordionsHtml ? `<div class="dossier-rows-list">${accordionsHtml}</div>` : ""}
+          `;
+        }
+      }
+
+      const sessions = await LocalDb.getSessionsForCard(card.id);
+      detailHistoryCount.textContent = sessions.length;
+      if (sessions.length === 0) {
+        detailOpenHistoryBtn.disabled = true;
+        detailOpenHistoryBtn.style.opacity = "0.5";
+        detailOpenHistoryBtn.style.pointerEvents = "none";
+        detailOpenHistoryBtn.title = "No previous chats for this character";
+      } else {
+        detailOpenHistoryBtn.disabled = false;
+        detailOpenHistoryBtn.style.opacity = "1";
+        detailOpenHistoryBtn.style.pointerEvents = "auto";
+        detailOpenHistoryBtn.title = "View saved chats";
+      }
+      showDetailView("info");
+      detailModal.classList.add("open");
+      detailBackdrop.classList.add("open");
+    }
+
+    detailStartNewBtn.addEventListener("click", () => {
+      if (activeDetailCard) startNewConversation(activeDetailCard);
+    });
+
+    historyViewNewBtn.addEventListener("click", () => {
+      if (activeDetailCard) startNewConversation(activeDetailCard);
+    });
+
+    detailOpenHistoryBtn.addEventListener("click", () => {
+      if (activeDetailCard) {
+        renderConvosThreads(activeDetailCard);
+        showDetailView("history");
+      }
+    });
+
+    async function renderConvosThreads(card) {
+      const sessions = await LocalDb.getSessionsForCard(card.id);
+      detailHistoryCount.textContent = sessions.length;
+      if (sessions.length === 0) {
+        convosThreadList.innerHTML = `
+          <div style="padding: 24px 16px; text-align: center; color: var(--text-faint); font-size: 13px;">
+            No chats recorded yet. Choose "+ New Chat" to start.
+          </div>
+        `;
+      } else {
+        convosThreadList.innerHTML = "";
+        sessions.forEach(sess => {
+          const row = document.createElement("div");
+          row.className = "modal-thread-row";
+          const count = sess.messages?.length || 0;
+          const dateStr = sess.updatedAt ? new Date(sess.updatedAt).toLocaleDateString([], { month: 'short', day: 'numeric' }) : "";
+
+          row.innerHTML = `
+            <div style="min-width: 0; flex: 1;">
+              <div class="thread-title editable-title">${escapeHtml(sess.title || "Chat")}</div>
+              <div class="thread-meta">${count} ${count === 1 ? "message" : "messages"} · ${dateStr}</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button class="btn-icon del-btn" style="color: var(--danger); width: 28px; height: 28px; border: 1px solid rgba(239,68,68,0.2); background: rgba(239,68,68,0.05); border-radius: 5px;" title="Delete Chat" aria-label="Delete Chat">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+              </button>
+              <a href="/chat?cardId=${encodeURIComponent(card.id)}&sessionId=${encodeURIComponent(sess.id)}" class="btn primary" style="padding: 4px 10px; font-size: 12px;">Resume</a>
+            </div>
+          `;
+
+          const titleEl = row.querySelector(".thread-title");
+          titleEl.addEventListener("click", (e) => {
+            e.stopPropagation();
+            enterModalRename(sess, titleEl, card);
+          });
+
+          const delBtn = row.querySelector(".del-btn");
+          delBtn.addEventListener("click", async (e) => {
+            e.stopPropagation();
+            if (confirm(`Delete chat "${sess.title || "Chat"}"?`)) {
+              await renderConvosThreads(card);
+              await renderCatalog();
+            }
+          });
+
+          convosThreadList.appendChild(row);
+        });
+      }
+    }
+
+
+    detailDeleteBtn.addEventListener("click", async () => {
+      const card = activeDetailCard;
+      if (!card) return;
+      const name = card.data?.name || card.name || "this character";
+      if (!confirm(`Delete "${name}" and all their chats? This cannot be undone.`)) return;
+      allCards = await LocalDb.getAllCards();
+      closeDetailModal();
+      await renderCatalog();
+    });
+
+    const detailAvatarFileInput = document.getElementById("detail-avatar-file-input");
+    const detailChangeAvatarBtn = document.getElementById("detail-change-avatar-btn");
+
+    detailCharAvatar?.addEventListener("click", () => detailAvatarFileInput?.click());
+    detailCharAvatar?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        detailAvatarFileInput?.click();
+      }
+    });
+    detailChangeAvatarBtn?.addEventListener("click", () => detailAvatarFileInput?.click());
+
+    detailAvatarFileInput?.addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file || !activeDetailCard) return;
+      detailAvatarFileInput.value = "";
+      try {
+        const dataUrl = await compressAvatarImage(file, 384);
+        activeDetailCard.avatar = dataUrl;
+        if (activeDetailCard.data) activeDetailCard.data.avatar = dataUrl;
+        await LocalDb.saveCard(activeDetailCard);
+        allCards = await LocalDb.getAllCards();
+        openDetailModal(activeDetailCard);
+        await renderCatalog();
+        showToast("Character portrait updated.", "success");
+      } catch (err) {
+        showToast("Failed to update portrait: " + err.message, "error");
+      }
+    });
+
+
+
+    // Conversation name — tap in the history modal to rename. Enter/blur saves, Escape cancels.
+    function enterModalRename(sess, titleEl, card) {
+      const oldTitle = sess.title || "";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "thread-title-input";
+      input.value = oldTitle;
+      input.maxLength = 80;
+      input.setAttribute("aria-label", "Rename conversation");
+      titleEl.replaceWith(input);
+      input.focus();
+      input.select();
+      let settled = false;
+      const finish = (save) => {
+        if (settled) return;
+        settled = true;
+        const next = (save ? input.value.trim() : oldTitle) || "Conversation";
+        sess.title = next;
+        sess.updatedAt = Date.now();
+        LocalDb.saveSession(sess);
+        renderConvosThreads(card);
+      };
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") finish(true);
+        else if (e.key === "Escape") finish(false);
+      });
+      input.addEventListener("blur", () => finish(true));
+    }
+
+
+    async function seedRosterIfEmpty() {
+      allCards = await LocalDb.getAllCards();
+      if (allCards.length === 0) {
+        const demoCards = [
+          {
+            id: "card_valen_shadow",
+            spec: "chara_card_v2",
+            spec_version: "2.0",
+            data: {
+              name: "Valen Vance",
+              creator: "Ministry of Whispers",
+              description: "A disgraced royal archivist now brokering forbidden manuscripts in the lower smog districts. Speaks with dry precision, calculating each gesture.",
+              personality: "Cynical, erudite, razor-sharp, protective of lost history.",
+              scenario: "A dimly lit subterranean ledger vault during curfew.",
+              first_mes: "The rain outside is corrosive tonight. Step away from the glass. If you've brought the seventh treatise, place it on the scale.",
+              tags: ["Gothic", "Occult", "Archivist"]
+            }
+          },
+          {
+            id: "card_kestrel_drifter",
+            spec: "chara_card_v2",
+            spec_version: "2.0",
+            data: {
+              name: "Kestrel Rowan",
+              creator: "Wanderer's Guild",
+              description: "A borderlands scout and desert cartographer who navigates shifting salt flats. Carries antique bronze surveyor tools and observes long silences.",
+              personality: "Stoic, vigilant, intuitive, observant of minute environmental shifts.",
+              scenario: "An abandoned frontier watchtower as a sand squall approaches.",
+              first_mes: "Keep your lantern shuttered. The wind here carries sound three leagues further than the open road.",
+              tags: ["Frontier", "Survival", "Atmospheric"]
+            }
+          }
+        ];
+
+        for (const dc of demoCards) {
+          await LocalDb.saveCard(dc);
+        }
+        allCards = await LocalDb.getAllCards();
+      }
+    }
+
+    async function renderCatalog(filterText = "") {
+      cardGrid.innerHTML = "";
+
+      const query = filterText.toLowerCase().trim();
+      const filtered = allCards.filter(card => {
+        const name = (card.data?.name || card.name || "").toLowerCase();
+        const desc = (card.data?.description || card.description || "").toLowerCase();
+        return name.includes(query) || desc.includes(query);
+      });
+
+      if (allCards.length === 0) {
+        cardGrid.innerHTML = `
+          <div style="grid-column: 1 / -1; padding: 48px 24px; text-align: center; background: var(--bg-surface); border: 1px dashed var(--border-subtle); border-radius: 8px;">
+            <h3 style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px;">Character Library Empty</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 16px; font-size: 13px;">No character cards installed yet. Import a character card to begin crafting stories.</p>
+            <button class="btn primary" onclick="document.getElementById('card-file-input').click()">+ Import Character Card</button>
+          </div>
+        `;
+        return;
+      }
+
+      if (filtered.length === 0) {
+        cardGrid.innerHTML = `
+          <div style="grid-column: 1 / -1; padding: 48px 24px; text-align: center; background: var(--bg-surface); border: 1px dashed var(--border-subtle); border-radius: 8px;">
+            <h3 style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px;">No Matching Characters</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 16px; font-size: 13px;">No characters matched "${escapeHtml(filterText)}". Clear search to view all characters.</p>
+            <button class="btn ghost" onclick="document.getElementById('library-search').value = ''; renderCatalog();">Clear Search</button>
+          </div>
+        `;
+        return;
+      }
+
+      for (const card of filtered) {
+        const cardEl = document.createElement("div");
+        cardEl.className = "editorial-card";
+        const charName = card.data?.name || card.name || "Unknown Persona";
+        const creator = card.data?.creator || card.creator || "Original Cast";
+        const desc = card.data?.description || card.description || card.data?.creator_notes || "";
+        const tags = card.data?.tags || ["Scenario"];
+        const initial = escapeHtml(charName.charAt(0).toUpperCase());
+
+        const cardSessions = await LocalDb.getSessionsForCard(card.id);
+        const sessionCount = cardSessions.length;
+        const latestSession = sessionCount > 0
+          ? [...cardSessions].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0]
+          : null;
+
+        const cardAvatarUrl = card.avatar || card.data?.avatar;
+        const avatarInner = cardAvatarUrl && (cardAvatarUrl.startsWith("data:") || cardAvatarUrl.startsWith("http"))
+          ? `<img src="${escapeHtml(cardAvatarUrl)}" alt="${escapeHtml(charName)}" style="width: 100%; height: 100%; object-fit: cover;">`
+          : initial;
+
+        const allTags = Array.isArray(tags) && tags.length ? tags : ["Scenario"];
+        const maxVisibleTags = 3;
+        const visibleTags = allTags.slice(0, maxVisibleTags);
+        const overflowTagCount = allTags.length - maxVisibleTags;
+        const tagBadgesHtml = visibleTags.map(t => `<span style="font-size: 11px; font-family: var(--font-mono); padding: 2px 6px; border-radius: 4px; background: var(--bg-card); color: var(--text-faint); border: 1px solid var(--border-subtle);">${escapeHtml(String(t))}</span>`).join("")
+          + (overflowTagCount > 0 ? `<span style="font-size: 11px; font-family: var(--font-mono); padding: 2px 6px; border-radius: 4px; background: var(--bg-surface); color: var(--text-faint); border: 1px solid var(--border-subtle);">+${overflowTagCount} more</span>` : "");
+
+        const descText = desc ? escapeHtml(desc) : `<span style="color: var(--text-faint); font-style: italic;">No synopsis recorded.</span>`;
+
+        cardEl.innerHTML = `
+          <div class="card-identity-row">
+            <div class="char-avatar">${avatarInner}</div>
+            <div class="card-title-group">
+              <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;">
+                <h2 style="font-size: 15.5px; font-weight: 600; color: var(--text-primary); line-height: 1.25; margin: 0; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word;">${escapeHtml(charName)}</h2>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--text-faint); opacity: 0.6; flex-shrink: 0; margin-top: 2px;">
+                  <polyline points="9 18 15 12 9 6"></polyline>
+                </svg>
+              </div>
+              <div class="card-creator" style="font-size: 11px; font-family: var(--font-mono); color: var(--accent-char); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(creator)}</div>
+              <div class="card-tags-inline">
+                ${tagBadgesHtml}
+              </div>
+            </div>
+          </div>
+          <p class="card-description">${descText}</p>
+          <div class="card-footer">
+            <span style="font-size: 11px; font-family: var(--font-mono); color: var(--text-faint); display: flex; align-items: center; gap: 4px;">
+              <span>${sessionCount} ${sessionCount === 1 ? "chat" : "chats"}</span>
+            </span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              ${latestSession ? `
+                <a href="/chat?cardId=${encodeURIComponent(card.id)}&sessionId=${encodeURIComponent(latestSession.id)}" class="btn ghost resume-convo-btn" style="padding: 4px 10px; font-size: 12px;" title="Resume latest chat">Resume</a>
+              ` : ""}
+              <button class="btn primary new-convo-btn" style="padding: 4px 12px; font-size: 12px;">+ New Chat</button>
+            </div>
+          </div>
+        `;
+
+        const resumeBtn = cardEl.querySelector(".resume-convo-btn");
+        if (resumeBtn) {
+          resumeBtn.addEventListener("click", (e) => e.stopPropagation());
+        }
+
+        const newConvoBtn = cardEl.querySelector(".new-convo-btn");
+        newConvoBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          startNewConversation(card);
+        });
+        cardEl.addEventListener("click", () => {
+          openDetailModal(card);
+        });
+
+        cardGrid.appendChild(cardEl);
+      }
+    }
+    // --- Duplicate detection ---
+    // A card is "same" if same name + same first_mes (exact content match).
+    // "Similar" = same name only (updated version, different content).
+    function cardFingerprint(card) {
+      const d = card.data || card;
+      return (d.name || "").trim().toLowerCase();
+    }
+    function cardContentSig(card) {
+      const d = card.data || card;
+      return [(d.name || "").trim(), (d.first_mes || "").trim().slice(0, 200)].join("\x00");
+    }
+    function findDuplicate(incoming) {
+      const name = cardFingerprint(incoming);
+      const sig  = cardContentSig(incoming);
+      // exact: same name + same opening scene
+      const exact = allCards.find(c => cardFingerprint(c) === name && cardContentSig(c) === sig);
+      if (exact) return { kind: "exact", card: exact };
+      // similar: same name, different content
+      const similar = allCards.find(c => cardFingerprint(c) === name);
+      if (similar) return { kind: "similar", card: similar };
+      return null;
+    }
+
+    // Show the dup dialog; resolves to "replace" | "add" | "abort"
+    function promptDuplicate(incoming, dup) {
+      return new Promise(resolve => {
+        const inName = (incoming.data?.name || incoming.name || "this character");
+        if (dup.kind === "exact") {
+          dupModalTitle.textContent = "Already imported";
+          dupModalSubtitle.textContent = `"${inName}" is identical to an existing preset.`;
+        } else {
+          dupModalTitle.textContent = "Character already exists";
+          dupModalSubtitle.textContent = `"${inName}" matches an existing preset name but has different content (possibly an update).`;
+        }
+        dupModal.classList.add("open");
+        dupModalBackdrop.classList.add("open");
+        const close = (choice) => {
+          dupModal.classList.remove("open");
+          dupModalBackdrop.classList.remove("open");
+          // remove listeners to avoid stacking
+          dupReplaceBtn.replaceWith(dupReplaceBtn.cloneNode(true));
+          dupAddBtn.replaceWith(dupAddBtn.cloneNode(true));
+          dupAbortBtn.replaceWith(dupAbortBtn.cloneNode(true));
+          resolve(choice);
+        };
+        document.getElementById("dup-replace-btn").addEventListener("click", () => close("replace"), { once: true });
+        document.getElementById("dup-add-btn").addEventListener("click",     () => close("add"),     { once: true });
+        document.getElementById("dup-abort-btn").addEventListener("click",   () => close("abort"),   { once: true });
+        dupModalBackdrop.addEventListener("click", () => close("abort"), { once: true });
+      });
+    }
+
+    importBtn?.addEventListener("click", () => cardFileInput.click());
+    cardFileInput.addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      cardFileInput.value = "";
+      try {
+        const incoming = await parseCardFile(file);
+        const dup = findDuplicate(incoming);
+        if (dup) {
+          const choice = await promptDuplicate(incoming, dup);
+          if (choice === "abort") return;
+          if (choice === "replace") {
+            // overwrite existing card record, keep its id so sessions still link
+            incoming.id = dup.card.id;
+            await LocalDb.saveCard(incoming);
+            allCards = await LocalDb.getAllCards();
+            await renderCatalog();
+            return;
+          }
+          // "add" — fall through to fresh import below
+        }
+        incoming.id = `card_${Date.now()}`;
+        await LocalDb.saveCard(incoming);
+        allCards = await LocalDb.getAllCards();
+        await renderCatalog();
+        showToast(`Character "${incoming.data?.name || incoming.name || "Card"}" imported successfully.`, "success");
+      } catch (err) {
+        showToast("Could not import character card: " + err.message, "error");
+      }
+    });
+
+    // --- Character-card import parsing (JSON/JSONC + chub V2 PNG + legacy V1 WebP) ---
+    function stripJsonComments(src) {
+      let out = "", inStr = false, esc = false;
+      for (let i = 0; i < src.length; i++) {
+        const c = src[i];
+        if (inStr) {
+          out += c;
+          if (esc) esc = false;
+          else if (c === "\\") esc = true;
+          else if (c === '"') inStr = false;
+          continue;
+        }
+        if (c === '"') { inStr = true; out += c; continue; }
+        if (c === "/" && src[i + 1] === "/") {
+          while (i < src.length && src[i] !== "\n") i++;
+          out += "\n";
+          continue;
+        }
+        if (c === "/" && src[i + 1] === "*") {
+          i += 2;
+          while (i < src.length && !(src[i] === "*" && src[i + 1] === "/")) i++;
+          i++;
+          out += " ";
+          continue;
+        }
+        out += c;
+      }
+      return out.replace(/,\s*([}\]])/g, "$1");
+    }
+
+    function normalizeCard(json) {
+      if (!json || typeof json !== "object" || Array.isArray(json)) throw new Error("card JSON is not an object");
+      if (json.data && typeof json.data === "object" && !Array.isArray(json.data)) {
+        return { spec: json.spec || "chara_card_v2", spec_version: json.spec_version || "2.0", data: json.data };
+      }
+      return { spec: "chara_card_v1", spec_version: "1.0", data: json };
+    }
+
+    function parseJsonLoose(text) {
+      try { return JSON.parse(String(text).trim()); } catch { return null; }
+    }
+
+    async function inflateDecompress(u8) {
+      const ds = new DecompressionStream("deflate");
+      const stream = new Blob([u8]).stream().pipeThrough(ds);
+      const out = await new Response(stream).arrayBuffer();
+      return new TextDecoder().decode(out);
+    }
+
+    function parsePngChara(buf) {
+      const view = new DataView(buf);
+      if (view.byteLength < 8 || view.getUint32(0) !== 0x89504e47) return null;
+      const bytes = new Uint8Array(buf);
+      const latin1 = new TextDecoder("latin1");
+      let off = 8;
+      while (off + 8 <= bytes.length) {
+        const len = view.getUint32(off);
+        const type = latin1.decode(bytes.subarray(off + 4, off + 8));
+        const dataStart = off + 8;
+        const dataEnd = dataStart + len;
+        if (dataEnd > bytes.length) break;
+        if (type === "IEND") break;
+        if (type === "tEXt" || type === "zTXt" || type === "iTXt") {
+          const data = bytes.subarray(dataStart, dataEnd);
+          let k = 0;
+          while (k < data.length && data[k] !== 0) k++;
+          const keyword = latin1.decode(data.subarray(0, k)).toLowerCase();
+          if (keyword === "chara") {
+            const rest = data.subarray(k + 1);
+            if (type === "tEXt") {
+              const raw = latin1.decode(rest).trim();
+              // chub.ai encodes as base64; fall back to direct parse for plain-JSON embeds
+              try { return parseJsonLoose(atob(raw)); } catch { return parseJsonLoose(raw); }
+            }
+            if (type === "zTXt") {
+              return inflateDecompress(rest.subarray(1)).then(parseJsonLoose).catch(() => null);
+            }
+            // iTXt: compressionFlag(1) compressionMethod(1) lang\0 translated\0 [compressed] text
+            const cflag = rest[0];
+            let p = 2;
+            while (p < rest.length && rest[p] !== 0) p++; p++;
+            while (p < rest.length && rest[p] !== 0) p++; p++;
+            const payload = rest.subarray(p);
+            return cflag
+              ? inflateDecompress(payload).then(parseJsonLoose).catch(() => null)
+              : new TextDecoder().decode(payload);
+          }
+        }
+        off = dataEnd + 4; // skip CRC
+      }
+      return null;
+    }
+
+    function tryExtractBase64Json(str) {
+      const clean = String(str).replace(/\0/g, "").trim().replace(/^exif:\s*/i, "");
+      if (!clean) return null;
+      // Strategy 1: whole chunk is base64-encoded JSON
+      try {
+        const json = JSON.parse(atob(clean));
+        if (json && typeof json === "object") return normalizeCard(json);
+      } catch { /* fall through */ }
+      // Strategy 2: substring base64 scan (some encoders wrap with header bytes)
+      const b64Match = clean.match(/[A-Za-z0-9+/]{40,}={0,2}/g);
+      if (b64Match) {
+        for (const seg of b64Match) {
+          try {
+            const json = JSON.parse(atob(seg));
+            if (json && typeof json === "object" && json.name) return normalizeCard(json);
+          } catch { /* continue */ }
+        }
+      }
+      // Strategy 3: chunk is raw JSON
+      try {
+        const json = parseJsonLoose(clean);
+        if (json && typeof json === "object") return normalizeCard(json);
+      } catch { /* fall through */ }
+      return null;
+    }
+
+    function scanExifIfdForChara(bytes, view, ifdStart, littleEndian) {
+      // Minimal EXIF IFD entry scanner: look for UserComment tag 0x9286
+      try {
+        const entryCount = view.getUint16(ifdStart, littleEndian);
+        for (let i = 0; i < entryCount; i++) {
+          const entryOff = ifdStart + 2 + i * 12;
+          if (entryOff + 12 > bytes.length) break;
+          const tag = view.getUint16(entryOff, littleEndian);
+          if (tag !== 0x9286) continue; // UserComment
+          const dataType = view.getUint16(entryOff + 2, littleEndian);
+          const count = view.getUint32(entryOff + 4, littleEndian);
+          let dataOff;
+          if (count > 4) {
+            dataOff = view.getUint32(entryOff + 8, littleEndian);
+          } else {
+            dataOff = entryOff + 8;
+          }
+          if (dataOff + count > bytes.length) break;
+          // UserComment starts with 8-byte charset code (ASCII\0\0\0 or UNICODE\0 etc)
+          const payload = bytes.subarray(dataOff + 8, dataOff + count);
+          const text = new TextDecoder("utf-8").decode(payload).replace(/\0/g, "").trim();
+          if (text) {
+            const result = tryExtractBase64Json(text);
+            if (result) return result;
+          }
+          break;
+        }
+      } catch { /* ignore */ }
+      return null;
+    }
+
+    function parseWebpChara(buf) {
+      const view = new DataView(buf);
+      if (view.byteLength < 12 || view.getUint32(0) !== 0x52494646) return null;
+      const bytes = new Uint8Array(buf);
+      const latin1 = new TextDecoder("latin1");
+      let off = 12;
+      while (off + 8 <= bytes.length) {
+        const type = latin1.decode(bytes.subarray(off, off + 4));
+        const size = view.getUint32(off + 4, true);
+        const dataStart = off + 8;
+        const dataEnd = dataStart + size;
+        if (dataEnd > bytes.length) break;
+        if (type === "EXIF" || type === "XMP ") {
+          // Strategy A: treat chunk as text and try base64/JSON extraction
+          const chunk = latin1.decode(bytes.subarray(dataStart, dataEnd));
+          const found = tryExtractBase64Json(chunk);
+          if (found) return found;
+
+          // Strategy B: parse as binary EXIF to find UserComment IFD entry
+          if (type === "EXIF") {
+            try {
+              // EXIF header: 6 bytes "Exif\0\0" then TIFF header
+              const exifStart = dataStart + 6;
+              if (exifStart + 8 < dataEnd) {
+                const byteOrder = view.getUint16(exifStart, true);
+                const le = byteOrder === 0x4949; // "II" = little-endian
+                const ifd0Offset = view.getUint32(exifStart + 4, le);
+                const ifd0Start = exifStart + ifd0Offset;
+                if (ifd0Start < dataEnd) {
+                  const result = scanExifIfdForChara(bytes, new DataView(buf, exifStart), ifd0Offset, le);
+                  if (result) return result;
+                }
+              }
+            } catch { /* ignore */ }
+          }
+        }
+        off = (dataEnd + 1) & ~1;
+      }
+      return null;
+    }
+
+    async function parseCardFile(file) {
+      const name = (file.name || "").toLowerCase();
+      const ext = name.split(".").pop();
+      if (ext === "json" || ext === "jsonc" || ext === "txt") {
+        const json = parseJsonLoose(stripJsonComments(await file.text()));
+        if (!json) throw new Error("JSON is empty or malformed.");
+        return normalizeCard(json);
+      }
+      if (ext === "png") {
+        const raw = await parsePngChara(await file.arrayBuffer());
+        if (!raw) throw new Error("No character data embedded in this PNG. On chub.ai, export as 'PNG (V2)' or 'JSON'.");
+        const card = normalizeCard(raw);
+        try {
+          const avatarUrl = await compressAvatarImage(file, 384);
+          if (avatarUrl) {
+            card.avatar = avatarUrl;
+            if (card.data) card.data.avatar = avatarUrl;
+          }
+        } catch (_) {}
+        return card;
+      }
+      if (ext === "webp") {
+        const raw = parseWebpChara(await file.arrayBuffer());
+        if (!raw) throw new Error("No character data embedded in this WebP. On chub.ai, export as 'PNG (V2)' or 'JSON'.");
+        const card = normalizeCard(raw);
+        try {
+          const avatarUrl = await compressAvatarImage(file, 384);
+          if (avatarUrl) {
+            card.avatar = avatarUrl;
+            if (card.data) card.data.avatar = avatarUrl;
+          }
+        } catch (_) {}
+        return card;
+      }
+      throw new Error('Unsupported file type. Use a JSON (.json/.jsonc) card or the V2 PNG card from chub.ai.');
+    }
+
+    await seedRosterIfEmpty();
+    await renderCatalog();
+  </script>
+
+  <!-- Persona Editor Modal -->
+  <!-- Persona Editor Modal -->
+  <div class="modal-backdrop" id="editor-modal-backdrop"></div>
+  <div class="history-modal settings-popup-modal" id="editor-modal" role="dialog" aria-modal="true" aria-labelledby="editor-persona-title">
+    <div class="modal-header">
+      <div>
+        <h2 id="editor-persona-title" style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin: 0;">Edit Persona</h2>
+        <p style="font-size: 11.5px; color: var(--text-faint); margin: 2px 0 0 0;">Configure your author identity and speaking traits.</p>
+      </div>
+      <button id="close-editor-modal-btn" class="btn-icon" title="Close" aria-label="Close dialog">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body" style="gap: 14px; padding: 18px 22px;">
+      <!-- Persona Hero Section (Matches Character Detail Pop-up) -->
+      <div class="persona-hero-section">
+        <div class="persona-portrait-container">
+          <div id="editor-persona-avatar-preview" class="persona-editor-avatar-box" role="button" tabindex="0" title="Click to replace persona photo" aria-label="Replace persona photo">
+            <div class="persona-avatar-inner" id="editor-persona-avatar-inner">
+              <span id="editor-persona-avatar-text">U</span>
+            </div>
+            <div class="portrait-hover-overlay">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+              </svg>
+              <span>Replace Image</span>
+            </div>
+          </div>
+          <button type="button" id="editor-persona-remove-avatar-btn" class="persona-remove-link" style="display: none;">Remove photo</button>
+          <input type="file" id="editor-persona-avatar-file" accept="image/*" style="display: none;">
+        </div>
+        <div class="persona-hero-fields">
+          <div class="persona-info-field">
+            <label for="editor-persona-name">Persona Name <span style="color: var(--accent-char);">*</span></label>
+            <input type="text" id="editor-persona-name" class="form-input" placeholder="e.g. Bal, King of Florin" maxlength="80">
+          </div>
+          <div class="persona-info-field">
+            <label for="editor-persona-desc">Role / Brief Description</label>
+            <input type="text" id="editor-persona-desc" class="form-input" placeholder="e.g. Ruler defending the realm" maxlength="200">
+          </div>
+        </div>
+      </div>
+
+      <!-- Persona Prompt & Definition -->
+      <div class="form-group" style="display:flex; flex-direction:column; gap:6px; flex: 1;">
+        <label for="editor-persona-template" style="color:var(--text-primary); font-size:12.5px; font-weight:600; margin:0;">
+          Persona Definition &amp; Instructions <span style="font-size: 11px; font-weight: 400; color: var(--text-faint);">(optional)</span>
+        </label>
+        <span style="font-size: 11.5px; color: var(--text-secondary); line-height: 1.4;">Context and dialogue traits injected into the Block 0 prompt prefix so the character recognizes who you are.</span>
+        <textarea id="editor-persona-template" class="form-textarea" rows="5" style="min-height: 120px; font-size: 13px; line-height: 1.5; resize: vertical;" placeholder="e.g. Bal is the reigning monarch of Florin. Speaks with measured, quiet authority. Cares deeply for his subjects and expects blunt honesty from his council."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer" style="padding: 12px 22px; border-top: 1px solid var(--border-subtle); display: flex; justify-content: flex-end; gap: 10px;">
+      <button id="cancel-editor-btn" class="btn ghost">Cancel</button>
+      <button id="save-editor-btn" class="btn primary" style="min-width: 130px;">Save Persona</button>
+    </div>
+  </div>
+
+  <!-- System Prompt Editor Modal -->
+  <div class="modal-backdrop" id="editor-modal-directive-backdrop"></div>
+  <div class="history-modal settings-popup-modal" id="editor-modal-directive" role="dialog" aria-modal="true" aria-labelledby="editor-directive-title">
+    <div class="modal-header">
+      <div>
+        <h2 id="editor-directive-title" style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin: 0;">Edit System Prompt</h2>
+        <p style="font-size: 11.5px; color: var(--text-faint); margin: 2px 0 0 0;">Craft contract rules injected into the Block 0 prefix.</p>
+      </div>
+      <button id="close-editor-modal-directive-btn" class="btn-icon" title="Close" aria-label="Close dialog">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body" style="gap: 14px; padding: 18px 22px;">
+      <div class="directive-header-grid">
+        <div class="form-group" style="display:flex; flex-direction:column; gap:4px;">
+          <label for="editor-directive-name" style="color:var(--text-faint); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; margin:0;">Directive Name <span style="color: var(--accent-char);">*</span></label>
+          <input type="text" id="editor-directive-name" class="form-input" placeholder="e.g. AGENTS.md Contract" maxlength="80">
+        </div>
+        <div class="form-group" style="display:flex; flex-direction:column; gap:4px;">
+          <label for="editor-directive-desc" style="color:var(--text-faint); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; margin:0;">Summary / Purpose</label>
+          <input type="text" id="editor-directive-desc" class="form-input" placeholder="e.g. Third person limited, anti-slop rules" maxlength="200">
+        </div>
+      </div>
+      <div class="form-group" style="display:flex; flex-direction:column; gap:6px; flex: 1;">
+        <label for="editor-directive-content" style="color:var(--text-primary); font-size:12.5px; font-weight:600; margin:0;">Contract Content / System Prompt <span style="color: var(--accent-char);">*</span></label>
+        <textarea id="editor-directive-content" class="form-textarea" rows="9" style="font-family: var(--font-mono); font-size: 12px; line-height: 1.55; min-height: 180px; height: 28vh; resize: vertical;" placeholder="System prompt instructions, bans, and formatting rules..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer" style="padding: 12px 22px; border-top: 1px solid var(--border-subtle); display: flex; justify-content: flex-end; gap: 10px;">
+      <button id="cancel-directive-btn" class="btn ghost">Cancel</button>
+      <button id="save-directive-btn" class="btn primary" style="min-width: 140px;">Save Directive</button>
+    </div>
+  </div>
+
+  <!-- Settings Popup Modal -->
+  <div class="modal-backdrop" id="settings-popup-backdrop"></div>
+  <div class="history-modal settings-popup-modal" id="settings-popup" role="dialog" aria-modal="true" aria-labelledby="settings-popup-title">
+    <div class="modal-header">
+      <div>
+        <h2 id="settings-popup-title" style="font-size: 15px; font-weight: 600; color: var(--text-primary); margin: 0;">Settings &amp; Presets</h2>
+        <p style="font-size: 11.5px; color: var(--text-faint); margin: 2px 0 0 0;">Inference engine, parameters, personas, and craft contracts.</p>
+      </div>
+      <button id="close-settings-popup-btn" class="btn-icon" title="Close" aria-label="Close dialog">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <!-- Tab Navigation -->
+      <nav class="settings-tab-nav" role="tablist">
+        <button class="settings-tab-btn active" data-tab="settings-engine-tab" role="tab" aria-selected="true">Engine</button>
+        <button class="settings-tab-btn" data-tab="settings-params-tab" role="tab" aria-selected="false">Parameters</button>
+        <button class="settings-tab-btn" data-tab="settings-personas-tab" role="tab" aria-selected="false">Personas</button>
+        <button class="settings-tab-btn" data-tab="settings-system-prompts-tab" role="tab" aria-selected="false">Directives</button>
+      </nav>
+
+      <!-- Engine & Model Tab -->
+      <section class="settings-tab-pane active" id="settings-engine-tab" role="tabpanel">
+        <div class="settings-guidance-card">
+          <div class="settings-guidance-title">Inference Engine &amp; Models</div>
+          <div class="settings-guidance-text">
+            Connect to any OpenAI-compatible completions API (e.g. OpenRouter, vLLM, Ollama, LM Studio). Credentials are stored locally in your browser's IndexedDB and never leave your machine.
+          </div>
+        </div>
+
+        <div class="form-panel" style="display: flex; flex-direction: column; gap: 16px;">
+          <div class="form-field">
+            <label class="form-label" for="popup-api-endpoint">
+              <span>API Base URL</span>
+              <span style="font-size: 11px; color: var(--text-faint);">OpenAI-compatible</span>
+            </label>
+            <input type="text" id="popup-api-endpoint" class="form-input" placeholder="https://api.example.com/v1">
+            <span class="field-hint">The base URL of your inference provider terminating in /v1</span>
+          </div>
+
+          <div class="form-field">
+            <label class="form-label" for="popup-api-key">
+              <span>API Key</span>
+              <span style="font-size: 11px; color: var(--text-faint);">Stored locally</span>
+            </label>
+            <input type="password" id="popup-api-key" class="form-input" placeholder="sk-...">
+            <span class="field-hint">Your API token or proxy secret. Stored strictly in local IndexedDB.</span>
+          </div>
+
+          <div class="form-field">
+            <div class="form-label">
+              <span>Primary Story Model</span>
+              <button id="popup-fetch-models-btn" class="btn ghost" style="padding: 2px 8px; font-size: 11px;">Fetch Models</button>
+            </div>
+            <select id="popup-model-select" class="form-input"><option value="">Select a model after fetching models</option></select>
+            <span class="field-hint">The primary model used to generate prose, narration, and character dialogue.</span>
+          </div>
+
+          <div class="card-surface" style="display: flex; flex-direction: column; gap: 10px; margin-top: 6px; margin-bottom: 4px;">
+            <label class="form-checkbox-row" style="cursor: pointer; display: flex; align-items: flex-start; gap: 10px;">
+              <input type="checkbox" id="popup-enable-thoughts" style="margin-top: 3px;" />
+              <div>
+                <span style="font-size: 13px; font-weight: 500; color: var(--text-primary);">Character Inner Thoughts (&lt;thought&gt;)</span>
+                <p class="field-hint" style="margin-top: 2px;">When enabled, characters produce private cognitive monologues before speaking in scene.</p>
+              </div>
+            </label>
+            <div id="popup-thought-model-wrap" style="padding-left: 24px; display: flex; flex-direction: column; gap: 4px;">
+              <label class="form-label" for="popup-subagent-model-select" style="font-size: 11.5px; color: var(--text-secondary);">Thought Reasoning Model</label>
+              <select id="popup-subagent-model-select" class="form-input" style="font-size: 12.5px;"></select>
+              <span class="field-hint">Route &lt;thought&gt; reasoning to a separate fast model, or leave as "Same as main model".</span>
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; margin-top: 12px; margin-bottom: 8px;">
+            <button id="popup-save-engine-btn" class="btn primary">Save Engine Settings</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Generation Parameters Tab -->
+      <section class="settings-tab-pane" id="settings-params-tab" role="tabpanel">
+        <div class="settings-guidance-card">
+          <div class="settings-guidance-title">Sampler &amp; Context Controls</div>
+          <div class="settings-guidance-text">
+            Balance creative unpredictability against narrative coherence. These sampling parameters are passed to the model on every inference request.
+          </div>
+        </div>
+
+        <div class="form-panel" style="display: flex; flex-direction: column; gap: 16px;">
+          <div class="form-field">
+            <div class="form-label">
+              <span>Temperature</span>
+              <span id="popup-val-temp" class="slider-value-badge">0.85</span>
+            </div>
+            <input type="range" id="popup-slider-temp" class="form-slider" min="0.1" max="2.0" step="0.05" value="0.85">
+            <span class="field-hint">Controls randomness. Lower (0.4–0.7) is focused and deterministic; higher (0.8–1.1) is creative and descriptive.</span>
+          </div>
+
+          <div class="form-field">
+            <div class="form-label">
+              <span>Top P</span>
+              <span id="popup-val-topp" class="slider-value-badge">0.95</span>
+            </div>
+            <input type="range" id="popup-slider-topp" class="form-slider" min="0.1" max="1.0" step="0.05" value="0.95">
+            <span class="field-hint">Nucleus sampling. Considers only tokens comprising the top P probability mass.</span>
+          </div>
+
+          <div class="form-field">
+            <div class="form-label">
+              <span>Min P</span>
+              <span id="popup-val-minp" class="slider-value-badge">0.05</span>
+            </div>
+            <input type="range" id="popup-slider-minp" class="form-slider" min="0.0" max="0.5" step="0.01" value="0.05">
+            <span class="field-hint">Dynamic probability cutoff relative to the top token. Trims low-probability noise without truncating creative tails.</span>
+          </div>
+
+          <div class="form-field">
+            <div class="form-label">
+              <span>Max Response Tokens</span>
+              <span id="popup-val-tokens" class="slider-value-badge">1200</span>
+            </div>
+            <input type="range" id="popup-slider-tokens" class="form-slider" min="200" max="4096" step="50" value="1200">
+            <span class="field-hint">Maximum token ceiling per generated turn. 1200 tokens ≈ 3–4 rich literary paragraphs.</span>
+          </div>
+
+          <div class="form-field">
+            <div class="form-label">
+              <span>Frequency Penalty</span>
+              <span id="popup-val-freq" class="slider-value-badge">0.25</span>
+            </div>
+            <input type="range" id="popup-slider-freq" class="form-slider" min="-2.0" max="2.0" step="0.05" value="0.25">
+            <span class="field-hint">Penalizes words based on frequency in output so far. Higher values reduce repetitive verbal tics.</span>
+          </div>
+
+          <div class="form-field">
+            <div class="form-label">
+              <span>Presence Penalty</span>
+              <span id="popup-val-pres" class="slider-value-badge">0.15</span>
+            </div>
+            <input type="range" id="popup-slider-pres" class="form-slider" min="-2.0" max="2.0" step="0.05" value="0.15">
+            <span class="field-hint">Penalizes tokens that have already appeared once, encouraging new topics and vocabulary.</span>
+          </div>
+
+          <div class="form-field">
+            <div class="form-label">
+              <span>Max Context Budget (Tokens)</span>
+              <span id="popup-val-context" class="slider-value-badge">16384</span>
+            </div>
+            <input type="range" id="popup-slider-context" class="form-slider" min="2048" max="65536" step="1024" value="16384">
+            <span class="field-hint">Context window limit. Triggers omp-style compaction (summarizes older middle turns) when history exceeds this limit.</span>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end; margin-top: 14px; margin-bottom: 8px;">
+            <button id="popup-save-params-btn" class="btn primary">Save Parameters</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Personas Tab -->
+      <section class="settings-tab-pane" id="settings-personas-tab" role="tabpanel">
+        <div class="settings-guidance-card">
+          <div class="settings-guidance-title">User &amp; Author Personas</div>
+          <div class="settings-guidance-text">
+            Personas define who you are in roleplay and fiction scenes. Set one persona as <strong>Global Default</strong> to be automatically used in all new chats. You can also override personas per individual character card.
+          </div>
+        </div>
+
+        <div class="form-panel">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 8px;">
+            <div style="font-size: 11.5px; font-weight: 600; color: var(--accent-char); text-transform: uppercase; letter-spacing: 0.05em;">Saved Personas</div>
+            <button id="create-new-persona-btn" class="btn primary btn-sm" style="padding: 4px 12px; font-size: 12px;">+ Create Persona</button>
+          </div>
+          <div id="settings-personas-list" style="display: flex; flex-direction: column; gap: 10px;"></div>
+        </div>
+      </section>
+
+      <!-- System Prompts Tab -->
+      <section class="settings-tab-pane" id="settings-system-prompts-tab" role="tabpanel">
+        <div class="settings-guidance-card">
+          <div class="settings-guidance-title">Craft Directives (System Prompts)</div>
+          <div class="settings-guidance-text">
+            Directives are foundational system prompt contracts (such as <code>AGENTS.md</code>) injected into the Block 0 prefix. They strictly govern narrative voice, banned AI clichés, register consistency, and pacing.
+          </div>
+        </div>
+
+        <div class="form-panel">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 8px;">
+            <div style="font-size: 11.5px; font-weight: 600; color: var(--accent-char); text-transform: uppercase; letter-spacing: 0.05em;">Saved Directives</div>
+            <button id="create-new-sysprompt-btn" class="btn primary btn-sm" style="padding: 4px 12px; font-size: 12px;">+ New Directive</button>
+          </div>
+          <div id="settings-system-prompts-list" style="display: flex; flex-direction: column; gap: 10px;"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script type="module">
+    import { LocalDb } from "./local_db.js";
+    import { BrowserChatEngine } from "./browser_engine.js";
+
+    // Modal elements
+    const popup = document.getElementById("settings-popup");
+    const popupBackdrop = document.getElementById("settings-popup-backdrop");
+    const toggleSettingsBtn = document.getElementById("toggle-settings-btn");
+    const personaBtn = document.getElementById("persona-mgmt-btn");
+    const closePopupBtn = document.getElementById("close-settings-popup-btn");
+
+    const popupApiEndpoint = document.getElementById("popup-api-endpoint");
+    const popupApiKey = document.getElementById("popup-api-key");
+    const popupModelSelect = document.getElementById("popup-model-select");
+    const popupSubagentModelSelect = document.getElementById("popup-subagent-model-select");
+    const popupThoughtModelWrap = document.getElementById("popup-thought-model-wrap");
+    const popupFetchModelsBtn = document.getElementById("popup-fetch-models-btn");
+    const popupEnableThoughts = document.getElementById("popup-enable-thoughts");
+    const popupSaveEngineBtn = document.getElementById("popup-save-engine-btn");
+
+    const popupSliderTemp = document.getElementById("popup-slider-temp");
+    const popupValTemp = document.getElementById("popup-val-temp");
+    const popupSliderTopP = document.getElementById("popup-slider-topp");
+    const popupValTopP = document.getElementById("popup-val-topp");
+    const popupSliderMinP = document.getElementById("popup-slider-minp");
+    const popupValMinP = document.getElementById("popup-val-minp");
+    const popupSliderTokens = document.getElementById("popup-slider-tokens");
+    const popupValTokens = document.getElementById("popup-val-tokens");
+    const popupSliderFreq = document.getElementById("popup-slider-freq");
+    const popupValFreq = document.getElementById("popup-val-freq");
+    const popupSliderPres = document.getElementById("popup-slider-pres");
+    const popupValPres = document.getElementById("popup-val-pres");
+    const popupSliderContext = document.getElementById("popup-slider-context");
+    const popupValContext = document.getElementById("popup-val-context");
+    const popupSaveParamsBtn = document.getElementById("popup-save-params-btn");
+
+    const editorModalPersona = document.getElementById("editor-modal");
+    const editorModalPersonaBackdrop = document.getElementById("editor-modal-backdrop");
+    const closeEditorPersonaBtn = document.getElementById("close-editor-modal-btn");
+    const cancelEditorPersonaBtn = document.getElementById("cancel-editor-btn");
+    const saveEditorPersonaBtn = document.getElementById("save-editor-btn");
+    const editorPersonaTitle = document.getElementById("editor-persona-title");
+    const personaNameInput = document.getElementById("editor-persona-name");
+    const personaDescInput = document.getElementById("editor-persona-desc");
+    const personaTemplateInput = document.getElementById("editor-persona-template");
+
+    const editorPersonaAvatarPreview = document.getElementById("editor-persona-avatar-preview");
+    const editorPersonaUploadBtn = document.getElementById("editor-persona-upload-btn");
+    const editorPersonaRemoveAvatarBtn = document.getElementById("editor-persona-remove-avatar-btn");
+    const editorPersonaAvatarFile = document.getElementById("editor-persona-avatar-file");
+    let currentEditPersonaAvatar = null;
+
+    editorPersonaAvatarPreview?.addEventListener("click", () => editorPersonaAvatarFile?.click());
+    editorPersonaAvatarPreview?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        editorPersonaAvatarFile?.click();
+      }
+    });
+    editorPersonaUploadBtn?.addEventListener("click", () => editorPersonaAvatarFile?.click());
+
+    editorPersonaAvatarFile?.addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      editorPersonaAvatarFile.value = "";
+      try {
+        const dataUrl = await compressAvatarImage(file, 256);
+        currentEditPersonaAvatar = dataUrl;
+        updatePersonaAvatarPreview();
+      } catch (err) {
+        showToast("Failed to load image: " + err.message, "error");
+      }
+    });
+
+    editorPersonaRemoveAvatarBtn?.addEventListener("click", () => {
+      currentEditPersonaAvatar = null;
+      updatePersonaAvatarPreview();
+    });
+
+    personaNameInput?.addEventListener("input", () => {
+      if (!currentEditPersonaAvatar) updatePersonaAvatarPreview();
+    });
+
+    function updatePersonaAvatarPreview() {
+      if (!editorPersonaAvatarPreview) return;
+      const targetInner = document.getElementById("editor-persona-avatar-inner") || editorPersonaAvatarPreview;
+      if (currentEditPersonaAvatar && (currentEditPersonaAvatar.startsWith("data:") || currentEditPersonaAvatar.startsWith("http"))) {
+        targetInner.innerHTML = `<img src="${escapeHtml(currentEditPersonaAvatar)}" alt="Persona avatar" style="width:100%;height:100%;object-fit:cover;">`;
+        if (editorPersonaRemoveAvatarBtn) editorPersonaRemoveAvatarBtn.style.display = "inline-block";
+      } else {
+        const letter = (personaNameInput?.value.trim().charAt(0) || "U").toUpperCase();
+        targetInner.innerHTML = `<span id="editor-persona-avatar-text">${escapeHtml(letter)}</span>`;
+        if (editorPersonaRemoveAvatarBtn) editorPersonaRemoveAvatarBtn.style.display = "none";
+      }
+    }
+
+    const editorModalDirective = document.getElementById("editor-modal-directive");
+    const editorModalDirectiveBackdrop = document.getElementById("editor-modal-directive-backdrop");
+    const closeEditorDirectiveBtn = document.getElementById("close-editor-modal-directive-btn");
+    const cancelEditorDirectiveBtn = document.getElementById("cancel-directive-btn");
+    const saveEditorDirectiveBtn = document.getElementById("save-directive-btn");
+    const editorDirectiveTitle = document.getElementById("editor-directive-title");
+    const directiveNameInput = document.getElementById("editor-directive-name");
+    const directiveDescInput = document.getElementById("editor-directive-desc");
+    const directiveContentInput = document.getElementById("editor-directive-content");
+
+    let currentEditPersonaId = null;
+    let currentEditDirectiveId = null;
+
+    // Helper: escape HTML safely
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    // Close helper for Persona Editor
+    function closeEditorPersona() {
+      if (editorModalPersona) {
+        editorModalPersona.classList.remove("open");
+      }
+      if (editorModalPersonaBackdrop) {
+        editorModalPersonaBackdrop.classList.remove("open");
+      }
+      currentEditPersonaId = null;
+      currentEditPersonaAvatar = null;
+    }
+
+    // Close helper for Directive Editor
+    function closeEditorDirective() {
+      if (editorModalDirective) {
+        editorModalDirective.classList.remove("open");
+      }
+      if (editorModalDirectiveBackdrop) {
+        editorModalDirectiveBackdrop.classList.remove("open");
+      }
+      currentEditDirectiveId = null;
+    }
+
+    // Open Persona Editor (create or edit)
+    async function openEditorPersona(personaId = null) {
+      closeEditorDirective();
+      currentEditPersonaId = personaId;
+
+      if (personaId) {
+        if (editorPersonaTitle) editorPersonaTitle.textContent = "Edit Persona";
+        const persona = await LocalDb.getPersona(personaId);
+        if (persona) {
+          if (personaNameInput) personaNameInput.value = persona.name || "";
+          if (personaDescInput) personaDescInput.value = persona.description || "";
+          if (personaTemplateInput) personaTemplateInput.value = persona.template || "";
+          currentEditPersonaAvatar = persona.avatar || null;
+        }
+      } else {
+        if (editorPersonaTitle) editorPersonaTitle.textContent = "Create Persona";
+        if (personaNameInput) personaNameInput.value = "";
+        if (personaDescInput) personaDescInput.value = "";
+        if (personaTemplateInput) personaTemplateInput.value = "";
+        currentEditPersonaAvatar = null;
+      }
+      updatePersonaAvatarPreview();
+
+      if (editorModalPersona) {
+        editorModalPersona.classList.add("open");
+      }
+      if (editorModalPersonaBackdrop) {
+        editorModalPersonaBackdrop.classList.add("open");
+      }
+      if (personaNameInput) setTimeout(() => personaNameInput.focus(), 50);
+    }
+
+    // Open Directive Editor (create or edit)
+    async function openEditorDirective(directiveId = null) {
+      closeEditorPersona();
+      currentEditDirectiveId = directiveId;
+
+      if (directiveId) {
+        if (editorDirectiveTitle) editorDirectiveTitle.textContent = "Edit System Prompt";
+        const directive = await LocalDb.getDirective(directiveId);
+        if (directive) {
+          if (directiveNameInput) directiveNameInput.value = directive.name || "";
+          if (directiveDescInput) directiveDescInput.value = directive.description || "";
+          if (directiveContentInput) directiveContentInput.value = directive.content || "";
+        }
+      } else {
+        if (editorDirectiveTitle) editorDirectiveTitle.textContent = "Create System Prompt";
+        if (directiveNameInput) directiveNameInput.value = "";
+        if (directiveDescInput) directiveDescInput.value = "";
+        if (directiveContentInput) directiveContentInput.value = "";
+      }
+
+      if (editorModalDirective) {
+        editorModalDirective.classList.add("open");
+      }
+      if (editorModalDirectiveBackdrop) {
+        editorModalDirectiveBackdrop.classList.add("open");
+      }
+      if (directiveNameInput) setTimeout(() => directiveNameInput.focus(), 50);
+    }
+
+    function renderPopupModels(models, selectedModel, thoughtModel) {
+      if (!popupModelSelect) return;
+      const current = selectedModel || "";
+      const set = new Set((models || []).filter(Boolean));
+      if (current) set.add(current);
+
+      popupModelSelect.innerHTML = "";
+      if (!set.size) {
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = "Select a model after fetching models";
+        popupModelSelect.appendChild(opt);
+      } else {
+        set.forEach(m => {
+          const opt = document.createElement("option");
+          opt.value = m;
+          opt.textContent = m;
+          if (m === current) opt.selected = true;
+          popupModelSelect.appendChild(opt);
+        });
+      }
+
+      if (popupSubagentModelSelect) {
+        popupSubagentModelSelect.innerHTML = "";
+        const defaultOpt = document.createElement("option");
+        defaultOpt.value = "";
+        defaultOpt.textContent = "Same as main model";
+        popupSubagentModelSelect.appendChild(defaultOpt);
+
+        set.forEach(m => {
+          const opt = document.createElement("option");
+          opt.value = m;
+          opt.textContent = m;
+          if (m === thoughtModel) opt.selected = true;
+          popupSubagentModelSelect.appendChild(opt);
+        });
+      }
+    }
+
+    function loadEngineSettings() {
+      const settings = LocalDb.getSettings();
+      if (popupApiEndpoint) popupApiEndpoint.value = settings.apiEndpoint || "";
+      if (popupApiKey) popupApiKey.value = settings.apiKey || "";
+
+      const isThoughts = settings.enableSubagentThoughts !== false;
+      if (popupEnableThoughts) popupEnableThoughts.checked = isThoughts;
+      if (popupThoughtModelWrap) {
+        popupThoughtModelWrap.style.display = isThoughts ? "flex" : "none";
+      }
+
+      const activeThoughtModel = settings.thoughtModel || settings.subagentModel || "";
+      renderPopupModels(settings.availableModels || [], settings.model, activeThoughtModel);
+    }
+
+    function loadParamsSettings() {
+      const settings = LocalDb.getSettings();
+      if (popupSliderTemp) {
+        popupSliderTemp.value = settings.temperature ?? 0.85;
+        if (popupValTemp) popupValTemp.textContent = parseFloat(popupSliderTemp.value).toFixed(2);
+      }
+      if (popupSliderTopP) {
+        popupSliderTopP.value = settings.topP ?? 0.95;
+        if (popupValTopP) popupValTopP.textContent = parseFloat(popupSliderTopP.value).toFixed(2);
+      }
+      if (popupSliderMinP) {
+        popupSliderMinP.value = settings.minP ?? 0.05;
+        if (popupValMinP) popupValMinP.textContent = parseFloat(popupSliderMinP.value).toFixed(2);
+      }
+      if (popupSliderTokens) {
+        popupSliderTokens.value = settings.maxTokens ?? 1200;
+        if (popupValTokens) popupValTokens.textContent = popupSliderTokens.value;
+      }
+      if (popupSliderFreq) {
+        popupSliderFreq.value = settings.frequencyPenalty ?? 0.25;
+        if (popupValFreq) popupValFreq.textContent = parseFloat(popupSliderFreq.value).toFixed(2);
+      }
+      if (popupSliderPres) {
+        popupSliderPres.value = settings.presencePenalty ?? 0.15;
+        if (popupValPres) popupValPres.textContent = parseFloat(popupSliderPres.value).toFixed(2);
+      }
+      if (popupSliderContext) {
+        popupSliderContext.value = settings.maxContextTokens ?? 16384;
+        if (popupValContext) popupValContext.textContent = popupSliderContext.value;
+      }
+    }
+
+    // Main popup open/close
+    function openPopup() {
+      closeEditorPersona();
+      closeEditorDirective();
+
+      if (popup) {
+        popup.classList.add("open");
+      }
+      if (popupBackdrop) {
+        popupBackdrop.classList.add("open");
+      }
+
+      loadEngineSettings();
+      loadParamsSettings();
+      loadPersonasList();
+      loadSystemPromptsList();
+
+      const firstTab = popup?.querySelector(".settings-tab-btn");
+      if (firstTab) setTimeout(() => firstTab.focus(), 50);
+    }
+
+    function closePopup() {
+      closeEditorPersona();
+      closeEditorDirective();
+
+      if (popup) {
+        popup.classList.remove("open");
+      }
+      if (popupBackdrop) {
+        popupBackdrop.classList.remove("open");
+      }
+    }
+
+    // Tab switching
+    const tabNavs = popup?.querySelectorAll(".settings-tab-nav");
+    tabNavs?.forEach(nav => {
+      nav.addEventListener("click", (e) => {
+        const target = e.target.closest(".settings-tab-btn");
+        if (!target) return;
+        const tabId = target.dataset.tab;
+        if (!tabId) return;
+
+        nav.querySelectorAll(".settings-tab-btn").forEach(b => {
+          b.classList.remove("active");
+          b.setAttribute("aria-selected", "false");
+        });
+        target.classList.add("active");
+        target.setAttribute("aria-selected", "true");
+
+        const allPanes = nav.closest('.modal-body').querySelectorAll(".settings-tab-pane");
+        allPanes.forEach(p => p.classList.remove("active"));
+        const activePane = document.getElementById(tabId);
+        if (activePane) {
+          activePane.classList.remove("active");
+          void activePane.offsetWidth; // retrigger tabFadeIn animation cleanly
+          activePane.classList.add("active");
+        }
+      });
+    });
+
+    // Load personas list
+    async function loadPersonasList() {
+      const container = document.getElementById("settings-personas-list");
+      if (!container) return;
+
+      const personas = await LocalDb.getAllPersonas();
+      container.innerHTML = "";
+
+      if (personas.length === 0) {
+        container.innerHTML = `<div style="text-align:center;color:var(--text-secondary);padding:24px;border:1px dashed var(--border-subtle);border-radius:8px;">No personas created yet. Click "+ Create New Persona" below to create one.</div>`;
+        return;
+      }
+
+      personas.forEach(p => {
+        const row = document.createElement("div");
+        row.className = "card-surface";
+        row.style.display = "flex";
+        row.style.flexDirection = "column";
+        row.style.gap = "8px";
+        row.style.textAlign = "left";
+
+        const isAvatarImg = p.avatar && (p.avatar.startsWith("data:") || p.avatar.startsWith("http"));
+        const avatarInner = isAvatarImg
+          ? `<img src="${escapeHtml(p.avatar)}" alt="${escapeHtml(p.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+          : escapeHtml((p.avatar || p.name?.charAt(0) || "U").toUpperCase());
+        const isDefault = Boolean(p.isDefault);
+
+        row.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+            <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+              <div style="width:28px;height:28px;border-radius:50%;background:var(--bg-card);border:1px solid var(--border-muted);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--accent-char);flex-shrink:0;overflow:hidden;">
+                ${avatarInner}
+              </div>
+              <div style="min-width:0;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <strong style="color:var(--text-primary);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(p.name || "Unnamed Persona")}</strong>
+                  ${isDefault ? '<span class="badge-default">Default</span>' : ''}
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+              ${!isDefault ? `<button class="btn ghost" data-delete-persona="${p.id}" title="Delete Persona" style="color:var(--danger, #e06c75);">Delete</button>` : ''}
+              ${!isDefault ? `<button class="btn ghost" data-default-persona="${p.id}" title="Set as Global Default">Set Default</button>` : ''}
+              <button class="btn ghost" data-edit-persona="${p.id}" title="Edit Persona">Edit</button>
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--text-secondary);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">
+            ${escapeHtml(p.description || p.template || "No bio or scenario roleplay prompt defined.")}
+          </div>
+        `;
+
+        row.querySelector(`[data-default-persona="${p.id}"]`)?.addEventListener("click", async () => {
+          await LocalDb.setDefaultPersona(p.id);
+          showToast(`"${p.name}" set as global default persona.`, "info");
+          await loadPersonasList();
+        });
+
+        row.querySelector(`[data-edit-persona="${p.id}"]`)?.addEventListener("click", () => {
+          openEditorPersona(p.id);
+        });
+
+        row.querySelector(`[data-delete-persona="${p.id}"]`)?.addEventListener("click", async () => {
+          if (confirm(`Delete persona "${p.name}"?`)) {
+            await LocalDb.deletePersona(p.id);
+            showToast("Persona deleted.", "info");
+            await loadPersonasList();
+          }
+        });
+
+        container.appendChild(row);
+      });
+    }
+
+    // Load system prompts list
+    async function loadSystemPromptsList() {
+      const container = document.getElementById("settings-system-prompts-list");
+      if (!container) return;
+
+      const directives = await LocalDb.getAllDirectives();
+      container.innerHTML = "";
+
+      if (directives.length === 0) {
+        container.innerHTML = `<div style="text-align:center;color:var(--text-secondary);padding:24px;border:1px dashed var(--border-subtle);border-radius:8px;">No system prompts created yet. Click "+ New Craft Directive" below to create one.</div>`;
+        return;
+      }
+
+      directives.forEach(d => {
+        const row = document.createElement("div");
+        row.className = "card-surface";
+        row.style.display = "flex";
+        row.style.flexDirection = "column";
+        row.style.gap = "8px";
+        row.style.textAlign = "left";
+
+        const isDefault = Boolean(d.isDefault);
+
+        row.innerHTML = `
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+            <div style="min-width:0;">
+              <div style="display:flex;align-items:center;gap:8px;">
+                <strong style="color:var(--text-primary);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(d.name || "Unnamed Directive")}</strong>
+                ${isDefault ? '<span class="badge-default">Default</span>' : ''}
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+              ${!isDefault ? `<button class="btn ghost" data-delete-directive="${d.id}" title="Delete Directive" style="color:var(--danger, #e06c75);">Delete</button>` : ''}
+              ${!isDefault ? `<button class="btn ghost" data-default-directive="${d.id}" title="Set as Global Default">Set Default</button>` : ''}
+              <button class="btn ghost" data-edit-directive="${d.id}" title="Edit Directive">Edit</button>
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--text-secondary);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">
+            ${escapeHtml(d.description || (d.content ? d.content.slice(0, 100) + "..." : "No description provided."))}
+          </div>
+        `;
+
+        row.querySelector(`[data-default-directive="${d.id}"]`)?.addEventListener("click", async () => {
+          await LocalDb.setDefaultDirective(d.id);
+          showToast(`"${d.name}" set as global craft directive.`, "info");
+          await loadSystemPromptsList();
+        });
+
+        row.querySelector(`[data-edit-directive="${d.id}"]`)?.addEventListener("click", () => {
+          openEditorDirective(d.id);
+        });
+
+        row.querySelector(`[data-delete-directive="${d.id}"]`)?.addEventListener("click", async () => {
+          if (confirm(`Delete directive "${d.name}"?`)) {
+            await LocalDb.deleteDirective(d.id);
+            showToast("Directive deleted.", "info");
+            await loadSystemPromptsList();
+          }
+        });
+
+        container.appendChild(row);
+      });
+    }
+
+    // Save Persona
+    saveEditorPersonaBtn?.addEventListener("click", async () => {
+      const name = personaNameInput?.value.trim() || "";
+      const desc = personaDescInput?.value.trim() || "";
+      const template = personaTemplateInput?.value || "";
+
+      if (!name) {
+        showToast("Persona name is required.", "error");
+        personaNameInput?.focus();
+        return;
+      }
+
+      const personaData = {
+        id: currentEditPersonaId || "persona_" + Date.now(),
+        name,
+        description: desc,
+        template,
+        avatar: currentEditPersonaAvatar || undefined
+      };
+
+      await LocalDb.savePersona(personaData);
+      await loadPersonasList();
+      closeEditorPersona();
+      showToast(`Persona "${name}" saved.`, "success");
+    });
+
+    // Save Directive
+    saveEditorDirectiveBtn?.addEventListener("click", async () => {
+      const name = directiveNameInput?.value.trim() || "";
+      const desc = directiveDescInput?.value.trim() || "";
+      const content = directiveContentInput?.value || "";
+
+      if (!name) {
+        showToast("System prompt name is required.", "error");
+        directiveNameInput?.focus();
+        return;
+      }
+
+      const directiveData = {
+        id: currentEditDirectiveId || "directive_" + Date.now(),
+        name,
+        description: desc,
+        content
+      };
+
+      await LocalDb.saveDirective(directiveData);
+      await loadSystemPromptsList();
+      closeEditorDirective();
+      showToast(`System prompt "${name}" saved.`, "success");
+    });
+
+    // Wire open/close buttons
+    toggleSettingsBtn?.addEventListener("click", openPopup);
+    personaBtn?.addEventListener("click", openPopup);
+    closePopupBtn?.addEventListener("click", closePopup);
+    popupBackdrop?.addEventListener("click", closePopup);
+
+    // Engine & Parameters save and slider listeners
+    popupEnableThoughts?.addEventListener("change", () => {
+      if (popupThoughtModelWrap) {
+        popupThoughtModelWrap.style.display = popupEnableThoughts.checked ? "flex" : "none";
+      }
+    });
+
+    popupSliderTemp?.addEventListener("input", () => {
+      if (popupValTemp) popupValTemp.textContent = parseFloat(popupSliderTemp.value).toFixed(2);
+    });
+    popupSliderTopP?.addEventListener("input", () => {
+      if (popupValTopP) popupValTopP.textContent = parseFloat(popupSliderTopP.value).toFixed(2);
+    });
+    popupSliderMinP?.addEventListener("input", () => {
+      if (popupValMinP) popupValMinP.textContent = parseFloat(popupSliderMinP.value).toFixed(2);
+    });
+    popupSliderTokens?.addEventListener("input", () => {
+      if (popupValTokens) popupValTokens.textContent = popupSliderTokens.value;
+    });
+    popupSliderFreq?.addEventListener("input", () => {
+      if (popupValFreq) popupValFreq.textContent = parseFloat(popupSliderFreq.value).toFixed(2);
+    });
+    popupSliderPres?.addEventListener("input", () => {
+      if (popupValPres) popupValPres.textContent = parseFloat(popupSliderPres.value).toFixed(2);
+    });
+    popupSliderContext?.addEventListener("input", () => {
+      if (popupValContext) popupValContext.textContent = popupSliderContext.value;
+    });
+
+    popupSaveEngineBtn?.addEventListener("click", () => {
+      const settings = LocalDb.getSettings();
+      settings.apiEndpoint = popupApiEndpoint?.value.trim() ?? "";
+      settings.apiKey = popupApiKey?.value.trim() ?? "";
+      settings.model = popupModelSelect?.value ?? "";
+      settings.enableSubagentThoughts = popupEnableThoughts?.checked ?? settings.enableSubagentThoughts;
+      settings.thoughtModel = popupSubagentModelSelect?.value || "";
+      settings.subagentModel = popupSubagentModelSelect?.value || "";
+      settings.useSeparateSubagentModel = Boolean(popupSubagentModelSelect?.value);
+      LocalDb.saveSettings(settings);
+      showToast("Engine settings saved.", "success");
+    });
+
+    popupSaveParamsBtn?.addEventListener("click", () => {
+      const settings = LocalDb.getSettings();
+      settings.temperature = parseFloat(popupSliderTemp?.value ?? settings.temperature);
+      settings.topP = parseFloat(popupSliderTopP?.value ?? settings.topP);
+      settings.minP = parseFloat(popupSliderMinP?.value ?? (settings.minP ?? 0.05));
+      settings.maxTokens = parseInt(popupSliderTokens?.value ?? settings.maxTokens, 10);
+      settings.frequencyPenalty = parseFloat(popupSliderFreq?.value ?? settings.frequencyPenalty);
+      settings.presencePenalty = parseFloat(popupSliderPres?.value ?? settings.presencePenalty);
+      settings.maxContextTokens = parseInt(popupSliderContext?.value ?? settings.maxContextTokens, 10);
+      LocalDb.saveSettings(settings);
+      showToast("Generation parameters saved.", "success");
+    });
+
+    popupFetchModelsBtn?.addEventListener("click", async () => {
+      popupFetchModelsBtn.textContent = "Fetching...";
+      popupFetchModelsBtn.disabled = true;
+      try {
+        const endpoint = popupApiEndpoint?.value.trim() || undefined;
+        const key = popupApiKey?.value.trim() || undefined;
+        const models = await BrowserChatEngine.fetchAvailableModels(endpoint, key);
+        const settings = LocalDb.getSettings();
+        settings.availableModels = models;
+        LocalDb.saveSettings(settings);
+        renderPopupModels(models, popupModelSelect?.value, popupSubagentModelSelect?.value);
+        showToast(`Fetched ${models.length} models.`, "success");
+      } catch (err) {
+        showToast(`Fetch models failed: ${err.message}`, "error");
+      } finally {
+        popupFetchModelsBtn.textContent = "Fetch Models";
+        popupFetchModelsBtn.disabled = false;
+      }
+    });
+
+    closeEditorPersonaBtn?.addEventListener("click", closeEditorPersona);
+    cancelEditorPersonaBtn?.addEventListener("click", closeEditorPersona);
+    editorModalPersonaBackdrop?.addEventListener("click", closeEditorPersona);
+
+    closeEditorDirectiveBtn?.addEventListener("click", closeEditorDirective);
+    cancelEditorDirectiveBtn?.addEventListener("click", closeEditorDirective);
+    editorModalDirectiveBackdrop?.addEventListener("click", closeEditorDirective);
+
+    // Create buttons in popup
+    document.getElementById("create-new-persona-btn")?.addEventListener("click", () => {
+      openEditorPersona(null);
+    });
+    document.getElementById("create-new-sysprompt-btn")?.addEventListener("click", () => {
+      openEditorDirective(null);
+    });
+
+    // Global escape key handler with proper modal hierarchy
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      if (editorModalPersona?.classList.contains("open")) {
+        closeEditorPersona();
+      } else if (editorModalDirective?.classList.contains("open")) {
+        closeEditorDirective();
+      } else if (popup?.classList.contains("open")) {
+        closePopup();
+      }
+    });
+
+    // Auto-open settings popup if requested via URL redirect
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has("openSettings")) {
+      openPopup();
+      const tabParam = urlParams.get("tab");
+      if (tabParam) {
+        const tabBtn = popup?.querySelector(`[data-tab="${tabParam}"]`);
+        tabBtn?.click();
+      } else if (window.location.hash) {
+        const hashToTab = {
+          "#tab-engine": "settings-engine-tab",
+          "#tab-params": "settings-params-tab",
+          "#tab-directives": "settings-system-prompts-tab",
+          "#tab-personas": "settings-personas-tab",
+        };
+        const targetTab = hashToTab[window.location.hash];
+        if (targetTab) {
+          const tabBtn = popup?.querySelector(`[data-tab="${targetTab}"]`);
+          tabBtn?.click();
+        }
+      }
+      history.replaceState(null, "", "/");
+    }
+  </script>
+
+</body>
+</html>
