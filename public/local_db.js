@@ -29,11 +29,10 @@ export const DEFAULT_SETTINGS = {
   minP: 0.05,
   frequencyPenalty: 0.25,
   presencePenalty: 0.15,
-  maxTokens: 1200,
+  maxTokens: 1500,
   // Total window: input + output. The engine subtracts maxTokens from this to
   // size the prompt, so raising maxTokens shrinks the history budget.
-  maxContextTokens: 16384,
-
+  maxContextTokens: 32768,
   // Directives & Block 0 contract
   agentsContract: DEFAULT_AGENTS_CONTRACT,
 

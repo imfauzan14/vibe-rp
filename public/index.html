@@ -1512,11 +1512,10 @@
           <div class="form-field">
             <div class="form-label">
               <span>Max Response Tokens</span>
-              <span id="popup-val-tokens" class="slider-value-badge">1200</span>
+              <span id="popup-val-tokens" class="slider-value-badge">1500</span>
             </div>
-            <input type="range" id="popup-slider-tokens" class="form-slider" min="200" max="4096" step="50" value="1200">
-            <span class="field-hint">Maximum token ceiling per generated turn. 1200 tokens ≈ 3–4 rich literary paragraphs.</span>
-          </div>
+            <input type="range" id="popup-slider-tokens" class="form-slider" min="200" max="4096" step="50" value="1500">
+            <span class="field-hint">Maximum token ceiling per generated turn. 1500 tokens ≈ 4–5 rich literary paragraphs.</span>
 
           <div class="form-field">
             <div class="form-label">
@@ -1539,11 +1538,10 @@
           <div class="form-field">
             <div class="form-label">
               <span>Max Context Budget (Tokens)</span>
-              <span id="popup-val-context" class="slider-value-badge">16384</span>
+              <span id="popup-val-context" class="slider-value-badge">32768</span>
             </div>
-            <input type="range" id="popup-slider-context" class="form-slider" min="2048" max="65536" step="1024" value="16384">
-            <span class="field-hint">Context window limit. Triggers omp-style compaction (summarizes older middle turns) when history exceeds this limit.</span>
-          </div>
+            <input type="range" id="popup-slider-context" class="form-slider" min="2048" max="65536" step="1024" value="32768">
+            <span class="field-hint">Context window limit. Triggers continuity ledger folding when active history approaches this budget.</span>
 
           <div style="display: flex; justify-content: flex-end; margin-top: 14px; margin-bottom: 8px;">
             <button id="popup-save-params-btn" class="btn primary">Save Parameters</button>
