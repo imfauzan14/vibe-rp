@@ -114,9 +114,10 @@ describe("Default Generation Parameters", () => {
 
   test("resolveBudgets at 32k window: maxTokens 1200 does not starve the prompt", () => {
     const b = BrowserChatEngine.resolveBudgets({ ...DEFAULT_SETTINGS, maxContextTokens: 32768 });
-    expect(b.reservedOutput).toBe(1200); // under the 50% clamp (16384)
-    // 32768 - 1200 - floor(8% of 31568) = 29043
-    expect(b.promptBudget).toBe(29043);
+    expect(b.reservedOutput).toBe(1200); // the user's ceiling, not a half-window cap
+    // 32768 - 1200 - floor(2% of 32768) = 30913; the adaptive margin is now
+    // sub-linear (bounded at 4096) instead of 8% of the window.
+    expect(b.promptBudget).toBe(30913);
     expect(b.promptBudget).toBeGreaterThan(32768 * 0.5);
   });
 });

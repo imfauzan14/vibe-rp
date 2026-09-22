@@ -63,8 +63,36 @@ export const SUMMARY_MAX_TOKENS = 4096; // absolute ceiling
 export const SUMMARY_REASONING_HEADROOM = 512; // extra when a prior ledger must be merged
 export const SUMMARY_FLOOR_TOKENS = 512; // hard viable floor when the window is tight
 // Allowance for the gap between the local byte/4 estimate and the provider's
-// real tokenizer. Applied wherever a budget is derived from a hard limit.
+// real tokenizer. Applied to fold requests, whose input is a known, bounded
+// size.
 export const TOKEN_SAFETY_MARGIN = 512;
+
+// Minimum input headroom the planner always tries to leave: enough for a
+// system prompt and the current user turn even when the user asks for an
+// output ceiling close to the whole window.
+export const MIN_INPUT_HEADROOM = 512;
+
+/**
+ * Adaptive estimator safety allowance for a generation request.
+ *
+ * The allowance exists to absorb the gap between `estimateTokens` (UTF-8
+ * bytes / 4) and the provider's real tokenizer, plus per-message framing. That
+ * error grows with the *input* the request actually sends, so a margin may
+ * legitimately scale with the window — but it must never consume a large,
+ * fixed fraction of it. A percentage-only rule (`8% of the window`) made a
+ * larger configured context buy a proportionally larger reserve instead of
+ * more usable space: at 64K it withheld ~5.1K tokens, more than four times a
+ * typical reply ceiling, purely as headroom.
+ *
+ * This allowance is sub-linear and bounded: ~2% of the window, floored at 256
+ * and capped at 4096. A small window keeps the floor; a large window gets a
+ * margin that grows far slower than the space it is protecting.
+ */
+export function resolveSafetyMargin(contextWindow) {
+  const window = Math.max(0, Number(contextWindow) || 0);
+  if (window <= 0) return 256;
+  return Math.max(256, Math.min(4096, Math.floor(window * 0.02)));
+}
 
 // The ledger's visible size is deliberately independent of the context window:
 // a larger window buys completion headroom, not a larger ledger. These are the
@@ -422,32 +450,40 @@ After the thought block, output the public prose and dialogue.`);
   // Budgets
 
   /**
-   * Splits the configured context window into prompt and output budgets.
+   * Splits the configured context window into input and output allowances.
    *
-   * The output term is the interaction the old code missed: `maxContextTokens`
-   * is the *whole* window, so a maximum-length reply had nowhere to go, and a
-   * prompt filled to the nominal budget overflowed the real window.
+   * `maxContextTokens` is the *total* capacity of one request: input plus
+   * requested output plus a small estimator margin. The user's `maxTokens` is a
+   * ceiling on the reply, not a share of the window, so it is honoured in full
+   * whenever the input leaves room for it:
    *
-   * `reservedOutput` is the window's real output allowance, and it is what the
-   * generation request must send: the user's `maxTokens` is a ceiling, not a
-   * guarantee, so a value larger than half the window is clamped here rather
-   * than requested blind. `promptBudget + reservedOutput` therefore always fits
-   * inside `contextWindow` (minus the safety margin).
+   *   reservedOutput = min(maxTokens, window - margin - MIN_INPUT_HEADROOM)
+   *   promptBudget   = window - reservedOutput - margin
+   *
+   * so `promptBudget + reservedOutput + safetyMargin == contextWindow` exactly.
+   * There is no percentage reservation: a larger window buys more usable input,
+   * never a proportionally larger reserve. The only cap on the output is the
+   * need to leave `MIN_INPUT_HEADROOM` for the prompt — and even then
+   * `buildRequestBody` re-clamps the request's `max_tokens` to the *actual*
+   * remaining headroom after the assembled prompt.
    *
    * Limitation: `maxContextTokens` is whatever the user configured, not the
    * model's true window (no provider exposes that portably over an
    * OpenAI-compatible API), and `estimateTokens` is a byte/4 heuristic rather
-   * than the provider's tokenizer. Both errors are absorbed by `safetyMargin`
-   * plus the 50% output clamp, not eliminated.
+   * than the provider's tokenizer. Both errors are absorbed by the adaptive
+   * `safetyMargin`, not eliminated.
    */
   static resolveBudgets(settings = {}) {
     const contextWindow = Math.max(2048, Number(settings.maxContextTokens) || 16384);
     const maxOutput = Math.max(256, Number(settings.maxTokens) || 1200);
-    const reservedOutput = Math.min(maxOutput, Math.floor(contextWindow * 0.5));
-    const usable = Math.max(1024, contextWindow - reservedOutput);
-    // Headroom for provider tokenizer disagreement with the local estimate.
-    const safetyMargin = Math.max(256, Math.floor(usable * 0.08));
-    const promptBudget = Math.max(512, usable - safetyMargin);
+    const safetyMargin = resolveSafetyMargin(contextWindow);
+    // The output allowance may take everything above a minimal input floor; it
+    // is never halved merely because the window is large.
+    const reservedOutput = Math.max(
+      256,
+      Math.min(maxOutput, contextWindow - safetyMargin - MIN_INPUT_HEADROOM)
+    );
+    const promptBudget = Math.max(512, contextWindow - reservedOutput - safetyMargin);
     const loreBudget = Math.min(4000, Math.max(512, Math.floor(promptBudget * 0.12)));
     // The degraded digest's size scales with the prompt budget, so a fallback
     // ledger can never be larger than the transcript space it replaces — not
@@ -496,13 +532,15 @@ After the thought block, output the public prose and dialogue.`);
    * then as much of the newest history as fits the prompt budget, cutting only
    * at a user turn. Returns the input unchanged when everything already fits.
    */
-  static #truncateHistory(history, settings, ledger) {
+  static #truncateHistory(history, settings, ledger, extraInputTokens = 0) {
     const { promptBudget } = this.resolveBudgets(settings);
     const system = history[0] && history[0].role === "system" ? [history[0]] : [];
     const rest = history.slice(system.length);
-    // Account for the ledger (sent as message 1) when sizing what remains.
+    // Account for the ledger (sent as message 1) and any material appended after
+    // planning (dynamic lore / writing guidance) when sizing what remains.
     const ledgerTokens = ledger ? estimateTokens(ledger) + 40 : 0;
-    const budget = Math.max(0, promptBudget - countMessages(system) - ledgerTokens);
+    const extra = Math.max(0, Number(extraInputTokens) || 0);
+    const budget = Math.max(0, promptBudget - countMessages(system) - ledgerTokens - extra);
     if (budget <= 0 || rest.length <= 1) {
       // Even the newest turn may not fit next to the ledger; keep it anyway —
       // a reply with no target user turn is useless — and accept the overflow.
@@ -574,13 +612,22 @@ After the thought block, output the public prose and dialogue.`);
    * caller folds, then re-plans. Nothing leaves the payload without being
    * summarized first.
    */
-  static planContext({ systemPrompt, messages, ledger, consumed = 1, settings }) {
+  static planContext({ systemPrompt, messages, ledger, consumed = 1, settings, extraInputTokens = 0 }) {
     const { promptBudget } = this.resolveBudgets(settings);
     const all = Array.isArray(messages) ? messages : [];
-    const outer = estimateTokens(systemPrompt) + (ledger ? estimateTokens(ledger) + 40 : 0);
+    // `extraInputTokens` is input the caller will append to the payload *after*
+    // planning — dynamic lore and post-history instructions. It is part of the
+    // real request, so it must be charged here too; otherwise the planner sizes
+    // a history that fits its own budget and the assembled request still
+    // overflows the window.
+    const extra = Math.max(0, Number(extraInputTokens) || 0);
+    const outer = estimateTokens(systemPrompt) + (ledger ? estimateTokens(ledger) + 40 : 0) + extra;
+    // `overflow` means the *irreducible* prefix (static prompt + ledger + the
+    // material appended after planning) already exceeds the input budget, so no
+    // amount of history reduction can bring the request under it.
     const overflow = outer >= promptBudget;
     const overflowWarning = overflow
-      ? `System prompt and ledger (${outer} est. tokens) exceed configured prompt budget (${promptBudget} tokens).`
+      ? `System prompt, ledger and writing guidance (${outer} est. tokens) exceed the configured prompt budget (${promptBudget} tokens); raise the context window or history will be crowded out.`
       : "";
     const budget = Math.max(256, promptBudget - outer);
     const pinned = all.length > 0 && all[0] && all[0].content ? [all[0]] : [];
@@ -807,8 +854,8 @@ After the thought block, output the public prose and dialogue.`);
     }
     // `maxTokens` is a ceiling the user asked for, not a promise the window can
     // keep. Two separate bounds apply:
-    //   1. the planner's reserved allowance (at most half the window), so a
-    //      maximum-length reply always has somewhere to go; and
+    //   1. the planner's reserved allowance, which honours the ceiling up to the
+    //      minimum input floor (no fixed-percentage reservation); and
     //   2. the *actual* remaining headroom after this payload's real prompt,
     //      because a prompt near the nominal budget leaves less room than the
     //      reservation assumes. Without (2), `context=2048, maxTokens=4096`
@@ -1060,7 +1107,38 @@ After the thought block, output the public prose and dialogue.`);
     const ledger = session.ledger || "";
     const consumed = Math.max(1, Number(session.consumed) || 1);
 
-    let plan = this.planContext({ systemPrompt, messages: all, ledger, consumed, settings: activeSettings });
+    // Dynamic lore and post-history instructions are appended to the payload
+    // *after* the history is planned, but they are part of the real request, so
+    // they must be measured before planning. Otherwise the planner fits history
+    // to its own budget and the assembled request still overflows the window —
+    // exactly the failure mode a large static preset triggers. Computing them
+    // here (rather than after planning) makes the planner and the payload
+    // builder agree on what "fits".
+    const recentText = all.slice(-3).map((m) => m?.content || "").join(" ");
+    const dynamicLore = this.#selectLorebookEntries(card, {
+      budget: Math.min(1000, Math.floor((activeSettings?.maxTokens || 1200) * 0.8)),
+      constantOnly: false,
+      recentText,
+    });
+    let fullPostHistory = postHistory;
+    if (dynamicLore.length > 0) {
+      const loreText = dynamicLore
+        .map((e) => `[World Info: ${this.#substitutePlaceholders(e.content, card, activePersona)}]`)
+        .join("\n");
+      fullPostHistory = fullPostHistory ? `${loreText}\n\n${fullPostHistory}` : loreText;
+    }
+    // The guidance is appended to the trailing user turn (or a fresh user
+    // message), so charge its tokens plus one message's framing overhead.
+    const extraInputTokens = fullPostHistory.trim() ? estimateTokens(fullPostHistory) + 4 : 0;
+
+    let plan = this.planContext({
+      systemPrompt,
+      messages: all,
+      ledger,
+      consumed,
+      settings: activeSettings,
+      extraInputTokens,
+    });
 
     if (plan.compacted && plan.folded.length > 0) {
       // Fold the exact contiguous range the ledger will cover: everything from
@@ -1100,13 +1178,14 @@ After the thought block, output the public prose and dialogue.`);
           ledger: session.ledger,
           consumed: session.consumed,
           settings: activeSettings,
+          extraInputTokens,
         });
         // Hard truncate: a swollen ledger can still leave the re-planned tail
         // over budget. Never send an over-budget payload — cut the tail at a
         // user turn (pinned + newest turn guaranteed). Anything cut here is
         // already ledger-covered, so no fact is lost.
         if (plan.history.length > 1) {
-          const truncated = this.#truncateHistory(plan.history, activeSettings, session.ledger || "");
+          const truncated = this.#truncateHistory(plan.history, activeSettings, session.ledger || "", extraInputTokens);
           if (truncated.length !== plan.history.length) plan = { ...plan, history: truncated };
         }
       }
@@ -1124,20 +1203,6 @@ After the thought block, output the public prose and dialogue.`);
       }
     } else if (session.ledgerOverflowReported) {
       session.ledgerOverflowReported = false;
-    }
-
-    const recentText = all.slice(-3).map((m) => m?.content || "").join(" ");
-    const dynamicLore = this.#selectLorebookEntries(card, {
-      budget: Math.min(1000, Math.floor((activeSettings?.maxTokens || 1200) * 0.8)),
-      constantOnly: false,
-      recentText,
-    });
-    let fullPostHistory = postHistory;
-    if (dynamicLore.length > 0) {
-      const loreText = dynamicLore
-        .map((e) => `[World Info: ${this.#substitutePlaceholders(e.content, card, activePersona)}]`)
-        .join("\n");
-      fullPostHistory = fullPostHistory ? `${loreText}\n\n${fullPostHistory}` : loreText;
     }
 
     const subHistory = plan.history.map((m) => ({

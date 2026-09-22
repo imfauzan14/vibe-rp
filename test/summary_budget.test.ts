@@ -329,7 +329,7 @@ describe("Adaptive summary budget - through the fold seam", () => {
       settings,
     });
     expect(plan.overflow).toBe(true);
-    expect(plan.overflowWarning).toContain("exceed configured prompt budget");
+    expect(plan.overflowWarning).toContain("exceed the configured prompt budget");
     // The stored transcript is untouched by compaction.
     expect(session.messages.length).toBe(before);
   });
@@ -366,12 +366,17 @@ describe("Adaptive summary budget - cancellation and generation budget", () => {
   });
 
   test("generation max_tokens is clamped to the window's reserved output", () => {
-    // A 4096-token window can only reserve half of it for the reply.
+    // A 4096-token window cannot grant a 4000-token reply and still leave room
+    // for any prompt: the ceiling is honoured only up to the minimum input
+    // floor (4096 - 256 margin - 512 floor = 3328).
     const tiny = BrowserChatEngine.buildRequestBody({ model: "m", maxContextTokens: 4096, maxTokens: 4000 }, []);
-    expect(tiny.max_tokens).toBe(2048);
+    expect(tiny.max_tokens).toBe(3328);
     // A request that already fits is passed through untouched.
     const normal = BrowserChatEngine.buildRequestBody({ model: "m", maxContextTokens: 65536, maxTokens: 1200 }, []);
     expect(normal.max_tokens).toBe(1200);
+    // A large ceiling on a large window is honoured in full (no 50% cap).
+    const large = BrowserChatEngine.buildRequestBody({ model: "m", maxContextTokens: 65536, maxTokens: 4096 }, []);
+    expect(large.max_tokens).toBe(4096);
     // Omitting the ceiling leaves the provider default in force.
     const omitted = BrowserChatEngine.buildRequestBody({ model: "m", maxContextTokens: 65536 }, []);
     expect("max_tokens" in omitted).toBe(false);

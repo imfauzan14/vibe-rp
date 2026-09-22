@@ -137,7 +137,7 @@ describe("Compaction stress - long-run stability", () => {
     expect(last.ledgerTokens).toBeLessThanOrEqual(Math.max(firstBounded.ledgerTokens, 20000));
     // The ledger is canon and is preserved rather than silently truncated, so
     // the persistent overflow is reported to the user exactly once.
-    expect(notices.filter((n) => n.includes("exceed configured prompt budget")).length).toBe(1);
+    expect(notices.filter((n) => n.includes("exceed the configured prompt budget")).length).toBe(1);
     // No request ever asks for a negative or zero allowance, and the reply
     // reservation is always a positive number.
     for (const row of r.snapshot) {

@@ -32,9 +32,11 @@ export const DEFAULT_SETTINGS = {
   frequencyPenalty: 0, // not sent: anti-slop is enforced by the AGENTS contract; penalties degrade instruct-tuned coherence and punish legitimately repeated story vocabulary (names, refrains)
   presencePenalty: 0, // not sent: same rationale as frequencyPenalty
   maxTokens: 1200, // <thought> blocks eat ~200-600 before visible prose; 1200 leaves 600-1000 visible tokens (typical RP reply 300-800) without truncating mid-scene
-  // Total window: input + output. The engine subtracts maxTokens from this to
-  // size the prompt, so raising maxTokens shrinks the history budget.
-  maxContextTokens: 65536, // modern chat models are 128k-1M; 64k gives long RP sessions 2x headroom before ledger folding while keeping prefix-cache footprint moderate
+  // Total request window: input + requested output + a small estimator margin.
+  // `maxTokens` is a ceiling, honoured in full whenever the input leaves room
+  // for it; the only thing that can shrink it is the need to leave a minimum
+  // input floor. There is no fixed-percentage reservation.
+  maxContextTokens: 65536, // modern chat models are 128k-1M; 64k gives long RP sessions room before ledger folding while keeping prefix-cache footprint moderate
   // Directives & Block 0 contract
   agentsContract: DEFAULT_AGENTS_CONTRACT,
 

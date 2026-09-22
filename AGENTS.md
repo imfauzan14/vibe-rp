@@ -207,7 +207,7 @@ bun test test/
 
 ### Stats
 
-332 tests, 2088 expect() calls, 21 files (measured with `bun test test/`).
+341 tests, 2147 expect() calls, 22 files (measured with `bun test test/`).
 
 ### Existing Test Files
 
@@ -231,6 +231,7 @@ bun test test/
 - `test/stream_robustness.test.ts`: the OpenAI-compatible streaming contract (delta/message content, `data:` framing, non-streaming bodies, max_tokens forwarding)
 - `test/compaction_stress.test.ts`: long-run compaction (100-fold drift, fold-coverage monotonicity, ledger hard bound, degraded-fold accumulation, per-window prompt/output invariant)
 - `test/summary_budget.test.ts`: the adaptive summarizer budget, its context-headroom clamp, the bounded single retry, and the generation output clamp
+- `test/large_preset_context.test.ts`: the full-context invariant through the real `streamTurn` seam (large static presets, dynamic-lore/post-history accounting, output preservation vs reduction, no premature compaction, observable impossible-prompt case)
 - `test/unified_modules.test.ts`: single escapeHtml/toast/theme implementations, sw.js shell hygiene
 
 ### When to Add Tests
