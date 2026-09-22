@@ -1,0 +1,15 @@
+{
+  "name": "vibe-rp",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "bun serve.js",
+    "build": "echo 'Static build ready'",
+    "test": "bun test test/"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0"
+  }
+}

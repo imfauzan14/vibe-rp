@@ -1,0 +1,10 @@
+# Store every text file as LF in the index, on every platform.
+#
+# Why this exists: the chat page was dead in production because its inline
+# bootstrap was pinned by a SHA-256 CSP hash. Windows checked the file out with
+# CRLF while the tooling that computed the hash read LF bytes, so the hash
+# silently drifted from the served content and the browser blocked the whole
+# app. Normalising the index to LF removes the line-ending churn that made the
+# served bytes differ from the reviewed bytes; the drift-guard test
+# (test/no_inline_scripts.test.ts) covers the CSP side of the same failure.
+* text=auto eol=lf

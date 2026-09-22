@@ -1,0 +1,1952 @@
+/* ===========================================================================
+   vibe-rp: Marginalia component library
+   ---------------------------------------------------------------------------
+   Implements the class contract in DESIGN.md. Every colour, size, radius,
+   shadow and duration comes from a token in tokens.css. No component colour
+   is a literal, with one deliberate exception: the `.rp-dialog::backdrop`
+   fallback, which exists for engines that cannot resolve a token through
+   `color-mix()` and so must be handed a pre-computed composite.
+
+   Namespace: every class is prefixed `rp-`. The legacy editorial.css was
+   deleted; nothing outside this system defines page styling.
+
+   Interaction contract enforced here:
+     - :focus-visible is defined once in tokens.css and never removed.
+     - Hover affordances exist only under (hover: hover) and (pointer: fine).
+     - Coarse pointers get >= 44x44 CSS px targets.
+     - Motion answers actions; reduced motion collapses it in tokens.css.
+   =========================================================================== */
+
+/* ============================================================ UTILITIES == */
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.rp-tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* For a non-interactive element that is given tabindex, such as a scroll
+   region. It only ever adds a ring; it never suppresses one. */
+.rp-focusable:focus-visible {
+  outline: var(--focus-width) solid var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+
+/* Skip link: hidden until focused, then it sits over the chrome. */
+.rp-skip-link {
+  position: fixed;
+  top: var(--space-2);
+  left: var(--space-2);
+  z-index: var(--z-toast);
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface-raised);
+  color: var(--ink);
+  border: var(--border-width) solid var(--border-control);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  transform: translateY(calc(-100% - var(--space-4)));
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.rp-skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+/* ================================================================ SHELL == */
+
+.rp-app {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-ui);
+}
+
+.rp-container {
+  width: 100%;
+  max-width: var(--shell-max);
+  margin-inline: auto;
+  padding-inline: var(--space-4);
+}
+
+.rp-measure {
+  max-width: var(--measure);
+}
+
+.rp-measure--wide {
+  max-width: var(--measure-wide);
+}
+
+/* Sticky chrome. Clears the notch on phones. */
+.rp-topbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--chrome-height);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-4);
+  padding-top: calc(var(--space-2) + env(safe-area-inset-top, 0px));
+  background-color: var(--canvas);
+  border-bottom: var(--border-width) solid var(--border-hairline);
+}
+
+.rp-topbar__title {
+  font-family: var(--font-prose);
+  font-size: var(--text-lg);
+  font-weight: 500;
+  letter-spacing: var(--tracking-tight);
+}
+
+.rp-topbar__spacer {
+  margin-left: auto;
+}
+
+.rp-panel {
+  background-color: var(--surface);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+}
+
+/* Panels that sit above the page lift with the small shadow; on paper this
+   is a whisper, which is why it is a token rather than a fixed value. */
+.rp-panel--raised {
+  box-shadow: var(--shadow-sm);
+  z-index: var(--z-raised);
+}
+
+/* The reading well: the one place per surface where boldness is spent.
+   A sunken column that carries the static grain token, so the dark ground
+   reads as paper stock rather than a flat rectangle. */
+.rp-well {
+  position: relative;
+  isolation: isolate;
+  background-color: var(--canvas-sunken);
+  border-radius: var(--radius-xl);
+  border: var(--border-width) solid var(--border-hairline);
+}
+
+.rp-well::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: var(--grain-opacity);
+  mix-blend-mode: var(--grain-blend);
+  background-image: var(--grain-layer);
+  background-size: var(--grain-size);
+}
+
+
+/* Surface title. The largest type in the system, used once per page. */
+.rp-surface-title {
+  font-family: var(--font-prose);
+  font-size: var(--text-2xl);
+  font-weight: 500;
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+.rp-surface-title--display {
+  font-size: var(--text-3xl);
+}
+
+.rp-surface-subtitle {
+  margin-top: var(--space-1);
+  max-width: 62ch;
+  color: var(--ink-muted);
+  line-height: var(--leading-prose);
+}
+
+/* Custom scrollbar, token-driven. */
+.rp-scroll {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-control) transparent;
+}
+
+.rp-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.rp-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.rp-scroll::-webkit-scrollbar-thumb {
+  background-color: var(--border-hairline);
+  border: 3px solid transparent;
+  border-radius: var(--radius-full);
+  background-clip: content-box;
+}
+
+.rp-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: var(--border-control);
+}
+
+/* ============================================================== BUTTONS == */
+
+.rp-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--target-min);
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-sm);
+  background-color: transparent;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: var(--leading-ui);
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out),
+              transform var(--dur-instant) var(--ease-out);
+}
+
+.rp-btn:active {
+  transform: translateY(1px);
+}
+
+.rp-btn[disabled],
+.rp-btn[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+}
+
+/* -- variants --------------------------------------------------------- */
+
+.rp-btn--primary {
+  background-color: var(--ink);
+  color: var(--ink-inverse);
+  border-color: var(--ink);
+}
+
+.rp-btn--secondary {
+  background-color: var(--surface-raised);
+  color: var(--ink);
+  border-color: var(--border-hairline);
+}
+
+.rp-btn--ghost {
+  background-color: transparent;
+  color: var(--ink-muted);
+  border-color: transparent;
+}
+
+.rp-btn--danger {
+  background-color: var(--danger);
+  color: var(--on-danger);
+  border-color: var(--danger);
+}
+
+.rp-btn--danger-ghost {
+  background-color: transparent;
+  color: var(--danger);
+  border-color: transparent;
+}
+
+.rp-btn--annotation {
+  background-color: var(--annotation-subtle);
+  color: var(--accent-annotation);
+  border-color: transparent;
+}
+
+/* -- sizes ------------------------------------------------------------ */
+
+.rp-btn--sm {
+  min-height: 28px;
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+}
+
+/* The default height, named so a page can state it explicitly. */
+.rp-btn--md {
+  min-height: 34px;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.rp-btn--lg {
+  min-height: var(--tap-min);
+  padding: var(--space-3) var(--space-5);
+  font-size: var(--text-base);
+}
+
+/* Square, and a comfortable mouse target at --space-6 (32px), matching the
+   chat top bar's own step. Coarse pointers still get --tap-min from the
+   later (pointer: coarse) block, which wins on source order. */
+.rp-btn--icon {
+  min-width: var(--space-6);
+  min-height: var(--space-6);
+  padding: 0;
+  aspect-ratio: 1;
+}
+
+.rp-btn--block {
+  width: 100%;
+}
+
+/* Pressed state for toggles: a real attribute, not a colour swap alone. */
+.rp-btn[aria-pressed="true"] {
+  background-color: var(--surface-hover);
+  color: var(--ink);
+  border-color: var(--border-control);
+}
+
+/* Loading: keeps its width, swaps the label for a quiet indicator. */
+.rp-btn.is-loading {
+  color: transparent;
+  pointer-events: none;
+  position: relative;
+}
+
+.rp-btn.is-loading::after {
+  content: "";
+  position: absolute;
+  width: 1em;
+  height: 1em;
+  border-radius: var(--radius-full);
+  border: var(--border-width-strong) solid currentColor;
+  border-top-color: transparent;
+  color: var(--ink-inverse);
+  animation: rp-spin 640ms linear infinite;
+}
+
+.rp-btn--secondary.is-loading::after,
+.rp-btn--ghost.is-loading::after,
+.rp-btn--annotation.is-loading::after {
+  color: var(--ink);
+}
+
+@keyframes rp-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* =============================================================== FIELDS == */
+
+.rp-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.rp-label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--ink-muted);
+  letter-spacing: var(--tracking-wide);
+}
+
+.rp-input,
+.rp-textarea,
+.rp-select {
+  width: 100%;
+  min-height: 36px;
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--input-bg);
+  color: var(--ink);
+  border: var(--border-width) solid var(--border-control);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  line-height: var(--leading-ui);
+  transition: border-color var(--dur-fast) var(--ease-out),
+              background-color var(--dur-fast) var(--ease-out);
+}
+
+.rp-textarea {
+  min-height: 96px;
+  resize: vertical;
+  line-height: var(--leading-prose);
+  font-family: var(--font-prose);
+  font-size: var(--text-md);
+}
+
+.rp-select {
+  appearance: none;
+  padding-right: var(--space-6);
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: right var(--space-4) center, right var(--space-3) center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+.rp-input::placeholder,
+.rp-textarea::placeholder {
+  color: var(--ink-faint);
+  opacity: 1;
+}
+
+.rp-input:disabled,
+.rp-textarea:disabled,
+.rp-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  background-color: var(--surface-raised);
+}
+
+.rp-input.is-invalid,
+.rp-textarea.is-invalid,
+.rp-select.is-invalid {
+  border-color: var(--danger);
+  background-color: var(--danger-subtle);
+}
+
+.rp-help {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+}
+
+/* Errors carry an icon and words, never colour alone. */
+.rp-error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.rp-error::before {
+  content: "!";
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+  border-radius: var(--radius-full);
+  background-color: var(--danger);
+  color: var(--on-danger);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* -- range ------------------------------------------------------------- */
+
+.rp-range {
+  width: 100%;
+  height: 22px;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.rp-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: var(--radius-full);
+  background-color: var(--border-hairline);
+}
+
+.rp-range::-moz-range-track {
+  height: 4px;
+  border-radius: var(--radius-full);
+  background-color: var(--border-hairline);
+}
+
+.rp-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border-radius: var(--radius-full);
+  background-color: var(--ink);
+  border: var(--border-width-strong) solid var(--canvas);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.rp-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-full);
+  background-color: var(--ink);
+  border: var(--border-width-strong) solid var(--canvas);
+}
+
+.rp-range:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+}
+
+/* ============================================================ CHIP / TAG == */
+
+.rp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border: var(--border-width) solid transparent;
+  border-radius: var(--radius-xs);
+  background-color: var(--ink-subtle);
+  color: var(--ink-muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.rp-chip--muted {
+  background-color: transparent;
+  border-color: var(--border-hairline);
+  color: var(--ink-faint);
+}
+
+.rp-chip--annotation {
+  background-color: var(--annotation-subtle);
+  color: var(--accent-annotation);
+}
+
+.rp-chip--user {
+  background-color: var(--user-subtle);
+  color: var(--accent-user);
+}
+
+/* An interactive chip is a button and says so. */
+.rp-chip--interactive {
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out);
+}
+
+.rp-chip--interactive[aria-pressed="true"] {
+  background-color: var(--annotation-subtle);
+  color: var(--accent-annotation);
+  border-color: var(--accent-annotation);
+}
+
+.rp-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.rp-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding-inline: 5px;
+  border-radius: var(--radius-xs);
+  background-color: var(--surface-raised);
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.rp-badge--annotation {
+  background-color: var(--accent-annotation);
+  color: var(--ink-inverse);
+}
+
+.rp-badge--warn {
+  background-color: var(--warn-subtle);
+  color: var(--warn);
+  border: var(--border-width) solid var(--warn);
+}
+
+.rp-badge--danger {
+  background-color: var(--danger-subtle);
+  color: var(--danger);
+}
+
+/* The contract's name for the gold badge. */
+.rp-badge--count {
+  background-color: var(--accent-annotation);
+  color: var(--ink-inverse);
+}
+
+/* =============================================================== AVATAR == */
+
+/* Squircle, not a circle, and never a letter standing in as a design
+   feature: this is a fallback surface for a portrait that is usually
+   present. Initials are set quietly in the UI face, not as a monogram. */
+.rp-avatar {
+  --rp-avatar-size: 36px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--rp-avatar-size);
+  height: var(--rp-avatar-size);
+  border-radius: 26%;
+  overflow: hidden;
+  background-color: var(--surface-raised);
+  border: var(--border-width) solid var(--border-hairline);
+  color: var(--ink-faint);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: var(--tracking-normal);
+}
+
+.rp-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.rp-avatar--xl { --rp-avatar-size: var(--space-9); font-size: var(--text-2xl); }
+.rp-avatar--sm { --rp-avatar-size: 26px; font-size: var(--text-2xs); }
+.rp-avatar--md { --rp-avatar-size: 36px; }
+.rp-avatar--lg { --rp-avatar-size: 56px; font-size: var(--text-lg); }
+
+.rp-avatar--user {
+  border-color: var(--accent-user);
+  color: var(--accent-user);
+  background-color: var(--user-subtle);
+}
+
+.rp-avatar__initials {
+  line-height: 1;
+}
+
+/* ================================================================ CARD === */
+
+.rp-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background-color: var(--surface);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  transition: border-color var(--dur-fast) var(--ease-out),
+              background-color var(--dur-fast) var(--ease-out);
+}
+
+/* Portrait slot. Square, holds a real image; the grid collapses it to a
+   compact thumbnail on phones so the text keeps the full width. */
+.rp-card__media {
+  flex: none;
+  width: 72px;
+  height: 72px;
+  border-radius: 26%;
+  overflow: hidden;
+  background-color: var(--surface-raised);
+  border: var(--border-width) solid var(--border-hairline);
+}
+
+.rp-card__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.rp-card__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.rp-card__heading {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.rp-card__title {
+  font-family: var(--font-prose);
+  font-size: var(--text-xl);
+  font-weight: 500;
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  color: var(--ink);
+}
+
+.rp-card__byline {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+}
+
+.rp-card__body {
+  color: var(--ink-muted);
+  font-family: var(--font-prose);
+  font-size: var(--text-base);
+  line-height: var(--leading-prose);
+  /* Clamp so unequal blurbs still align their footers across the grid. */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.rp-card__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+}
+
+.rp-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: var(--border-width) solid var(--border-hairline);
+}
+
+/* One affordance, not two: the card itself is the link. */
+.rp-card__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rp-card--selected {
+  border-color: var(--accent-annotation);
+}
+
+.rp-card--interactive {
+  cursor: pointer;
+}
+
+/* ============================================================== DIALOG === */
+
+.rp-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  padding-top: calc(var(--space-4) + env(safe-area-inset-top, 0px));
+  /* The user agent paints its own box on a <dialog>: a Canvas background, a 3px
+     currentColor border, and fit-content sizing capped by a max-width and
+     max-height that inset the box from the viewport. `.rp-dialog` is a
+     full-viewport transparent grid whose only visible child is the panel, so
+     that UA box reads as a square frame around the rounded panel — pure white
+     in a light scheme — and its fit-content sizing keeps the panel from
+     reaching its designed width and the phone sheet from sitting flush.
+     Stated here, in the layer both pages load, rather than per page: the
+     library page carried this reset alone and the chat page went without it.
+     Padding stays out of this rule so the component breakpoints below win. */
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  background-color: transparent;
+}
+
+/* The backdrop states a real colour before the color-mix() value. An engine
+   that cannot parse color-mix() (Firefox < 113, Safari < 16.2) drops the
+   whole declaration and falls back to the user agent's rgba(0, 0, 0, 0.1) —
+   a veil roughly ten times too light. The literal is the 78% composite of
+   --canvas-sunken in the default Marginalia theme: #0A0C0E -> rgb(10 12 14),
+   so rgba(10, 12, 14, 0.78). color-mix() wins wherever it parses and resolves
+   --canvas-sunken per theme, leaving modern engines unchanged in both themes.
+   The literal itself matches Marginalia only; Paper's token is #E7E5DE. */
+.rp-dialog::backdrop {
+  background-color: rgba(10, 12, 14, 0.78);
+  background-color: color-mix(in srgb, var(--canvas-sunken) 78%, transparent);
+}
+
+/* A <dialog> does not inherit body colour in every engine, so the ground
+   and the ink are stated here rather than assumed. */
+.rp-dialog__panel,
+.rp-sheet,
+.rp-drawer {
+  color: var(--ink);
+  font-family: var(--font-ui);
+}
+
+.rp-dialog__panel {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, 100%);
+  max-height: min(84vh, 84dvh);
+  background-color: var(--surface);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+}
+
+.rp-dialog__header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: var(--border-width) solid var(--border-hairline);
+}
+
+.rp-dialog__title {
+  font-family: var(--font-prose);
+  font-size: var(--text-xl);
+  font-weight: 500;
+  letter-spacing: var(--tracking-tight);
+}
+
+.rp-dialog__desc {
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+}
+
+.rp-dialog__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.rp-dialog__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+  border-top: var(--border-width) solid var(--border-hairline);
+  background-color: var(--surface);
+}
+
+/* Pinned to the header's trailing edge and centred on its height, so a
+   two-line title/description block never leaves it riding high. */
+.rp-dialog__close {
+  margin-left: auto;
+  align-self: center;
+  font-size: var(--text-lg);
+  line-height: 1;
+}
+
+/* ---------------------------------------------------- sheet (phone) ----- */
+
+.rp-sheet__handle {
+  display: none;
+  width: 36px;
+  height: 4px;
+  margin: var(--space-2) auto var(--space-1);
+  border-radius: var(--radius-full);
+  background-color: var(--border-control);
+}
+
+/* A dialog that is deliberately a sheet at every width, for panels that
+   belong to the composer (ledger, context, presets) rather than the page.
+   Sits above a drawer so it can be raised from inside one. */
+.rp-sheet {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: var(--z-sheet);
+  max-height: 90dvh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--surface);
+  border-top: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+}
+
+.rp-sheet .rp-dialog__footer {
+  padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 721px) {
+  .rp-sheet {
+    inset-inline: auto var(--space-4);
+    bottom: var(--space-4);
+    width: min(420px, 40vw);
+    max-height: min(70dvh, 560px);
+    border: var(--border-width) solid var(--border-hairline);
+    border-radius: var(--radius-lg);
+  }
+}
+
+/* --------------------------------------------------- drawer (rail) ------ */
+
+.rp-drawer {
+  position: fixed;
+  inset-block: 0;
+  inset-inline-start: 0;
+  z-index: var(--z-drawer);
+  width: min(320px, 86vw);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  padding-top: calc(var(--space-4) + env(safe-area-inset-top, 0px));
+  padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+  background-color: var(--surface);
+  border-inline-end: var(--border-width) solid var(--border-hairline);
+  box-shadow: var(--shadow-lg);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  transform: translateX(-100%);
+  transition: transform var(--dur-slow) var(--ease-out);
+}
+
+.rp-drawer[data-open="true"],
+.rp-drawer.is-open {
+  transform: translateX(0);
+}
+
+.rp-drawer--end {
+  inset-inline-start: auto;
+  inset-inline-end: 0;
+  border-inline-end: 0;
+  border-inline-start: var(--border-width) solid var(--border-hairline);
+  transform: translateX(100%);
+}
+
+/* The same off-canvas rail, under the name the contract uses for the
+   library's filter and settings column. */
+.rp-sidebar {
+  position: fixed;
+  inset-block: 0;
+  inset-inline-start: 0;
+  z-index: var(--z-drawer);
+  width: min(320px, 86vw);
+  padding: var(--space-4);
+  background-color: var(--surface);
+  border-inline-end: var(--border-width) solid var(--border-hairline);
+  box-shadow: var(--shadow-lg);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  transform: translateX(-100%);
+  transition: transform var(--dur-slow) var(--ease-out);
+}
+
+.rp-sidebar[data-open="true"],
+.rp-sidebar.is-open {
+  transform: translateX(0);
+}
+
+@media (min-width: 1024px) {
+  .rp-sidebar {
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+    transform: none;
+    box-shadow: none;
+  }
+}
+
+/* ================================================================ TABS === */
+
+.rp-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  border-bottom: var(--border-width) solid var(--border-hairline);
+  /* The strip is a flex item in dialog bodies that are also flex columns and
+     scroll containers (`.rp-dialog__body`). A scroll container is allowed to
+     shrink its flex items below their content height, which crushed the strip
+     to a hairline and made the tabs unclickable. `flex: none` pins it to its
+     content height; the tabs scroll horizontally when they overflow. */
+  flex: none;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.rp-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.rp-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* The design system's touch target. A tab strip is a primary control, so it
+     takes --tap-min rather than a bespoke 36px: the strip then reads as a real
+     target at every pointer type, not only under (pointer: coarse) below. */
+  min-height: var(--tap-min);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  color: var(--ink-faint);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-out),
+              background-color var(--dur-fast) var(--ease-out);
+}
+
+.rp-tab[aria-selected="true"],
+.rp-tab.is-active {
+  color: var(--ink);
+}
+
+/* The selected tab is marked by a rule under it, not by weight alone. */
+.rp-tab[aria-selected="true"]::after,
+.rp-tab.is-active::after {
+  content: "";
+  position: absolute;
+  inset-inline: var(--space-2);
+  bottom: -1px;
+  height: var(--border-width-strong);
+  background-color: var(--accent-annotation);
+  border-radius: var(--radius-full);
+}
+
+.rp-tabpanel {
+  display: flex;
+  flex-direction: column;
+  /* Between-field separation. The range control's 22px box hides ~9px of
+     slack above and below its 4px track, so the DOM gap understates the
+     PERCEIVED gap between a field's helper text and the next label. 32px
+     keeps the perceived ratio at or above 2x the 4px within-field gap. */
+  gap: var(--space-6);
+  /* Keep the original top padding: it separates the panel from the tab strip
+     that precedes it in a dialog body, giving the same 32px step as the
+     between-field gap below. */
+  padding-top: var(--space-4);
+}
+
+.rp-tabpanel[hidden] {
+  display: none;
+}
+
+/* A section header inside a settings panel: a quiet label on the left, the
+   one create action on the right. Stated here, not in a page layer, so the
+   library dialog and the chat settings popup cannot drift apart. */
+.rp-settings__list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  /* No margin: the head is a child of either a .rp-tabpanel (gap
+     --space-5) or a .rp-field (gap --space-1), so the parent's gap already
+     sets the distance to what follows. A margin here would add to it and put
+     the pair off the scale (24 + 12 = 36px). */
+}
+
+.rp-settings__list-title {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--ink-muted);
+  letter-spacing: var(--tracking-micro);
+}
+
+/* The saved-persona and saved-prompt rows. Shared so the library dialog and
+   the chat settings popup render identical cards. The action group is a
+   footer under the text, not a third column: at full width its controls never
+   float against a two-line blurb with nothing to align to. */
+.rp-persona-list,
+.rp-directive-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.rp-persona-row,
+.rp-directive-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.rp-persona-row__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.rp-persona-row__heading,
+.rp-directive-row__heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.rp-persona-row__title,
+.rp-directive-row__title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rp-persona-row__blurb,
+.rp-directive-row__blurb {
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+  line-height: var(--leading-prose);
+}
+
+.rp-persona-row__actions,
+.rp-directive-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+}
+
+/* A status badge must not outrank the real control beside it. The filled
+   gold --annotation fill reads as a button, so in these rows the badge goes
+   quiet: a hairline outline and muted ink, leaving Edit the only thing that
+   looks pressable. */
+.rp-persona-row__heading .rp-badge,
+.rp-directive-row__heading .rp-badge {
+  background-color: transparent;
+  border: var(--border-width) solid var(--border-control);
+  color: var(--ink-muted);
+}
+
+/* Under 720px the label and its create action stack, so the button keeps the
+   full width instead of being squeezed beside the label. */
+@media (max-width: 720px) {
+  .rp-settings__list-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* =============================================================== TOAST === */
+
+/* Toasts hang from the TOP of the viewport, just under the sticky bar, on
+   every surface. A bottom-anchored toast is the one placement an on-screen
+   keyboard fights: the keyboard resizes (and scrolls) the visual viewport, so
+   a bottom-docked toast slides under the thumb or off-screen exactly when the
+   reader is typing. The top edge is stable through that, and the bar's height
+   is already a token, so the toast clears it with no measurement and no
+   per-page override. */
+.rp-toast-region {
+  position: fixed;
+  inset-inline: var(--space-4);
+  top: calc(var(--chrome-height) + env(safe-area-inset-top, 0px) + var(--space-3));
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+
+.rp-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: min(420px, 100%);
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--surface-raised);
+  color: var(--ink);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--text-sm);
+  pointer-events: auto;
+}
+
+.rp-toast--danger {
+  border-color: var(--danger);
+  color: var(--danger);
+  background-color: var(--danger-subtle);
+}
+
+.rp-toast--success {
+  border-color: var(--success);
+  color: var(--success);
+  background-color: var(--success-subtle);
+}
+
+/* Toast children: the message takes the remaining width, the controls keep
+   their intrinsic size. Declared once here; the two page sheets each carried
+   a local copy of these rules before the shared ones existed. */
+.rp-toast__message {
+  flex: 1;
+  min-width: 0;
+}
+
+.rp-toast__close,
+.rp-toast__action {
+  flex: none;
+}
+
+/* ============================================================= MESSAGES == */
+
+.rp-message {
+  /* The rail portrait is the header portrait: large and rounded, sitting
+     beside the speaker name. One token drives both the grid lane and the
+     avatar size, so the two can never drift apart. */
+  --rp-message-avatar: 48px;
+  display: grid;
+  grid-template-columns: var(--rp-message-avatar) minmax(0, 1fr);
+  gap: var(--space-4);
+  padding-block-start: var(--space-3);  /* less above — prose reads top→bottom */
+  padding-block-end: var(--space-5);    /* more below — optical separation from next turn */
+}
+
+.rp-message + .rp-message {
+  border-top: var(--border-width) solid var(--border-hairline);
+}
+
+.rp-message__rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* The message portrait takes the rail lane's size. */
+.rp-message__rail > .rp-avatar {
+  --rp-avatar-size: var(--rp-message-avatar);
+  font-size: var(--text-md);
+}
+
+/* Alias for the same column, for pages that name the rail directly. */
+.rp-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rp-message__content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.rp-message__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.rp-message__title {
+  display: inline-flex;
+  align-items: baseline;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: start;
+}
+
+.rp-message__title:focus-visible {
+  outline: var(--border-width-strong) solid var(--focus-ring);
+  outline-offset: var(--space-1);
+  border-radius: var(--radius-xs);
+}
+
+.rp-message__speaker {
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.rp-message__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Prose: the point of the product. Serif, generous leading, 65-75ch. */
+.rp-message__prose {
+  max-width: var(--measure);
+  font-family: var(--font-prose);
+  font-size: var(--text-lg);
+  line-height: var(--leading-prose);
+  color: var(--ink);
+  hanging-punctuation: first last;
+}
+
+.rp-message__prose p {
+  margin-block: 0 var(--space-4);
+}
+
+.rp-message__prose p:last-child {
+  margin-bottom: 0;
+}
+
+.rp-message__prose em,
+.rp-message__prose i {
+  font-style: italic;
+}
+
+.rp-message__prose strong {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.rp-message__prose blockquote {
+  margin-block: var(--space-4);
+  padding-inline-start: var(--space-4);
+  border-inline-start: var(--border-width-strong) solid var(--border-hairline);
+  color: var(--ink-muted);
+  font-style: italic;
+}
+
+/* The author's own hand is carried by the name alone: a cool name, with the
+   prose still in ink so the reading experience does not change colour halfway
+   down the page. The name brightens on hover (see the fine-pointer block). */
+.rp-message--user .rp-message__speaker {
+  color: var(--accent-user);
+}
+
+.rp-message--assistant .rp-message__speaker {
+  color: var(--ink);
+}
+
+/* -- thought block: an annotation, so it wears the gold ---------------- */
+
+.rp-thought {
+  max-width: var(--measure);
+  margin-block: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--annotation-subtle);
+  border-inline-start: var(--border-width-strong) solid var(--accent-annotation);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-family: var(--font-prose);
+  font-size: var(--text-base);
+  font-style: italic;
+  line-height: var(--leading-prose);
+  color: var(--accent-annotation);
+}
+
+.rp-thought[hidden] {
+  display: none !important;
+}
+
+.rp-thought__item + .rp-thought__item {
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: var(--border-width) solid var(--border-hairline);
+}
+
+.rp-thought__summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-style: normal;
+  font-weight: 600;
+  color: var(--accent-annotation);
+  margin-bottom: var(--space-1);
+}
+
+.rp-thought__body {
+  font-family: var(--font-prose);
+  font-style: italic;
+  line-height: var(--leading-prose);
+  color: var(--accent-annotation);
+}
+
+.rp-thought-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 1px var(--space-2);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-full);
+  background: var(--surface-raised);
+  color: var(--accent-annotation);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  cursor: pointer;
+  line-height: 1.4;
+  transition: background-color var(--duration-fast), border-color var(--duration-fast);
+}
+
+.rp-thought-pill:hover {
+  background-color: var(--annotation-subtle);
+  border-color: var(--accent-annotation);
+}
+
+.rp-thought-pill.is-active,
+.rp-thought-pill[aria-expanded="true"] {
+  background-color: var(--annotation-subtle);
+  border-color: var(--accent-annotation);
+  font-weight: 600;
+}
+
+.rp-thought-pill:focus-visible {
+  outline: var(--border-width-strong) solid var(--focus-ring);
+  outline-offset: 1px;
+}
+
+.rp-stream-status--thinking {
+  color: var(--accent-annotation);
+  font-style: italic;
+  font-weight: 500;
+}
+
+/* -- ledger: continuity notes, the app's marginalia ------------------- */
+
+.rp-ledger {
+  max-width: var(--measure);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  background-color: var(--surface);
+}
+
+.rp-ledger__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+}
+
+.rp-ledger__key {
+  flex: none;
+  width: 20ch;
+  color: var(--ink-faint);
+}
+
+.rp-ledger__value {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Context and budget live here, not permanently in the composer. */
+.rp-ledger__meter {
+  position: relative;
+  flex: 1;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background-color: var(--border-hairline);
+  overflow: hidden;
+}
+
+.rp-ledger__meter > span {
+  display: block;
+  height: 100%;
+  background-color: var(--accent-annotation);
+  border-radius: var(--radius-full);
+}
+
+/* The sheet's group carries a title and one plain sentence so the terse
+   rows below are legible without a manual. */
+.rp-ledger__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.rp-ledger__group-title {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--ink-muted);
+  letter-spacing: var(--tracking-wide);
+}
+
+.rp-ledger__group-help {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+  line-height: var(--leading-ui);
+}
+
+.rp-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-xs);
+  background-color: var(--warn-subtle);
+  border: var(--border-width) solid var(--warn);
+  color: var(--warn);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+}
+
+/* -- action tray ------------------------------------------------------- */
+
+/* The tray is revealed by hovering the turn (fine pointers), by focusing
+   anything inside it, or by its own control: the message head. It is never
+   permanently rendered, and it is never hidden from the keyboard. */
+
+.rp-message__tray {
+  display: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rp-message__tray[data-open="true"],
+.rp-message__tray.is-open,
+.rp-message:focus-within .rp-message__tray {
+  display: flex;
+}
+
+/* ============================================================ COMPOSER === */
+
+.rp-composer {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-sticky);
+  /* The dock is chrome, so its own gutters stay tighter than the reading
+     column's: the controls inside already carry the breathing room. */
+  padding: var(--space-2) var(--space-4);
+  padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
+  background-color: var(--canvas);
+  border-top: var(--border-width) solid var(--border-hairline);
+}
+
+.rp-composer__box {
+  max-width: var(--measure-wide);
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background-color: var(--input-bg);
+  border: var(--border-width) solid var(--border-control);
+  border-radius: var(--radius-lg);
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+
+.rp-composer__box:focus-within {
+  border-color: var(--focus-ring);
+}
+
+.rp-composer__input {
+  width: 100%;
+  min-height: 2.6em;
+  max-height: 40dvh;
+  padding: var(--space-1) var(--space-2);
+  background: transparent;
+  border: 0;
+  color: var(--ink);
+  font-family: var(--font-prose);
+  font-size: var(--text-md);
+  line-height: var(--leading-prose);
+  resize: none;
+  overflow-y: auto;
+}
+
+.rp-composer__input::placeholder {
+  color: var(--ink-faint);
+  opacity: 1;
+}
+
+.rp-composer__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rp-composer__actions--end {
+  margin-left: auto;
+}
+
+/* ======================================================= PAGE STATES ==== */
+
+.rp-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: 46ch;
+  margin-inline: auto;
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+}
+
+.rp-empty__title {
+  font-family: var(--font-prose);
+  font-size: var(--text-xl);
+  font-weight: 500;
+  letter-spacing: var(--tracking-tight);
+}
+
+.rp-empty__body {
+  color: var(--ink-muted);
+  line-height: var(--leading-prose);
+}
+
+.rp-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink-faint);
+  font-size: var(--text-sm);
+}
+
+.rp-loading::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-full);
+  border: var(--border-width-strong) solid currentColor;
+  border-top-color: transparent;
+  animation: rp-spin 640ms linear infinite;
+}
+
+.rp-error-state {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  border: var(--border-width) solid var(--danger);
+  border-radius: var(--radius-md);
+  background-color: var(--danger-subtle);
+  color: var(--danger);
+}
+
+.rp-error-state__title {
+  font-weight: 600;
+}
+
+.rp-error-state__body {
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
+}
+
+.rp-skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--ink-subtle);
+  border-radius: var(--radius-xs);
+}
+
+.rp-skeleton--line {
+  height: 0.75em;
+  margin-block: var(--space-2);
+}
+
+.rp-skeleton--block {
+  height: 96px;
+  border-radius: var(--radius-md);
+}
+
+.rp-skeleton--text {
+  width: 62%;
+}
+
+/* One sweeping highlight, only while motion is welcome. */
+.rp-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--ink) 8%, transparent),
+    transparent
+  );
+  animation: rp-sheen 1400ms var(--ease-in-out) infinite;
+}
+
+@keyframes rp-sheen {
+  to { transform: translateX(100%); }
+}
+
+/* ============================================================= TOOLTIP === */
+
+.rp-tooltip {
+  position: relative;
+  display: inline-flex;
+}
+
+.rp-tooltip__panel {
+  position: absolute;
+  bottom: calc(100% + var(--space-2));
+  left: 50%;
+  z-index: var(--z-tooltip);
+  width: max-content;
+  max-width: 28ch;
+  padding: var(--space-1) var(--space-2);
+  transform: translateX(-50%);
+  background-color: var(--surface-raised);
+  color: var(--ink);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-xs);
+  box-shadow: var(--shadow-md);
+  font-size: var(--text-xs);
+  line-height: var(--leading-ui);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.rp-tooltip:hover .rp-tooltip__panel,
+.rp-tooltip:focus-within .rp-tooltip__panel {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* ==================================================== POINTER-ADAPTIVE == */
+
+/* Fine pointers: hover affordances are allowed to exist. */
+@media (hover: hover) and (pointer: fine) {
+  .rp-btn--primary:hover {
+    background-color: var(--accent-annotation);
+    border-color: var(--accent-annotation);
+    color: var(--ink-inverse);
+  }
+
+  .rp-btn--secondary:hover {
+    background-color: var(--surface-hover);
+    border-color: var(--border-control);
+  }
+
+  .rp-btn--ghost:hover {
+    background-color: var(--surface-hover);
+    color: var(--ink);
+  }
+
+  .rp-btn--danger:hover {
+    background-color: var(--danger-strong);
+    border-color: var(--danger-strong);
+  }
+
+  .rp-btn--danger-ghost:hover {
+    background-color: var(--danger-subtle);
+  }
+
+  .rp-btn--annotation:hover {
+    color: var(--accent-annotation-strong);
+  }
+
+  .rp-input:hover,
+  .rp-textarea:hover,
+  .rp-select:hover {
+    border-color: var(--border-strong);
+  }
+
+  .rp-card--interactive:hover {
+    background-color: var(--surface-hover);
+    border-color: var(--border-control);
+  }
+
+  .rp-tab:hover {
+    color: var(--ink);
+    background-color: var(--surface-hover);
+  }
+
+  .rp-chip--interactive:hover {
+    background-color: var(--surface-hover);
+    color: var(--ink);
+  }
+
+  .rp-message:hover .rp-message__tray {
+    display: flex;
+  }
+
+  .rp-message--user:hover .rp-message__speaker {
+    color: var(--accent-user-strong);
+  }
+}
+
+/* Coarse pointers: everything actionable clears 44x44. */
+@media (pointer: coarse) {
+  /* Both axes, so a short two-letter label such as Edit or Copy cannot end
+     up narrower than the WCAG 2.2 target even though it is tall enough. */
+  .rp-btn,
+  .rp-btn--sm,
+  .rp-btn--icon,
+  .rp-tab,
+  .rp-chip--interactive,
+  .rp-message__tray .rp-btn,
+  .rp-dialog__close,
+  .rp-composer__actions .rp-btn {
+    min-height: var(--tap-min);
+    min-width: var(--tap-min);
+  }
+
+  .rp-chip--interactive {
+    padding-inline: var(--space-3);
+  }
+
+  .rp-range {
+    height: var(--tap-min);
+  }
+
+  .rp-range::-webkit-slider-thumb {
+    width: 22px;
+    height: 22px;
+    margin-top: -9px;
+  }
+
+  .rp-range::-moz-range-thumb {
+    width: 22px;
+    height: 22px;
+  }
+
+  .rp-card {
+    padding: var(--space-4) var(--space-4) var(--space-3);
+  }
+}
+
+/* ======================================================== RESPONSIVE ==== */
+
+/* Phone: the reading column takes the full width, chrome shrinks, dialogs
+   become bottom sheets, and the rail becomes a drawer. */
+@media (max-width: 720px) {
+  .rp-container {
+    padding-inline: var(--space-3);
+  }
+
+  .rp-message {
+    --rp-message-avatar: 36px;
+    grid-template-columns: var(--rp-message-avatar) minmax(0, 1fr);
+    gap: var(--space-3);
+    padding-block-start: var(--space-2);
+    padding-block-end: var(--space-4);
+  }
+
+  .rp-message__prose {
+    font-size: var(--text-md);
+    line-height: var(--leading-prose);
+  }
+
+  .rp-message__prose,
+  .rp-thought,
+  .rp-ledger {
+    max-width: none;
+  }
+
+  /* Bottom sheet. */
+  .rp-dialog {
+    place-items: end stretch;
+    padding: 0;
+  }
+
+  .rp-dialog__panel {
+    width: 100%;
+    max-height: 90vh;
+    max-height: 90dvh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    border-bottom: 0;
+    box-shadow: var(--shadow-xl);
+  }
+
+  .rp-sheet__handle {
+    display: block;
+  }
+
+  .rp-dialog__header {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .rp-dialog__body {
+    padding: var(--space-4);
+  }
+
+  .rp-dialog__footer {
+    padding: var(--space-3) var(--space-4);
+    padding-bottom: calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
+  }
+
+  .rp-dialog__footer .rp-btn {
+    flex: 1;
+  }
+
+  .rp-topbar__title {
+    font-size: var(--text-base);
+  }
+
+  .rp-empty {
+    padding-block: var(--space-6);
+  }
+}
+
+/* Tablet and up: the rail is persistent, so the drawer is not used. */
+@media (min-width: 1024px) {
+  .rp-drawer {
+    position: sticky;
+    top: 0;
+    height: 100dvh;
+    transform: none;
+    box-shadow: none;
+  }
+
+  .rp-drawer--end {
+    transform: none;
+  }
+}
+
+/* ================================================ MOTION / CONTRAST FEED == */
+
+/* Windows High Contrast and similar: rely on system colours, keep shape. */
+@media (forced-colors: active) {
+  .rp-btn,
+  .rp-input,
+  .rp-textarea,
+  .rp-select,
+  .rp-card,
+  .rp-dialog__panel,
+  .rp-chip,
+  .rp-toast {
+    border: var(--border-width) solid CanvasText;
+  }
+
+  .rp-btn--primary {
+    background-color: ButtonFace;
+    color: ButtonText;
+  }
+
+  .rp-skeleton::after,
+  .rp-well::before {
+    display: none;
+  }
+}

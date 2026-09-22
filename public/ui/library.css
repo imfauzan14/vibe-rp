@@ -1,0 +1,899 @@
+/* ===========================================================================
+   Library page composition layer
+   ---------------------------------------------------------------------------
+   Loaded after design/components.css. This file adds only the classes the
+   library page needs on top of the shared component contract: the card link,
+   the catalogue grid, the settings row layouts and the editor rows. Every
+   value is a token from design/tokens.css. There is no literal colour here,
+   and nothing in this file redefines a `rp-` class from the design system.
+   =========================================================================== */
+
+/* ============================================================== LIBRARY == */
+
+.rp-library__main {
+  padding-block: var(--space-5) var(--space-6);
+}
+
+/* The heading row carries the title and subtitle; Search, Sort and Tag live
+   together in the filter bar below, where the three controls share a
+   baseline. */
+.rp-library__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.rp-library__heading {
+  min-width: 0;
+}
+
+/* Search, Sort and Tag are one filter bar: each is an inline label beside its
+   control, so all three share a baseline. The search field is the flexible
+   member; the two selects keep a stable width. */
+.rp-library__filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: 0;
+}
+
+.rp-library__search,
+.rp-library__sort,
+.rp-library__tags {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rp-library__search {
+  flex: 1 1 220px;
+  min-width: min(220px, 100%);
+}
+
+.rp-library__search .rp-input {
+  width: 100%;
+}
+
+/* The two selects read as one control pair, so they share a width contract.
+   `min-width` keeps the label column stable while the option text changes,
+   and the tag list never widens the row as tags are added. */
+.rp-library__sort .rp-select,
+.rp-library__tags .rp-select {
+  width: auto;
+  min-width: 140px;
+  max-width: 240px;
+}
+
+/* The catalogue. `auto-fill` is the spec's contract: a wide screen gains
+   columns. The explicit `auto-rows: 1fr` plus `align-content: start` keeps
+   every row the same height and packs the rows to the top, so a short
+   catalogue reads as a deliberate grid rather than a stranded row. */
+.rp-library__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-auto-rows: 1fr;
+  gap: var(--space-3);
+  align-items: stretch;
+  align-content: start;
+}
+
+.rp-library__empty {
+  grid-column: 1 / -1;
+}
+
+.rp-library__status {
+  margin-top: var(--space-5);
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+  min-height: 1.2em;
+}
+
+/* ================================================================= CARD == */
+
+/* The card body is a real button. Reset the platform chrome so it reads as
+   the card surface and still gets the shared focus ring. */
+.rp-card__link {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  flex: 1;
+  padding: 0;
+  text-align: start;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-radius: inherit;
+  cursor: pointer;
+}
+
+.rp-card__tags {
+  margin-top: var(--space-1);
+}
+
+/* The card portrait reuses .rp-avatar (a grid box with place-items: center).
+   The card layer only has to state the card-sized square; the centring and
+   the initial's line-height come from the shared component. */
+.rp-card__media.rp-avatar {
+  --rp-avatar-size: 72px;
+  display: grid;
+  place-items: center;
+  font-size: var(--text-xl);
+}
+
+.rp-card__media.rp-avatar .rp-avatar__initials {
+  line-height: 1;
+}
+
+/* Clamp the blurb to three lines with a real ellipsis. The text is already cut
+   at a word boundary in the renderer, so the clamp never splits a word. */
+.rp-card__body {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.rp-card__body--empty {
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .rp-card--interactive:hover {
+    border-color: var(--border-control);
+    background-color: var(--surface-raised);
+  }
+
+  .rp-card--interactive:hover .rp-card__title {
+    color: var(--accent-annotation);
+  }
+}
+
+/* A trailing "add" tile. It gives a short catalogue a deliberate end instead
+   of a stranded row, and it is the same control as the header's Import. */
+.rp-card--add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 160px;
+  padding: var(--space-5);
+  background-color: transparent;
+  border-style: dashed;
+  border-color: var(--border-control);
+  color: var(--ink-muted);
+  font-size: var(--text-base);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rp-card--add:hover {
+  border-color: var(--accent-annotation);
+  color: var(--accent-annotation);
+  background-color: var(--annotation-subtle);
+}
+
+
+/* =========================================================== SETTINGS == */
+
+
+/* .rp-settings__panel is now the same box as .rp-tabpanel, which owns the
+   panel rhythm in design/components.css so the chat settings popup (which
+   does not load this file) cannot drift from the library dialog. */
+
+.rp-settings__guidance {
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--surface-raised);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+}
+
+.rp-settings__guidance-title {
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+}
+
+.rp-settings__guidance-text {
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+  line-height: var(--leading-prose);
+}
+
+/* .rp-settings__list-head and .rp-settings__list-title now live in
+   design/components.css so the chat settings popup, which does not load this
+   file, shares one definition. */
+
+.rp-settings__status {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+  min-height: 1.2em;
+}
+
+.rp-settings__check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  cursor: pointer;
+}
+
+.rp-settings__check input {
+  margin-top: 3px;
+  accent-color: var(--accent-annotation);
+}
+
+.rp-settings__divider {
+  border-top: var(--border-width) solid var(--border-hairline);
+  padding-top: var(--space-4);
+}
+
+/* The persona and directive row layouts now live in design/components.css:
+   the chat settings popup renders the same rows but loads only the shared
+   layer, so one definition keeps the two surfaces identical. */
+
+/* ----------------------------------------------------------- editors ---- */
+
+.rp-persona-editor__hero {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.rp-persona-editor__portrait {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+
+.rp-persona-editor__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  flex: 1;
+  min-width: 0;
+}
+
+.rp-directive-editor__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
+
+.rp-textarea--mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  min-height: 180px;
+}
+/* ============================================================== DETAIL == */
+/* The UA-box reset for `.rp-dialog` lives in components.css, the layer both
+   pages load; it was stated here alone before, so the chat page went without
+   it. */
+
+/* Required companion to that reset. The component layer sets `display: grid`
+   on `.rp-dialog` at author origin, which outranks the user agent's
+   `dialog:not([open]) { display: none }`. Without this a closed dialog stays
+   in the layout and, being `position: fixed; inset: 0`, silently swallows
+   every pointer event on the page. */
+.rp-dialog:not([open]) {
+  display: none;
+}
+
+/* The component layer gives coarse pointers 44px on buttons, tabs and chips.
+   Text controls are not in that list, so the floor is applied here. */
+@media (pointer: coarse) {
+  .rp-input,
+  .rp-select,
+  .rp-textarea {
+    min-height: var(--tap-min);
+  }
+
+  .rp-dropzone,
+  .rp-thread__title,
+  .rp-dossier__summary,
+  .rp-variation__summary {
+    min-height: var(--tap-min);
+  }
+}
+
+
+.rp-dialog--wide .rp-dialog__panel {
+  width: min(720px, 100%);
+}
+
+/* The header's trailing action group. Centred on the header height so the
+   close control lands mid-header, exactly like a bare .rp-dialog__close. */
+.rp-detail__header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+  align-self: center;
+}
+
+.rp-detail__view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.rp-detail__hero {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.rp-detail__portrait {
+  position: relative;
+  display: block;
+  flex: none;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.rp-detail__portrait-inner {
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  overflow: hidden;
+  background-color: var(--surface-raised);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: 26%;
+  font-size: var(--text-2xl);
+  color: var(--ink-faint);
+}
+
+.rp-detail__portrait-inner img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* The scrim. A literal first, so an engine that cannot parse color-mix()
+   keeps a real dim instead of dropping the declaration (same pattern as
+   .rp-dialog::backdrop). The literal is the 78% composite of --canvas-sunken
+   in Marginalia; color-mix() resolves the token per theme. */
+.rp-detail__portrait-hint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-2);
+  border-radius: 26%;
+  background-color: rgba(10, 12, 14, 0.78);
+  background-color: color-mix(in srgb, var(--canvas-sunken) 78%, transparent);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: var(--leading-ui);
+  text-align: center;
+  /* The scrim is an affordance, never a hit target: the button underneath
+     must still receive the activation. */
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+/* Revealed on hover for fine pointers and on keyboard focus everywhere, so a
+   keyboard user sees the same affordance as a mouse user. */
+.rp-detail__portrait:focus-visible .rp-detail__portrait-hint {
+  opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .rp-detail__portrait:hover .rp-detail__portrait-hint {
+    opacity: 1;
+  }
+}
+
+/* No hover on touch: the scrim would be undiscoverable, so it rests visible
+   and the portrait behind it is still the control. */
+@media (pointer: coarse) {
+  .rp-detail__portrait-hint {
+    opacity: 1;
+  }
+}
+
+.rp-detail__hero-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.rp-detail__name {
+  font-family: var(--font-prose);
+  font-size: var(--text-2xl);
+  font-weight: 500;
+  letter-spacing: var(--tracking-tight);
+}
+
+.rp-detail__nickname {
+  color: var(--ink-muted);
+  font-family: var(--font-prose);
+  font-style: italic;
+}
+
+.rp-detail__byline {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+}
+
+.rp-detail__tabs {
+  border-bottom: var(--border-width) solid var(--border-hairline);
+}
+
+.rp-detail__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.rp-detail__eyebrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.rp-detail__eyebrow-title {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--ink-muted);
+  letter-spacing: var(--tracking-micro);
+}
+
+.rp-detail__eyebrow-hint {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+}
+
+.rp-detail__prose {
+  max-width: var(--measure);
+  font-family: var(--font-prose);
+  font-size: var(--text-lg);
+  line-height: var(--leading-prose);
+  white-space: pre-wrap;
+}
+
+.rp-detail__empty {
+  padding: var(--space-4);
+  color: var(--ink-faint);
+  font-size: var(--text-sm);
+}
+
+.rp-detail__footer-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+/* -- dossiers ---------------------------------------------------------- */
+
+.rp-dossier-list,
+.rp-variation-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.rp-dossier,
+.rp-variation {
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  background-color: var(--surface-raised);
+}
+
+.rp-dossier__summary,
+.rp-variation__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  list-style: none;
+}
+
+.rp-dossier__summary::-webkit-details-marker,
+.rp-variation__summary::-webkit-details-marker {
+  display: none;
+}
+
+.rp-dossier__title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.rp-dossier__chevron::before {
+  content: "+";
+  color: var(--ink-faint);
+}
+
+.rp-dossier[open] .rp-dossier__chevron::before {
+  content: "\2212";
+}
+
+.rp-dossier__body {
+  padding: 0 var(--space-3) var(--space-3);
+  color: var(--ink-muted);
+  font-family: var(--font-prose);
+  line-height: var(--leading-prose);
+  white-space: pre-wrap;
+}
+
+.rp-dossier__body--mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.rp-variation__preview {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+
+.rp-variation__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+.rp-variation__text {
+  font-family: var(--font-prose);
+  line-height: var(--leading-prose);
+  white-space: pre-wrap;
+}
+
+.rp-variation__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.rp-notice {
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--annotation-subtle);
+  border: var(--border-width) solid var(--accent-annotation);
+  border-radius: var(--radius-md);
+}
+
+.rp-notice__title {
+  font-weight: 600;
+  color: var(--accent-annotation);
+}
+
+.rp-notice__body {
+  margin-top: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+
+/* -- threads ----------------------------------------------------------- */
+
+.rp-thread-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-height: 46dvh;
+}
+
+.rp-thread {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+}
+
+.rp-thread__identity {
+  min-width: 0;
+  flex: 1;
+}
+
+.rp-thread__title {
+  display: block;
+  width: 100%;
+  padding: 0;
+  text-align: start;
+  font-size: var(--text-base);
+  color: var(--ink);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.rp-thread__meta {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+}
+
+.rp-thread__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+
+.rp-thread__input {
+  min-height: var(--target-min);
+}
+
+/* ============================================================ IMPORT == */
+
+.rp-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  background-color: var(--surface-raised);
+  border: var(--border-width) dashed var(--border-control);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out),
+              background-color var(--dur-fast) var(--ease-out);
+}
+
+.rp-dropzone__icon::before {
+  content: "\2191";
+  display: block;
+  font-size: var(--text-xl);
+  color: var(--ink-faint);
+}
+
+.rp-dropzone__title {
+  font-weight: 600;
+}
+
+.rp-dropzone__hint {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+}
+
+.rp-dropzone.is-dragover {
+  border-color: var(--accent-annotation);
+  background-color: var(--annotation-subtle);
+}
+
+.rp-dropzone[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rp-import__chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--surface-raised);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+}
+
+.rp-import__chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+}
+
+.rp-import__note {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+}
+
+.rp-import__divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+}
+
+.rp-import__divider::before,
+.rp-import__divider::after {
+  content: "";
+  flex: 1;
+  height: var(--border-width);
+  background-color: var(--border-hairline);
+}
+
+.rp-import__url-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rp-import__url-row .rp-input {
+  flex: 1;
+}
+
+/* -- duplicate choice -------------------------------------------------- */
+
+.rp-dup__body {
+  gap: var(--space-2);
+}
+
+.rp-dup__choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  height: auto;
+  padding: var(--space-3) var(--space-4);
+  text-align: start;
+}
+
+.rp-dup__choice-label {
+  font-weight: 600;
+}
+
+.rp-dup__choice-desc {
+  font-size: var(--text-xs);
+  opacity: 0.85;
+  font-weight: 400;
+}
+
+/* ============================================================ HEADER == */
+
+.rp-topbar__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  text-decoration: none;
+}
+
+.rp-search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* ------------------------------------------------------------ actions ---
+   The right cluster is two quiet icon commands plus one primary action. The
+   theme control is a real toggle and keeps `aria-pressed`, but the design
+   system's pressed fill would make it read as a different kind of button next
+   to the settings gear. Inside the topbar only, the pressed fill is pinned to
+   the ghost treatment so the two icons read as one group; the theme state is
+   still carried by the page ground itself and by `aria-pressed` for assistive
+   technology, so it is never signalled by colour alone. */
+.rp-topbar .rp-btn--icon[aria-pressed="true"] {
+  background-color: transparent;
+  border-color: transparent;
+  color: var(--ink-muted);
+}
+
+.rp-topbar .rp-btn--icon:hover {
+  color: var(--ink);
+}
+
+/* A search input carries two pieces of native chrome: an inner focus ring and
+   a clear button, both drawn by WebKit in its own colours. Suppressing them
+   leaves exactly one focus treatment, the shared token ring, and one clear
+   affordance, the platform-independent one below. */
+input[type="search"] {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-results-button,
+input[type="search"]::-webkit-search-results-decoration {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* The border never changes on focus: the token ring is the whole treatment, so
+   the field cannot show a ring and a colour shift at the same time. */
+.rp-input:focus,
+.rp-input:focus-visible {
+  border-color: var(--border-control);
+}
+
+.rp-field__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.rp-settings__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.rp-settings__footer-spacer {
+  flex: 1;
+  min-height: 38px;
+  cursor: default;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rp-settings__check-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+
+.rp-settings__check-title {
+  display: block;
+  font-weight: 600;
+}
+
+/* ============================================================== TOAST == */
+
+.rp-toast__message {
+  flex: 1;
+  min-width: 0;
+}
+
+.rp-toast__close,
+.rp-toast__action {
+  flex: none;
+}
+
+/* ============================================================ RESPONSIVE == */
+
+@media (max-width: 720px) {
+  /* The header must not crowd three controls into a 390px row. The brand
+     keeps its mark, the import action collapses to its icon so the three
+     controls sit with even spacing, and the label stays in the accessible
+     name rather than the layout. */
+  .rp-topbar {
+    gap: var(--space-2);
+  }
+
+  .rp-topbar__import-label {
+    display: none;
+  }
+
+  .rp-topbar__import {
+    padding-inline: var(--space-3);
+  }
+
+  /* Search takes its own full-width row: a right-aligned field is unusable
+     at 360px, and the two selects then sit together on the row below. */
+  .rp-library__search {
+    flex-basis: 100%;
+    width: 100%;
+  }
+
+  .rp-library__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rp-card__body {
+    -webkit-line-clamp: 2;
+  }
+
+  .rp-persona-editor__hero {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

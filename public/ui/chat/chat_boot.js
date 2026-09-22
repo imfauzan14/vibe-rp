@@ -1,0 +1,818 @@
+    import { BrowserChatEngine, estimateTokens as estimateTokensModule } from "../../browser_engine.js";
+    import { SessionController } from "../../session_controller.js";
+    import { formatProse, substitutePlaceholders } from "../../message_format.js";
+    import { escapeHtml, escapeAttr } from "../../safe_html.js";
+    import { LocalDbQuotaError, LocalDbBlockedError } from "../../local_db.js";
+
+    import { initTheme, getTheme, toggleTheme } from "../theme.js";
+    import { createNotifier } from "../toast.js";
+    import { openModal, closeTopModal, topModal, bindDismissable } from "../modal.js";
+    import { confirmAction, runWithUndo } from "./confirm.js";
+    import { createMessageFeed } from "./message_feed.js";
+    import { createComposer } from "./composer.js";
+    import { createSearch } from "./search.js";
+    import { downloadExport, buildPlainText, readImportFile } from "./export.js";
+
+    import { createSettingsPanel } from "./settings_panel.js";
+
+    const $ = (id) => document.getElementById(id);
+    const controller = new SessionController();
+    const estimateTokens = (text) => estimateTokensModule(text);
+
+    const notifier = createNotifier({ region: $("toast-region"), status: $("turn-status") });
+    const showToast = (msg, tone = "info") => notifier.toast(msg, { tone: tone === "error" ? "error" : tone });
+    window.showToast = showToast;
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const cardId = urlParams.get("cardId");
+    const sessionId = urlParams.get("sessionId");
+
+    const chatFeed = $("chat-feed");
+    const chatInner = $("chat-inner");
+    const authorInput = $("author-input");
+    const sendBtn = $("send-btn");
+    const stopBtn = $("stop-btn");
+
+    // Placeholders, resolved before formatting so no {{user}} ever shows.
+    function resolvePlaceholders(text) {
+      return substitutePlaceholders(text, {
+        user: controller.currentPersona?.name || "You",
+        char: controller.charName,
+      });
+    }
+
+    const feed = createMessageFeed({
+      mount: chatInner,
+      resolve: resolvePlaceholders,
+      formatProse,
+      estimateTokens,
+      onAction: handleMessageAction,
+    });
+
+    const NEAR_BOTTOM_PX = 80;
+    const isNearBottom = () =>
+      chatFeed.scrollHeight - chatFeed.scrollTop - chatFeed.clientHeight <= NEAR_BOTTOM_PX;
+    let stickToBottom = true;
+
+    function scrollFeed(behavior = "auto") {
+      if (stickToBottom) chatFeed.scrollTo({ top: chatFeed.scrollHeight, behavior });
+    }
+
+    function renderFeed() {
+      if (chatInner.querySelector(".inline-msg-editor")) return;
+      stickToBottom = isNearBottom();
+      const messages = controller.activeSession?.messages || [];
+      feed.setContext({
+        card: controller.activeCard,
+        persona: controller.currentPersona,
+        charName: controller.charName,
+        initialLetter: controller.initialLetter,
+      });
+      if (!messages.length) {
+        feed.renderEmpty({
+          title: "Scene ready",
+          body: `Silence settles over the scene. Write an opening line to ${controller.charName}.`,
+        });
+        updateContextStats();
+        return;
+      }
+      feed.setMessages(messages);
+      if (stickToBottom) chatFeed.scrollTop = chatFeed.scrollHeight;
+      updateContextStats();
+    }
+
+    // Message actions. One delegated handler; the message header reveals the tray.
+    function findMessage(id) {
+      return (controller.activeSession?.messages || []).find((m) => m.id === id) || null;
+    }
+
+    async function handleMessageAction(action, msgId, { button } = {}) {
+      const msg = findMessage(msgId);
+      if (!msg) return;
+
+      if (action === "copy") {
+        const text = String(msg.content || "").replace(/<thought[\s\S]*?<\/thought>/i, "").trim();
+        try {
+          await navigator.clipboard.writeText(text);
+          const label = button.textContent;
+          button.textContent = "Copied";
+          setTimeout(() => { button.textContent = label; }, 1500);
+        } catch (_) {
+          showToast("Copy failed. Your browser blocked clipboard access.", "error");
+        }
+        return;
+      }
+
+      if (action === "edit") {
+        const el = feed.getElement(msgId);
+        if (el) openInlineEdit(el, msg);
+        return;
+      }
+
+      if (action === "delete") {
+        const ok = await confirmAction({
+          title: "Delete this message?",
+          body: "The turn is removed from this chat. This cannot be undone.",
+          confirmLabel: "Delete message",
+          tone: "danger",
+        });
+        if (!ok) return;
+        const index = controller.activeSession.messages.findIndex((m) => m.id === msgId);
+        controller.deleteMessage(msgId);
+        await persistOrReport();
+        renderFeed();
+        runWithUndo({
+          notifier,
+          message: "Message deleted.",
+          undo: async () => {
+            controller.activeSession.messages.splice(index, 0, msg);
+            await persistOrReport();
+            renderFeed();
+          },
+        });
+        return;
+      }
+
+      if (action === "reroll") {
+        await rerollLastTurn();
+        return;
+      }
+
+      if (action === "fork") {
+        await forkFromMessage(msg);
+        return;
+      }
+    }
+
+    /**
+     * Forks the conversation from a message: a new session whose transcript is
+     * this conversation up to and including that turn. The original session is
+     * left untouched, which keeps both transcripts append-only.
+     */
+    async function forkFromMessage(msg) {
+      const messages = controller.activeSession?.messages || [];
+      const idx = messages.findIndex((m) => m.id === msg.id);
+      if (idx === -1) return;
+      const ok = await confirmAction({
+        title: "Fork from this message?",
+        body: "A new chat starts with this conversation up to this turn. The current chat is kept as it is.",
+        confirmLabel: "Fork conversation",
+      });
+      if (!ok) return;
+      const source = controller.activeSession;
+      const forked = {
+        id: `sess_${Date.now()}`,
+        cardId: source.cardId,
+        title: `${source.title || "Chat"} (fork)`,
+        messages: messages.slice(0, idx + 1).map((m) => ({ ...m })),
+        ledger: source.ledger || "",
+        consumed: Number(source.consumed) || 0,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      await controller.db.saveSession(forked);
+      controller.sessions.push(forked);
+      controller.switchSession(forked);
+      renderFeed();
+      showToast("Forked into a new chat. The original is unchanged.", "success");
+      updateContextStats();
+    }
+
+    async function persistOrReport() {
+      try {
+        await controller.saveSession();
+      } catch (err) {
+        reportStorageError(err);
+      }
+    }
+
+    function reportStorageError(err) {
+      if (err instanceof LocalDbQuotaError) {
+        showToast("This browser is out of storage space. Free some space, then try again.", "error");
+      } else if (err instanceof LocalDbBlockedError) {
+        showToast("Another tab is using an older version of this app. Close it, then reload.", "error");
+      } else {
+        showToast(`Could not save: ${err.message}`, "error");
+      }
+    }
+
+    // Inline edit. Saving forks the message; the original text is preserved.
+    function openInlineEdit(cardEl, msg) {
+      const contentCol = cardEl.querySelector(".rp-message__content");
+      if (!contentCol || cardEl.classList.contains("is-editing")) return;
+      cardEl.classList.add("is-editing");
+
+      const proseEl = contentCol.querySelector(".rp-message__prose");
+      const trayEl = contentCol.querySelector(".rp-message__tray");
+      proseEl.hidden = true;
+      if (trayEl) trayEl.hidden = true;
+
+      const editor = document.createElement("div");
+      editor.className = "inline-msg-editor";
+      editor.style.display = "flex";
+      editor.style.flexDirection = "column";
+      editor.style.gap = "var(--space-2)";
+      editor.innerHTML = `
+        <label class="visually-hidden" for="inline-edit-${escapeAttr(msg.id)}">Edit message</label>
+        <textarea id="inline-edit-${escapeAttr(msg.id)}" class="rp-textarea" rows="4"></textarea>
+        <div class="rp-help">Saving keeps the current text as an earlier draft, so nothing is lost.</div>
+        <div style="display:flex; gap: var(--space-2); justify-content:flex-end;">
+          <button type="button" class="rp-btn rp-btn--ghost rp-btn--md" data-cancel>Cancel</button>
+          <button type="button" class="rp-btn rp-btn--primary rp-btn--md" data-save>Save as new draft</button>
+        </div>`;
+      contentCol.appendChild(editor);
+      const textarea = editor.querySelector("textarea");
+      textarea.value = msg.content || "";
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+      const close = () => {
+        editor.remove();
+        cardEl.classList.remove("is-editing");
+        proseEl.hidden = false;
+        if (trayEl) trayEl.hidden = false;
+      };
+
+      const save = async () => {
+        const val = textarea.value.trim();
+        if (!val) { close(); return; }
+        const revision = controller.editMessage(msg.id, val);
+        await persistOrReport();
+        close();
+        if (revision) feed.updateMessage(revision);
+        showToast("Saved as a new draft. The earlier text is kept.", "success");
+      };
+
+      editor.querySelector("[data-cancel]").addEventListener("click", close);
+      editor.querySelector("[data-save]").addEventListener("click", save);
+      textarea.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); }
+        else if (e.key === "Escape") { e.preventDefault(); close(); }
+      });
+    }
+
+    const composer = createComposer({
+      root: $("composer"),
+      input: authorInput,
+      sendButton: sendBtn,
+      stopButton: stopBtn,
+      statsEl: $("composer-live-stats"),
+      personaNameEl: $("composer-persona-name"),
+      personaAvatarEl: $("composer-speaker-avatar"),
+      estimateTokens,
+      onSend: (text) => submitTurn(text),
+      onStop: () => stopTurn(),
+    });
+
+    $("composer").addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (!composer.busy) submitTurn(authorInput.value.trim());
+    });
+
+    // Turn flow. Stop aborts the whole turn, fold included.
+    let activeStream = null;
+
+    function setBusy(busy) {
+      composer.setBusy(busy);
+      if (busy) notifier.setStatus("Writing a reply.");
+      else notifier.setStatus("");
+    }
+
+    /**
+     * Aborts the in-flight turn. The engine rolls its placeholder back, so this
+     * only marks the stream as stopped and lets `streamTurn`'s own settle path
+     * do the rendering, keeping one owner for the composer state.
+     */
+    function stopTurn() {
+      controller.cancel();
+      if (activeStream) activeStream.stopped = true;
+      else {
+        setBusy(false);
+        notifier.setStatus("");
+      }
+    }
+
+    function describeFailure(err) {
+      const raw = String(err?.message || err || "");
+      if (err?.name === "AbortError" || /aborted/i.test(raw)) return null;
+      if (/\b401\b|unauthor/i.test(raw)) return { text: "The provider rejected the API key. Check it in settings.", retry: true };
+      if (/\b429\b|rate limit/i.test(raw)) return { text: "The provider is rate limiting. Wait a moment, then retry.", retry: true };
+      if (/\b5\d\d\b|server error/i.test(raw)) return { text: "The provider had a server error. Retry in a moment.", retry: true };
+      if (/HTTP \d+/.test(raw)) return { text: `The provider returned ${raw}.`, retry: true };
+      if (/quota/i.test(raw)) return { text: "Storage quota exceeded. Free some space, then retry.", retry: false };
+      return { text: raw || "The reply failed.", retry: true };
+    }
+
+    async function streamTurn(promptHint, { persistPending = true } = {}) {
+      setBusy(true);
+      stickToBottom = isNearBottom();
+      const streamId = `msg_${Date.now() + 1}`;
+      const stream = feed.beginStream(streamId, { autoFollow: stickToBottom });
+      const partial = { id: streamId, role: "assistant", content: "", timestamp: Date.now() };
+      const turn = { stream, msg: partial, stopped: false };
+      activeStream = turn;
+
+      let scrollScheduled = false;
+      const follow = () => {
+        if (!stickToBottom || scrollScheduled) return;
+        scrollScheduled = true;
+        requestAnimationFrame(() => {
+          scrollFeed();
+          scrollScheduled = false;
+        });
+      };
+
+      try {
+        const assistantMsg = await controller.streamResponse(
+          promptHint,
+          (chunk) => {
+            if (typeof chunk !== "string" || !chunk) return;
+            partial.content += chunk;
+            feed.appendChunk(stream, chunk);
+            follow();
+          },
+          (notice) => {
+            showToast(notice, "info");
+          },
+          { persistPending },
+        );
+        if (assistantMsg) Object.assign(partial, assistantMsg);
+        // A Stop mid-stream may leave the engine having persisted the partial
+        // reply; keep it as a real turn rather than throwing the text away.
+        feed.settleStream(stream, partial);
+      } catch (err) {
+        feed.failStream(stream);
+        if (turn.stopped) {
+          notifier.setStatus("Stopped.");
+          showToast("Stopped.", "info");
+        } else {
+          const described = describeFailure(err);
+          if (described) {
+            notifier.toast(described.text, {
+              tone: "error",
+              actionLabel: described.retry ? "Retry" : "",
+              onAction: described.retry ? () => streamTurn(promptHint, { persistPending }) : null,
+            });
+          }
+        }
+      } finally {
+        activeStream = null;
+        setBusy(false);
+        updateContextStats();
+        if (window.matchMedia("(pointer: fine)").matches) composer.focus();
+      }
+    }
+
+    async function submitTurn(text) {
+      const value = (text ?? authorInput.value).trim();
+      if (!value || composer.busy) return;
+      controller.appendMessage({ role: "user", content: value });
+      renderFeed();
+      await streamTurn(value);
+    }
+
+    async function rerollLastTurn() {
+      if (composer.busy) return;
+      const lastUserPrompt = controller.reroll();
+      renderFeed();
+      await streamTurn(lastUserPrompt || "[Reroll the scene]");
+    }
+
+    // Context stats and ledger calculation.
+    const contextLedger = $("ledger-context");
+
+    const formatK = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+
+    function updateContextStats() {
+      const budgets = BrowserChatEngine.resolveBudgets(controller.settings);
+      const systemPrompt = BrowserChatEngine.formatSystemPrompt(
+        controller.activeCard,
+        controller.currentPersona,
+        { ...controller.settings, agentsContract: controller.currentDirective?.content || controller.settings.agentsContract },
+      );
+      const sess = controller.activeSession;
+      const consumed = Math.max(1, Number(sess?.consumed) || 1);
+      const plan = BrowserChatEngine.planContext({
+        systemPrompt,
+        messages: sess?.messages || [],
+        ledger: sess?.ledger || "",
+        consumed,
+        settings: controller.settings,
+      });
+      const pct = Math.min(999, Math.round((plan.promptTokens / Math.max(1, plan.budget)) * 100));
+
+
+      const ledgerMark = sess?.ledger ? "yes" : "no";
+      contextLedger.innerHTML = `
+        <div class="rp-ledger__row"><span class="rp-ledger__key">Prompt size</span><span class="rp-ledger__value">${formatK(plan.promptTokens)} of ${formatK(plan.budget)} tokens</span></div>
+        <div class="rp-chat__ledger-meter"><div class="rp-ledger__meter"><span style="width:${pct}%"></span></div></div>
+        <div class="rp-ledger__row"><span class="rp-ledger__key">Reserved for reply</span><span class="rp-ledger__value">${formatK(budgets.reservedOutput)} tokens</span></div>
+        <div class="rp-ledger__row"><span class="rp-ledger__key">Model window</span><span class="rp-ledger__value">${formatK(budgets.contextWindow)} tokens</span></div>
+        <div class="rp-ledger__row"><span class="rp-ledger__key">Story summary kept</span><span class="rp-ledger__value">${ledgerMark}</span></div>
+        <div class="rp-ledger__row"><span class="rp-ledger__key">Messages</span><span class="rp-ledger__value">${(sess?.messages || []).length}</span></div>`;
+    }
+
+    // Ledger sheet controls.
+    const ledgerSheet = $("ledger-sheet");
+    const ledgerBtn = $("toggle-ledger-btn");
+
+    function setLedgerOpen(open) {
+      ledgerSheet.hidden = !open;
+      ledgerSheet.dataset.open = open ? "true" : "false";
+      ledgerBtn.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) { updateContextStats(); $("close-ledger-btn").focus(); }
+      else ledgerBtn.focus();
+    }
+    ledgerBtn.addEventListener("click", () => setLedgerOpen(ledgerSheet.dataset.open !== "true"));
+    $("close-ledger-btn").addEventListener("click", () => setLedgerOpen(false));
+
+    // Escape and a click outside the sheet both dismiss it. The toggle button
+    // is exempt so its own click does not dismiss-then-reopen in one gesture.
+    bindDismissable({
+      element: ledgerSheet,
+      isOpen: () => ledgerSheet.dataset.open === "true" && !ledgerSheet.hidden,
+      onDismiss: () => setLedgerOpen(false),
+      trigger: ledgerBtn,
+    });
+
+    // In-chat search panel wiring.
+    const searchPanel = $("chat-search");
+    const searchInput = $("chat-search-input");
+    const search = createSearch({
+      input: searchInput,
+      container: chatInner,
+      countEl: $("chat-search-count"),
+      root: searchPanel,
+      onChange: (msg) => notifier.setStatus(msg),
+    });
+
+    function setSearchOpen(open) {
+      searchPanel.dataset.open = open ? "true" : "false";
+      $("toggle-search-btn").setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) searchInput.focus();
+      else { search.clear(); $("toggle-search-btn").focus(); }
+    }
+    $("toggle-search-btn").addEventListener("click", () => setSearchOpen(searchPanel.dataset.open !== "true"));
+    $("chat-search-next").addEventListener("click", () => search.next());
+    $("chat-search-prev").addEventListener("click", () => search.prev());
+    $("chat-search-close").addEventListener("click", () => setSearchOpen(false));
+
+    // Dialogs: native <dialog> handles focus trap and Escape.
+    const dialogs = {
+      history: $("history-modal"),
+      settings: $("settings-popup"),
+      personaEditor: $("editor-modal"),
+      directiveEditor: $("editor-modal-directive"),
+    };
+    // The shared modal controller owns the visible stack, focus, the backdrop
+    // and Escape. The page keeps only the name -> element map and mirrors the
+    // top of that stack into the controller, so an editor opened over settings
+    // closes back to settings rather than closing everything.
+    const nameOf = (el) => Object.keys(dialogs).find((key) => dialogs[key] === el) || null;
+    // Payloads are remembered per name so returning to an outer dialog (an
+    // editor closing back to settings) restores that dialog's own payload
+    // rather than inheriting the editor's.
+    const payloads = new Map();
+
+    function syncModalName() {
+      const top = topModal();
+      const name = top ? nameOf(top) : null;
+      if (name) controller.openModal(name, payloads.get(name) ?? null);
+      else controller.closeModal();
+    }
+
+    function openDialog(name, payload = null) {
+      const el = dialogs[name];
+      if (!el) return;
+      payloads.set(name, payload);
+      controller.openModal(name, payload);
+      openModal({
+        element: el,
+        trigger: document.activeElement instanceof HTMLElement ? document.activeElement : null,
+        // Any close path (Escape, backdrop, Close button, a save) lands here,
+        // so the controller always names the dialog that is still open.
+        onClose: () => syncModalName(),
+      });
+    }
+
+    function closeDialog() {
+      closeTopModal();
+    }
+
+    function openHistoryModal() {
+      openDialog("history");
+      renderHistoryThreads();
+    }
+    $("toggle-context-drawer-btn").addEventListener("click", openHistoryModal);
+    $("close-history-modal-btn").addEventListener("click", closeDialog);
+    $("close-history-modal-btn-2").addEventListener("click", closeDialog);
+
+    $("history-manage-personas-btn").addEventListener("click", () => { closeDialog(); openSettingsPopup("settings-personas-tab"); });
+    $("history-manage-directives-btn").addEventListener("click", () => { closeDialog(); openSettingsPopup("settings-system-prompts-tab"); });
+
+    // History threads modal rendering.
+    async function renderHistoryThreads() {
+      controller.sessions = await controller.db.getSessionsForCard(controller.activeCard.id);
+      const list = $("history-threads-list");
+      list.textContent = "";
+      if (!controller.sessions.length) {
+        list.innerHTML = `<p class="rp-help">No saved chats for this character yet. Start one with New chat.</p>`;
+        return;
+      }
+      for (const sess of controller.sessions) {
+        const row = document.createElement("div");
+        row.className = "rp-card";
+        row.setAttribute("role", "listitem");
+        row.style.padding = "var(--space-3)";
+        row.style.marginBottom = "var(--space-2)";
+        const active = sess.id === controller.activeSession.id;
+        const count = sess.messages?.length || 0;
+        const date = sess.updatedAt ? new Date(sess.updatedAt).toLocaleDateString([], { month: "short", day: "numeric" }) : "";
+        row.innerHTML = `
+          <div class="rp-card__head">
+            <div class="rp-card__heading">
+              <span class="rp-card__title" style="font-size: var(--text-base);">${escapeHtml(sess.title || "Untitled chat")}</span>
+              <span class="rp-card__byline">${count} ${count === 1 ? "message" : "messages"} ${date ? `on ${escapeHtml(date)}` : ""}</span>
+            </div>
+            <div class="rp-card__actions">
+              <button type="button" class="rp-btn rp-btn--ghost rp-btn--sm" data-rename>Rename</button>
+              ${controller.sessions.length > 1 ? `<button type="button" class="rp-btn rp-btn--danger-ghost rp-btn--sm" data-delete>Delete</button>` : ""}
+              ${active ? `<span class="rp-badge rp-badge--annotation">Active</span>` : `<button type="button" class="rp-btn rp-btn--secondary rp-btn--sm" data-switch>Switch</button>`}
+            </div>
+          </div>`;
+
+        row.querySelector("[data-switch]")?.addEventListener("click", () => {
+          controller.switchSession(sess);
+          renderFeed();
+          closeDialog();
+          showToast(`Switched to ${sess.title}.`, "info");
+        });
+        row.querySelector("[data-rename]")?.addEventListener("click", () => enterThreadRename(sess, row));
+        row.querySelector("[data-delete]")?.addEventListener("click", async () => {
+          const ok = await confirmAction({
+            title: "Delete this chat?",
+            body: `"${sess.title}" and its messages are removed.`,
+            confirmLabel: "Delete chat",
+            tone: "danger",
+          });
+          if (!ok) return;
+          await controller.db.deleteSession(sess.id);
+          controller.sessions = controller.sessions.filter((s) => s.id !== sess.id);
+          if (controller.activeSession.id === sess.id) {
+            if (!controller.sessions.length) { window.location.href = "./"; return; }
+            controller.activeSession = controller.sessions[0];
+            renderFeed();
+          }
+          renderHistoryThreads();
+          showToast("Chat deleted.", "info");
+        });
+        list.appendChild(row);
+      }
+    }
+
+    function enterThreadRename(sess, row) {
+      const titleEl = row.querySelector(".rp-card__title");
+      const oldTitle = sess.title || "";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "rp-input";
+      input.value = oldTitle;
+      input.maxLength = 80;
+      input.setAttribute("aria-label", "Rename chat");
+      titleEl.replaceWith(input);
+      input.focus();
+      input.select();
+      let settled = false;
+      const finish = async (save) => {
+        if (settled) return;
+        settled = true;
+        const next = (save ? input.value.trim() : oldTitle) || "Untitled chat";
+        sess.title = next;
+        sess.updatedAt = Date.now();
+        if (sess.id === controller.activeSession.id) {
+          controller.activeSession.title = next;
+        }
+        await controller.db.saveSession(sess);
+        renderHistoryThreads();
+      };
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") finish(true);
+        else if (e.key === "Escape") finish(false);
+      });
+      input.addEventListener("blur", () => finish(true));
+    }
+
+    $("history-new-scene-btn").addEventListener("click", async () => {
+      await controller.createSession({ title: `Chat ${controller.sessions.length + 1}` });
+      renderFeed();
+      closeDialog();
+      showToast("New chat started.", "success");
+    });
+
+    // Export and restore actions.
+    $("export-json-btn").addEventListener("click", () => {
+      try {
+        const name = downloadExport({ session: controller.activeSession, card: controller.activeCard, persona: controller.currentPersona });
+        showToast(`Exported ${name}.`, "success");
+      } catch (err) {
+        showToast(`Export failed: ${err.message}`, "error");
+      }
+    });
+
+    $("export-text-btn").addEventListener("click", () => {
+      const text = buildPlainText({ session: controller.activeSession, card: controller.activeCard });
+      const blob = new Blob([text], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${(controller.activeSession?.title || "conversation").toLowerCase().replace(/[^a-z0-9]+/g, "-")}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+      showToast("Exported as text.", "success");
+    });
+
+    $("import-restore-btn").addEventListener("click", () => $("import-restore-input").click());
+    $("import-restore-input").addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      e.target.value = "";
+      if (!file) return;
+      try {
+        const parsed = await readImportFile(file);
+        const ok = await confirmAction({
+          title: "Restore this conversation?",
+          body: `${parsed.messages.length} messages are added to the end of the current chat. Nothing is removed.`,
+          confirmLabel: "Add messages",
+        });
+        if (!ok) return;
+        const session = controller.activeSession;
+        for (const m of parsed.messages) session.messages.push({ ...m, id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` });
+        if (parsed.ledger && !session.ledger) session.ledger = parsed.ledger;
+        session.updatedAt = Date.now();
+        await persistOrReport();
+        renderFeed();
+        closeDialog();
+        showToast(`Restored ${parsed.messages.length} messages.`, "success");
+      } catch (err) {
+        showToast(err.message, "error");
+      }
+    });
+
+    // Settings surface (engine, parameters, personas, directives, editors).
+    // The whole panel lives in ui/chat/settings_panel.js so this page stays a thin bootstrap.
+    const settingsPanel = createSettingsPanel({
+      root: dialogs.settings,
+      personaEditor: dialogs.personaEditor,
+      directiveEditor: dialogs.directiveEditor,
+      db: controller.db,
+      engine: BrowserChatEngine,
+      openDialog,
+      closeDialog,
+      confirm: confirmAction,
+      getModalPayload: () => controller.modalPayload,
+      toast: (msg, tone) => showToast(msg, tone),
+      onSettingsChanged: () => {
+        controller.settings = controller.db.getSettings();
+        updateContextStats();
+      },
+      onPresetsChanged: () => refreshPresets(),
+    });
+
+    $("toggle-settings-btn").addEventListener("click", () => settingsPanel.open());
+    $("close-settings-popup-btn").addEventListener("click", () => {
+      closeDialog();
+      refreshPresets();
+    });
+
+    // Persona and directive presets sync.
+    $("history-persona-select").addEventListener("change", async (e) => {
+      await controller.setCardPersona(e.target.value);
+      await refreshPresets();
+      renderFeed();
+    });
+    $("history-directive-select").addEventListener("change", async (e) => {
+      await controller.setCardDirective(e.target.value);
+      await refreshPresets();
+      updateContextStats();
+    });
+
+    async function refreshPresets() {
+      await controller.refreshPresets();
+      const allPersonas = await controller.db.getAllPersonas();
+      const defPersona = await controller.db.getDefaultPersona();
+      const personaSelect = $("history-persona-select");
+      personaSelect.innerHTML =
+        `<option value="">Global default (${escapeHtml(defPersona.name)})</option>` +
+        allPersonas.map((p) => `<option value="${escapeAttr(p.id)}">${escapeHtml(p.name)}${p.isDefault ? " (global)" : ""}</option>`).join("");
+      personaSelect.value = controller.activeCard.userPersonaId || controller.activeCard.data?.userPersonaId || "";
+
+      const allDirectives = await controller.db.getAllDirectives();
+      const defDirective = await controller.db.getDefaultDirective();
+      const directiveSelect = $("history-directive-select");
+      directiveSelect.innerHTML =
+        `<option value="">Global default (${escapeHtml(defDirective.name)})</option>` +
+        allDirectives.map((d) => `<option value="${escapeAttr(d.id)}">${escapeHtml(d.name)}${d.isDefault ? " (global)" : ""}</option>`).join("");
+      directiveSelect.value = controller.activeCard.directivePresetId || controller.activeCard.data?.directivePresetId || "";
+
+      composer.setPersona({ name: controller.currentPersona?.name || "You", avatar: controller.currentPersona?.avatar || null });
+      updateContextStats();
+    }
+
+    function renderHudCharacter() {
+      // The top bar no longer carries the character's identity. The document
+      // title is its home now, so a reader still sees who they are talking to.
+      document.title = `${controller.charName} - Chat`;
+    }
+
+    window.addEventListener("settings-saved", (e) => {
+      controller.settings = e.detail;
+      updateContextStats();
+    });
+
+    // Re-apply stored theme once module runs. theme-boot.js handles pre-paint,
+    // and initTheme reconciles if storage was blocked.
+    initTheme();
+
+    document.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f" && !e.shiftKey) {
+        if (controller.openModalName) return;
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    });
+
+    // Boot.
+    let booted = false;
+    try {
+      await controller.init(cardId, sessionId);
+      booted = true;
+    } catch (err) {
+      booted = false;
+      renderBootFailure(err);
+    }
+
+    function renderBootFailure(err) {
+      const blocked = err instanceof LocalDbBlockedError;
+      feed.renderEmpty({
+        title: blocked ? "This app is open in another tab" : "No character to chat with",
+        body: blocked
+          ? "Close the other tab or window using this app, then reload this page."
+          : "Import a character card in the library first, then open a chat from there.",
+        actionLabel: "Go to the library",
+        onAction: () => { window.location.href = "./"; },
+      });
+      // No character to talk to: disable the dock honestly instead of leaving
+      authorInput.disabled = true;
+      sendBtn.disabled = true;
+      stopBtn.hidden = true;
+      if (!blocked) console.warn("Chat boot failed:", err);
+    }
+
+    if (booted) {
+      renderHudCharacter();
+      await refreshPresets();
+      renderFeed();
+
+      if (window.visualViewport) {
+        let scheduled = false;
+        const syncHeight = () => {
+          scheduled = false;
+          const vv = window.visualViewport;
+          const isPinchZoom = vv.scale > 1.01;
+          const editing = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+          if (isPinchZoom || !editing) {
+            document.documentElement.style.removeProperty("--app-height");
+          } else {
+            document.documentElement.style.setProperty("--app-height", `${vv.height}px`);
+          }
+        };
+        const onChange = () => {
+          if (!scheduled) {
+            scheduled = true;
+            requestAnimationFrame(syncHeight);
+          }
+        };
+        window.visualViewport.addEventListener("resize", onChange);
+        window.visualViewport.addEventListener("scroll", onChange);
+        syncHeight();
+      }
+
+      chatFeed.addEventListener("scroll", () => {
+        stickToBottom = isNearBottom();
+      }, { passive: true });
+
+      if ("serviceWorker" in navigator && window.isSecureContext) {
+        try { navigator.serviceWorker.register("sw.js", { scope: "./" }).catch(() => {}); } catch (_) {}
+      }
+
+      // Expose a tiny seam for the verification harness. Read-only.
+      window.__chat = {
+        get messages() { return controller.activeSession?.messages || []; },
+        get session() { return controller.activeSession; },
+        get busy() { return composer.busy; },
+        get theme() { return getTheme(); },
+        toggleTheme,
+        stop: () => stopTurn(),
+      };
+    }

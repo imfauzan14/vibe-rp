@@ -1,0 +1,424 @@
+/* ===========================================================================
+   vibe-rp: Marginalia design tokens
+   ---------------------------------------------------------------------------
+   ONE token set, TWO themes.
+     :root                  Marginalia  (dark ink-room, the default)
+     [data-theme="paper"]   Paper       (e-ink daylight)
+
+   Load order on a page:
+     design/tokens.css  ->  design/components.css  ->  page composition layer
+   Every value a component may use lives here. components.css contains no
+   literal colour. Themes swap by attribute on <html>; nothing else changes.
+
+   Verified contrast (WCAG 2.2, computed with the sRGB relative-luminance
+   formula): see DESIGN.md. Minimums met: 4.5:1 body text, 3:1 large text,
+   UI borders and the focus indicator.
+   =========================================================================== */
+
+/* ---------------------------------------------------------------- fonts ---
+   Self-hosted only. No third-party requests.
+   Newsreader + JetBrains Mono already ship in public/fonts/ and are reused
+   by relative path from this file. Source Sans 3 was added under
+   public/design/fonts/ as the interface face; the files are byte-identical
+   across the 400..700 range because the upstream family is variable.
+   ------------------------------------------------------------------------ */
+
+@font-face {
+  font-family: "Newsreader";
+  font-style: normal;
+  font-weight: 400 500;
+  font-display: swap;
+  src: url("../fonts/newsreader-latin-400-500.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Newsreader";
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url("../fonts/newsreader-latin-400-italic.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Source Sans 3";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("fonts/source-sans-3-latin-400.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  src: url("../fonts/jetbrains-mono-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* ==================================================== THEME: MARGINALIA == */
+
+:root {
+  color-scheme: dark;
+
+  /* -- ground and elevation ------------------------------------------- */
+  --canvas:          #0E1113;  /* page ground: cool near-black ink-room    */
+  --canvas-sunken:   #0A0C0E;  /* below the page: reading well, scroll bg  */
+  --surface:         #161A1D;  /* cards, sheets, panels                    */
+  --surface-raised:  #1D2226;  /* popovers, trays, secondary buttons       */
+  --surface-hover:   #242A2F;  /* hover fill on quiet controls             */
+  --input-bg:        #1A2126;  /* text fields: lifted clear of the ground  */
+
+  /* -- ink ------------------------------------------------------------- */
+  --ink:             #E9E7E2;  /* prose and headings, warm off-white       */
+  --ink-muted:       #A6ADB1;  /* secondary copy, control labels           */
+  --ink-faint:       #838B90;  /* metadata, placeholders, timestamps       */
+  --ink-inverse:     #12161A;  /* text on filled light buttons and badges  */
+
+  /* -- annotation accents ---------------------------------------------- */
+  /* Antique gold. Reserved for marginalia: continuity marks, thought
+     blocks, context flags, the character's own name. Never a decoration. */
+  --accent-annotation:        #D3B36C;
+  --accent-annotation-strong: #E4C88B;  /* hover / active on annotation ink */
+  --annotation-subtle:        #302F28;  /* annotation wash on surface       */
+
+  /* The author's own hand. Cool, deliberately unlike the gold. */
+  --accent-user:        #8FB6DE;
+  --accent-user-strong: #A8C8E8;
+  --user-subtle:        #273038;
+
+  /* -- status ---------------------------------------------------------- */
+  --danger:         #EE8A7C;
+  --danger-strong:  #F5A79B;
+  --danger-subtle:  #342A2A;
+  --success:        #86C7A3;
+  --success-subtle: #263230;
+  --warn:           #D3B36C;  /* continuity flag reuses the annotation gold */
+  --warn-subtle:    #302F28;
+
+  /* Text on a filled danger surface. */
+  --on-danger: #0E1113;
+
+  /* -- lines ----------------------------------------------------------- */
+  --border-hairline: #2A3034;  /* dividers, card edges (decorative)        */
+  --border-control:  #68707A;  /* input/control outline, needs 3:1         */
+  --border-strong:   #7C858C;  /* hovered control outline                  */
+  --ink-subtle:      #272A2D;  /* flat wash for chip fills                 */
+
+  /* -- focus ----------------------------------------------------------- */
+  --focus-ring:  #D3B36C;
+  --focus-width: 2px;
+  --focus-offset: 2px;
+
+  /* -- elevation (single light source: above, slightly cool) ----------- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.6);
+  --shadow-xl: 0 30px 70px rgba(0, 0, 0, 0.68);
+
+  /* -- paper grain ------------------------------------------------------
+     One static noise tile, used only inside .rp-well so the dark ground
+     reads as paper stock instead of a flat rectangle. Held as a token so
+     components.css stays free of literal values. It is a generated SVG
+     filter, not a binary asset. */
+  --grain-layer: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23g)'/%3E%3C/svg%3E");
+  --grain-opacity: 0.028;
+  --grain-blend: screen;
+  --grain-size: 140px 140px;
+
+  /* ================== shared scales (identical in both themes) ========= */
+
+  /* -- type families --------------------------------------------------- */
+  --font-prose: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-ui: "Source Sans 3", ui-sans-serif, system-ui, -apple-system,
+             "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
+               Consolas, monospace;
+
+  /* -- modular type scale, ratio 1.2 (minor third-ish, hand-tuned) ------ */
+  --text-2xs:  0.6875rem;  /* 11px  badge counts, ledger figures          */
+  --text-xs:   0.75rem;    /* 12px  metadata, timestamps                  */
+  --text-sm:   0.8125rem;  /* 13px  chips, helper text                    */
+  --text-base: 0.9375rem;  /* 15px  UI body                               */
+  --text-md:   1rem;       /* 16px  prose at phone width                  */
+  --text-lg:   1.0625rem;  /* 17px  prose at reading width                */
+  --text-xl:   1.3125rem;  /* 21px  card titles, dialog titles            */
+  --text-2xl:  1.6875rem;  /* 27px  surface titles                        */
+  --text-3xl:  2.125rem;   /* 34px  the one bold element                  */
+
+  /* -- leading --------------------------------------------------------- */
+  --leading-prose: 1.72;   /* serif reading copy, generous by design      */
+  --leading-ui:    1.45;
+  --leading-tight: 1.2;
+
+  /* -- tracking -------------------------------------------------------- */
+  --tracking-tight:  -0.011em;  /* display sizes only                     */
+  --tracking-normal: 0;
+  --tracking-wide:   0.02em;    /* lowercase micro-labels, not all-caps   */
+
+  /* -- reading measure ------------------------------------------------- */
+  --measure:      68ch;   /* the prose column: 65-75ch target           */
+  --measure-wide: 84ch;   /* long-form exchanges that resist breaking    */
+
+  /* -- space (4px base, 1.5 rhythm) ------------------------------------ */
+  --space-0:  0;
+  --space-1:  0.25rem;   /*  4px */
+  --space-2:  0.5rem;    /*  8px */
+  --space-3:  0.75rem;   /* 12px */
+  --space-4:  1rem;      /* 16px */
+  --space-5:  1.5rem;    /* 24px */
+  --space-6:  2rem;      /* 32px */
+  --space-7:  2.5rem;    /* 40px */
+  --space-8:  3.5rem;    /* 56px */
+  --space-9:  5rem;      /* 80px */
+
+  /* -- radii (hierarchy: tighter inside, softer outside) --------------- */
+  --radius-xs:   3px;   /* chips, badges, code                        */
+  --radius-sm:   5px;   /* buttons, inputs                            */
+  --radius-md:   8px;   /* cards, message blocks                      */
+  --radius-lg:   14px;  /* dialogs, sheets, drawers                   */
+  --radius-xl:   20px;  /* the composer dock, the reading well        */
+  --radius-full: 999px; /* avatars, the context meter                 */
+
+  /* -- border widths --------------------------------------------------- */
+  --border-width:        1px;
+  --border-width-strong: 2px;
+
+  /* -- motion (answers an action, never decorates) --------------------- */
+  --dur-instant: 90ms;    /* press feedback                             */
+  --dur-fast:    140ms;   /* hover, focus, colour                       */
+  --dur-base:    220ms;   /* disclosure, tray, tab underline            */
+  --dur-slow:    320ms;   /* sheet and drawer travel                    */
+  --ease-out:    cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* -- layout ---------------------------------------------------------- */
+  --shell-max:      1440px;
+  --chrome-height:  52px;
+  --tap-min:        44px;   /* coarse pointers only, see components.css   */
+  --target-min:     24px;   /* WCAG 2.2 AA floor everywhere               */
+
+  /* -- z-index (one scale, no 9999) ------------------------------------ */
+  --z-base:     0;
+  --z-raised:   10;
+  --z-sticky:   100;
+  --z-drawer:   200;
+  --z-sheet:    300;
+  --z-dialog:   400;
+  --z-toast:    500;
+  --z-tooltip:  600;
+}
+
+/* ========================================================= THEME: PAPER == */
+
+[data-theme="paper"] {
+  color-scheme: light;
+
+  --canvas:          #F1F0EB;  /* warm neutral paper, not cream            */
+  --canvas-sunken:   #E7E5DE;
+  --surface:         #FBFAF7;
+  --surface-raised:  #F5F4EF;
+  --surface-hover:   #EDECE6;
+  --input-bg:        #FCFBF8;
+
+  --ink:             #191A1C;  /* near-black ink, cool to avoid a sepia cast */
+  --ink-muted:       #4A4F54;
+  /* One step darker than the dark theme's faint: metadata must clear 4.5:1 on
+     the reading well (--canvas-sunken), the lowest-contrast surface it sits on.
+     Still well clear of --ink-muted, so the hierarchy holds. */
+  --ink-faint:       #5D6368;
+  --ink-inverse:     #FFFFFF;
+
+  /* Paper's annotation ink is a deep bronze: gold at this size cannot hold
+     4.5:1 on a light ground, and a muted terracotta was ruled out. */
+  --accent-annotation:        #7A5A16;
+  --accent-annotation-strong: #63490F;
+  --annotation-subtle:        #E9E4D8;
+
+  --accent-user:        #2E5E8C;
+  --accent-user-strong: #24496E;
+  --user-subtle:        #DEE4E8;
+
+  --danger:         #A3372B;
+  --danger-strong:  #86291F;
+  --danger-subtle:  #EFDFDA;
+  --success:        #2F6B4F;
+  --success-subtle: #DEE6DF;
+  --warn:           #7A5A16;
+  --warn-subtle:    #E9E4D8;
+
+  /* Filled danger surfaces in day mode are dark, so their label is white. */
+  --on-danger: #FFFFFF;
+
+  --border-hairline: #DCDAD2;
+  --border-control:  #7F848A;
+  --border-strong:   #6B7178;
+  --ink-subtle:      #E9E8E5;
+
+  --focus-ring: #2E5E8C;
+
+  /* Day mode barely lifts: e-ink reads flat, so elevation is a hairline
+     and a whisper of shadow rather than a drop. */
+  --shadow-sm: 0 1px 2px rgba(31, 34, 38, 0.07);
+  --shadow-md: 0 4px 12px rgba(31, 34, 38, 0.09);
+  --shadow-lg: 0 12px 30px rgba(31, 34, 38, 0.12);
+  --shadow-xl: 0 22px 54px rgba(31, 34, 38, 0.16);
+
+  --grain-opacity: 0.05;
+  --grain-blend: multiply;
+}
+
+/* ======================================================== RESET BASELINE == */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scroll-behavior: smooth;
+  /* Keep focused controls clear of the sticky chrome (WCAG 2.4.11). */
+  scroll-padding-top: calc(var(--chrome-height) + var(--space-4));
+  scroll-padding-bottom: calc(var(--chrome-height) + var(--space-4));
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  line-height: var(--leading-ui);
+  font-synthesis-weight: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4, h5, h6, p, figure, blockquote, dl, dd {
+  margin: 0;
+}
+
+h1, h2, h3, h4 {
+  font-weight: 600;
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+ul, ol {
+  margin: 0;
+  padding: 0;
+}
+
+img, svg, video, canvas {
+  display: block;
+  max-width: 100%;
+}
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+  margin: 0;
+}
+
+button {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+  /* Engines without color-mix() (Firefox < 113, Safari < 16.2) would drop the
+     value below as invalid and underline in the inherited text colour at full
+     strength, or paint no underline at all. Declare a real colour first so the
+     fallback is a visible underline; the color-mix value wins where it parses,
+     which keeps Chromium and current engines byte-identical. */
+  text-decoration-color: currentColor;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-underline-offset: 0.18em;
+}
+
+hr {
+  border: 0;
+  border-top: var(--border-width) solid var(--border-hairline);
+  margin: 0;
+}
+
+code, kbd, samp, pre {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* Focus is defined once. Never removed; only relocated. */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: var(--focus-width) solid var(--focus-ring);
+  outline-offset: var(--focus-offset);
+  border-radius: inherit;
+}
+
+/* ================================================== REDUCED MOTION (full) =
+   Nothing in this system moves for decoration, so reduced motion collapses
+   every duration to a single frame and removes the only ambient effect.
+   ========================================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  :root {
+    --dur-instant: 1ms;
+    --dur-fast:    1ms;
+    --dur-base:    1ms;
+    --dur-slow:    1ms;
+  }
+
+  /* The reading well's grain is static; drop it entirely rather than
+     leave a painted layer that costs compositing for no gain. */
+  .rp-well::before {
+    display: none;
+  }
+}
+
+/* Forced colours: hand control back to the OS palette. */
+@media (forced-colors: active) {
+  :root {
+    --border-hairline: CanvasText;
+    --border-control:  CanvasText;
+    --focus-ring:      Highlight;
+  }
+}

@@ -1,0 +1,425 @@
+/* ===========================================================================
+   Chat surface additions.
+   ---------------------------------------------------------------------------
+   Loads AFTER tokens.css and components.css. Every value comes from a token, so
+   both themes work untouched. This file adds only what the design system does
+   not already define: the streaming tail, search highlights, the rendered-window
+   cap, the inline token figures, and the context sheet wrapper.
+   =========================================================================== */
+
+/* ---------------------------------------------------------------- shell --- */
+
+.rp-chat {
+  display: flex;
+  flex-direction: column;
+  /* The on-screen keyboard shrinks the visual viewport on iOS without
+     shrinking 100dvh; the page sets --app-height in that case only. */
+  height: var(--app-height, 100dvh);
+  min-height: var(--app-height, 100dvh);
+}
+
+.rp-chat__body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The reading well scrolls; the composer dock stays put under it. Horizontal
+   padding comes from the .rp-container inside, so it is not doubled here. */
+.rp-chat__feed {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* The well centres inside the feed's scrollport while the composer box
+   centres in the viewport: with a classic scrollbar the scrollport narrows
+   and the well sits half a scrollbar off the composer axis. A symmetric
+   reserve above 720px puts the feed's centre back on the viewport centre.
+   Mobile untouched (well stays full-bleed); unsupported browsers ignore it. */
+@media (min-width: 721px) {
+  .rp-chat__feed { scrollbar-gutter: stable both-edges; }
+}
+
+/* The reading pane FILLS the feed. The well is already the product's one
+   deliberate surface — sunken ground and grain — so letting it occupy the
+   whole available column turns what would be a floating card in a void into
+   the page itself: the story starts at the top and the space below it reads
+   as the page the story continues onto, rather than as an accident of flex
+   alignment. `min-height` (not `height`) is load-bearing: a thread taller
+   than the pane simply grows the container past 100%, so the feed scrolls as
+   one document and the well never becomes a nested scroll container. */
+.rp-chat__feed > .rp-container {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  /* Prose reads top-to-bottom: the pane begins at the top of the column. */
+  justify-content: flex-start;
+  /* The pane bleeds to the shell edge; the well's own padding supplies the
+     reading gutter, so the container must not add a second one. */
+  padding-inline: 0;
+}
+/* The composer's container must not add a second gutter: the form's own padding stays the single gutter. */
+.rp-composer > .rp-container { padding-inline: 0; }
+
+/* The reading well is the reading column. It fills the pane vertically and,
+   on a wide screen, is capped at the same measure as the composer dock and
+   centred so the well and the dock share one set of edges.
+   Below 720px the shell is already narrower than the cap, so the well is
+   edge to edge, where a narrow centred column would be wrong. */
+.rp-chat__feed .rp-well {
+  /* `margin-inline: auto` on a flex item suppresses the default stretch, so
+     the full width is stated explicitly; the max-width still caps it and the
+     auto margins still centre it. `flex: 1 1 auto` is what makes the pane
+     fill the column instead of hugging its content. */
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: var(--measure-wide);
+  margin-inline: auto;
+  margin-block: 0;
+  /* A pane that reaches the edges of its column must not carry the rounded
+     card silhouette, or it reads as a card that happens to be tall. The
+     ground and grain stay: the surface is still the surface. */
+  border-radius: 0;
+  border-inline: 0;
+  /* The well is now the only source of the reading gutter, since the ruled
+     margin that used to supply it is gone. */
+  padding-inline: var(--space-4);
+  padding-block: var(--space-5);
+}
+
+/* An empty conversation is a prompt to begin, not a stranded line. The pane
+   now fills the column, so the invitation is centred inside the pane: the
+   well becomes a flex column and the inner measure takes the free space only
+   when it holds the empty state, leaving a populated thread top-aligned. */
+.rp-chat__feed .rp-well:has(.rp-empty) {
+  display: flex;
+  flex-direction: column;
+}
+
+.rp-chat__feed .rp-well:has(.rp-empty) > .rp-measure,
+.rp-chat__feed .rp-well:has(.rp-empty) > .rp-measure--wide {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+@media (max-width: 720px) {
+  .rp-chat__feed .rp-well {
+    padding-block: var(--space-4);
+  }
+
+  .rp-composer__actions {
+    gap: var(--space-1);
+  }
+
+  .rp-composer__identity {
+    gap: var(--space-1);
+  }
+
+
+}
+/* --------------------------------------------------------------- header --- */
+
+/* Single-row bar. .rp-container is a block box with no display of its own,
+   so without this the back link, identity, spacer and buttons stack into
+   three rows. The identity takes the free space and the name truncates, so
+   the buttons never get pushed off-bar. */
+.rp-chat__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: nowrap;
+  flex: 1 1 auto;
+  min-width: 0;
+  /* .rp-topbar already pads the chrome; keep the container's max-width and
+     centering but do not double the gutter. */
+  padding-inline: 0;
+}
+
+
+/* The mobile bar is the tightest horizontal budget in the product: the back
+   control and the four 44px icons. Nothing drops below --tap-min: only the
+   seams between controls tighten. */
+@media (max-width: 720px) {
+  .rp-chat__bar {
+    gap: var(--space-1);
+  }
+}
+
+/* Comfortable mouse targets: --space-6 is the 32px token step. This is scoped
+   to fine pointers so the design system's global coarse rule
+   (.rp-btn--icon -> --tap-min, 44px) still wins on touch. */
+@media (hover: hover) and (pointer: fine) {
+  .rp-chat__bar .rp-btn--icon {
+    flex: none;
+    min-width: var(--space-6);
+    min-height: var(--space-6);
+  }
+}
+
+/* --------------------------------------------------- message additions --- */
+
+/* The rail avatar must not stretch to the height of a long turn. */
+.rp-message__rail > .rp-avatar {
+  position: sticky;
+  top: var(--space-3);
+}
+
+/* The header figures read inline and must never push other UI, wrap, or clip
+   as their digits change. The head stays one row and the name is the item that
+   yields (it truncates), so the figures keep their floor width and a changing
+   number can only ever pad inside its own box. Nothing here is a fixed width,
+   so a very wide figure grows its box instead of clipping. */
+.rp-message__head {
+  flex-wrap: nowrap;
+}
+
+.rp-message__speaker {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rp-message__meta {
+  flex: none;
+  min-width: 23ch;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+.rp-message__time {
+  white-space: nowrap;
+}
+
+.rp-message__tokens,
+.rp-message__forks {
+  white-space: nowrap;
+}
+
+.rp-message__forks {
+  color: var(--ink-faint);
+}
+
+/* Streaming tail: the paragraph still being written. */
+.rp-stream-settled > p:last-child,
+.rp-stream-tail > p:last-child {
+  margin-bottom: 0;
+}
+
+.rp-message__prose.is-streaming::after {
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 1em;
+  margin-left: 0.15em;
+  vertical-align: -0.12em;
+  background-color: var(--accent-annotation);
+  animation: rp-caret 1.1s steps(2, start) infinite;
+}
+
+@keyframes rp-caret {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+
+.rp-stream-status {
+  color: var(--accent-annotation);
+}
+
+/* The tray is a control bar, not a sentence: keep it tight and quiet. */
+.rp-message__tray {
+  padding-top: var(--space-1);
+}
+
+/* ------------------------------------------------- rendered-window cap --- */
+
+.rp-feed-more {
+  display: flex;
+  justify-content: center;
+  padding-block: var(--space-4);
+  border-bottom: var(--border-width) solid var(--border-hairline);
+}
+
+/* ------------------------------------------------------------- search --- */
+
+.rp-chat__search {
+  display: none;
+  align-items: center;
+  gap: var(--space-2);
+  /* The search field, the reading well and the composer dock share one set of
+     edges: the same measure cap, centred. Below 720px the shell is already
+     narrower than the cap, so the bar stays full-width. */
+  width: 100%;
+  max-width: var(--measure-wide);
+  margin-inline: auto;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: var(--border-width) solid var(--border-hairline);
+  background-color: var(--surface);
+}
+
+.rp-chat__search[data-open="true"] {
+  display: flex;
+}
+
+.rp-chat__search-count {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  min-width: 8ch;
+}
+
+mark.rp-search-hit {
+  background-color: var(--annotation-subtle);
+  color: var(--accent-annotation);
+  border-radius: var(--radius-xs);
+  padding-inline: 0.1em;
+}
+
+mark.rp-search-hit.is-current {
+  background-color: var(--accent-annotation);
+  color: var(--ink-inverse);
+}
+
+/* ------------------------------------------------------ Context ledger --- */
+
+.rp-chat__ledger-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.rp-chat__ledger-meter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* ------------------------------------------------------------- empty ---- */
+
+.rp-chat__empty {
+  min-height: 40vh;
+  justify-content: center;
+}
+
+/* ------------------------------------------------------ persona chip ---- */
+
+.rp-chat__persona {
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  max-width: 18ch;
+}
+
+/* The live draft figure: always visible, never a control. It sits inline in
+   the composer's identity row so it can never push the send controls, and
+   tabular figures keep the row from reflowing as the number changes. */
+.rp-composer__figures {
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
+  flex: none;
+}
+
+/* The composer's actions row reads as two groups: who is speaking, then what
+   to do. The identity group is one unit, so the avatar, name and token figure
+   are not three stranded fragments across a void. */
+.rp-composer__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1 1 auto;
+  min-width: 0;
+  /* Match the tallest control in the row (the md buttons) so the identity
+     group reads as one band and tracks the coarse 44px lift automatically. */
+  align-self: stretch;
+}
+
+
+/* Search field keeps its share of the row. */
+.rp-chat__search .rp-input {
+  flex: 1;
+  min-width: 8ch;
+}
+
+/* The design system gives .rp-dialog `display: grid`, which outranks the user
+   agent's `dialog:not([open]) { display: none }` and would leave every closed
+   dialog painted over the page, swallowing pointer events. Restore the hiding
+   rule at matching specificity. */
+dialog.rp-dialog:not([open]) {
+  display: none;
+}
+
+/* A dialog opened over another dialog must paint above it. */
+dialog.rp-dialog[open] {
+  z-index: var(--z-dialog);
+}
+
+dialog.rp-dialog[open] ~ dialog.rp-dialog[open] {
+  z-index: calc(var(--z-dialog) + 1);
+}
+
+/* The rendered-window cap is a quiet control, not a banner. */
+.rp-feed-more {
+  border-bottom: 0;
+  padding-block: var(--space-3);
+}
+
+/* Inline editor keeps the reading column. */
+.inline-msg-editor {
+  max-width: var(--measure);
+}
+
+.inline-msg-editor .rp-textarea {
+  font-family: var(--font-prose);
+  font-size: var(--text-lg);
+  line-height: var(--leading-prose);
+}
+/* Toast placement is shared (design/components.css): the region hangs from the
+   top of the viewport on every surface, so it never fights the on-screen
+   keyboard. Chat only widens the toast below; the shared rule owns the rest. */
+
+.rp-toast {
+  max-width: min(560px, calc(100vw - var(--space-6)));
+  pointer-events: auto;
+}
+/* The shared toast markup (ui/toast.js). library.css carries the same flex
+   rules; chat loads this file instead, so mirror them here. */
+.rp-toast__message {
+  flex: 1;
+  min-width: 0;
+}
+
+.rp-toast__close,
+.rp-toast__action {
+  flex: none;
+}
+/* Sheet that is raised from the composer: keep it above the dock. */
+.rp-sheet[hidden] {
+  display: none;
+}
+
+/* --------------------------------------------------- coarse pointers ---- */
+
+@media (pointer: coarse) {
+  .rp-chat__search .rp-btn {
+    min-width: var(--tap-min);
+    min-height: var(--tap-min);
+  }
+}
+
+/* Reduced motion: the caret is a loop, so it goes entirely. */
+@media (prefers-reduced-motion: reduce) {
+  .rp-message__prose.is-streaming::after {
+    animation: none;
+    opacity: 1;
+  }
+}
