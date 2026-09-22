@@ -261,7 +261,7 @@ export class SessionController {
         timestamp: Date.now()
       };
       this.activeSession.messages.push(assistantMsg);
-      await this.engine.streamTurn({
+      const returnedText = await this.engine.streamTurn({
         card: this.activeCard,
         session: this.activeSession,
         settings: this.settings,
@@ -280,6 +280,13 @@ export class SessionController {
         },
         onNotice: (notice) => this.#surfaceNotice(notice, onNotice, assistantMsg),
       });
+      // An engine may return the full reply without ever invoking onChunk (a
+      // non-streaming provider, a whole-body JSON response, or a test fake).
+      // Adopt that text so a valid reply is never dropped into a blank bubble.
+      if (!assistantMsg.content && typeof returnedText === "string" && returnedText) {
+        assistantMsg.content = returnedText;
+        if (onChunk) onChunk(returnedText, assistantMsg);
+      }
     } catch (err) {
       // Defect 2: drop the placeholder so the transcript is byte-identical to
       // before the turn and no empty assistant message is ever persisted.
@@ -290,6 +297,16 @@ export class SessionController {
       throw err;
     } finally {
       if (this.#activeTurn === turn) this.#activeTurn = null;
+    }
+    // A stream that settles with zero content must not persist a blank
+    // assistant bubble. The engine already throws a descriptive error for a
+    // content-less stream; this is the last-resort guard for an engine that
+    // returns empty text without throwing. send() rolls the turn back so retry
+    // is clean.
+    if (!assistantMsg.content) {
+      const idx = this.activeSession.messages.indexOf(assistantMsg);
+      if (idx !== -1) this.activeSession.messages.splice(idx, 1);
+      throw new Error("The model returned an empty reply. Retry, or check the endpoint and max output tokens for this model.");
     }
     this.activeSession.updatedAt = Date.now();
     await this.db.saveSession(this.activeSession);

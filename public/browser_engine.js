@@ -592,57 +592,145 @@ After the thought block, output the public prose and dialogue.`);
       signal,
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const reader = res.body.getReader();
+
+    // A provider that ignores `stream: true` (or mislabels its body) answers
+    // with a single JSON completion document. Anything explicitly typed as JSON
+    // is read whole; everything else is treated as an event stream, so the
+    // normal streaming path is byte-for-byte unchanged.
+    const contentType = (res.headers?.get?.("content-type") || "").toLowerCase();
+    const isJsonBody = contentType.includes("application/json");
+
     const decoder = new TextDecoder();
     let buffer = "";
     let usage = null;
-
+    let finishReason = null;
+    let sawReasoning = false;
     let sawEvent = false;
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith("data: ")) continue;
-        sawEvent = true;
-        const payload = trimmed.slice(6);
-        if (payload === "[DONE]") continue;
-        let json;
-        try {
-          json = JSON.parse(payload);
-        } catch {
-          // Partial JSON split across chunk boundaries: the next read completes it.
-          continue;
-        }
-        // Providers signal mid-stream failures with a 200 response whose body
-        // carries an `error` object and no `choices`. Throwing here is the
-        // difference between a descriptive failure and a silent empty reply.
-        if (json && json.error) throw this.#providerError(json.error);
-        if (json.usage) usage = json.usage;
-        const delta = json.choices?.[0]?.delta?.content;
-        if (delta) {
-          const cleaned = delta.replace(/ — /g, ", ").replace(/—/g, ", ").replace(/ -- /g, ", ");
-          if (onCleanChunk) onCleanChunk(cleaned);
-          yield cleaned;
-        }
-      }
-    }
-    // Some providers answer a 200 with a plain JSON error document instead of an
-    // SSE stream (no `data:` framing at all). Detect it before declaring empty
-    // success, so the failure reaches the caller instead of a blank reply.
-    if (!sawEvent && buffer.trim()) {
+    let sawContent = false;
+
+    // One JSON payload → the visible chunk it contributes (or null). Kept as a
+    // plain function so the streaming and whole-body paths share identical
+    // error/usage/reasoning semantics. Non-streaming documents carry the text
+    // on `message.content`; streaming chunks carry it on `delta.content`.
+    const readPayload = (json) => {
+      // Providers signal mid-stream failures with a 200 response whose body
+      // carries an `error` object and no `choices`. Throwing here is the
+      // difference between a descriptive failure and a silent empty reply.
+      if (json && json.error) throw this.#providerError(json.error);
+      if (json && json.usage) usage = json.usage;
+      const choice = json?.choices?.[0];
+      if (choice?.finish_reason) finishReason = choice.finish_reason;
+      // Reasoning/thinking tokens are reported on a sibling field by several
+      // OpenAI-compatible providers. They are not part of the visible reply,
+      // but their presence explains a content-less stream.
+      const reasoning = choice?.delta?.reasoning_content ?? choice?.delta?.reasoning;
+      if (typeof reasoning === "string" && reasoning) sawReasoning = true;
+      const text = choice?.delta?.content ?? choice?.message?.content;
+      if (typeof text !== "string" || !text) return null;
+      // Anti-slop punctuation normalisation, applied identically to streamed and
+      // whole-body text.
+      return text.replace(/ — /g, ", ").replace(/—/g, ", ").replace(/ -- /g, ", ");
+    };
+
+    // A single SSE line → zero or one visible chunks. Accepts `data:` with or
+    // without the optional space (the SSE spec makes it optional; some proxies
+    // omit it) and tolerates a JSON payload split across reads.
+    const consumeLine = (line) => {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) return [];
+      sawEvent = true;
+      const payload = trimmed.slice(5).trimStart();
+      if (!payload || payload === "[DONE]") return [];
       let json;
       try {
-        json = JSON.parse(buffer);
+        json = JSON.parse(payload);
+      } catch {
+        // Partial JSON split across chunk boundaries: the next read completes it.
+        return [];
+      }
+      const chunk = readPayload(json);
+      return chunk ? [chunk] : [];
+    };
+
+    if (!isJsonBody) {
+      const reader = res.body.getReader();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          for (const chunk of consumeLine(line)) {
+            sawContent = true;
+            if (onCleanChunk) onCleanChunk(chunk);
+            yield chunk;
+          }
+        }
+      }
+      // A final line with no trailing newline still counts.
+      if (buffer.trim()) {
+        for (const chunk of consumeLine(buffer)) {
+          sawContent = true;
+          if (onCleanChunk) onCleanChunk(chunk);
+          yield chunk;
+        }
+      }
+      // Some providers answer a 200 with a plain JSON document but no
+      // `text/event-stream` content type (no `data:` framing at all). Accept it
+      // before declaring empty success, so the reply reaches the caller.
+      if (!sawEvent && buffer.trim()) {
+        let json = null;
+        try {
+          json = JSON.parse(buffer);
+        } catch {
+          json = null;
+        }
+        if (json) {
+          const chunk = readPayload(json);
+          if (chunk) {
+            sawContent = true;
+            if (onCleanChunk) onCleanChunk(chunk);
+            yield chunk;
+          }
+        }
+      }
+    } else {
+      const raw = await res.text();
+      let json = null;
+      try {
+        json = JSON.parse(raw);
       } catch {
         json = null;
       }
-      if (json && json.error) throw this.#providerError(json.error);
+      if (json) {
+        const chunk = readPayload(json);
+        if (chunk) {
+          sawContent = true;
+          if (onCleanChunk) onCleanChunk(chunk);
+          yield chunk;
+        }
+      } else {
+        // Mislabeled body: parse it as an event stream after all.
+        for (const line of raw.split("\n")) {
+          for (const chunk of consumeLine(line)) {
+            sawContent = true;
+            if (onCleanChunk) onCleanChunk(chunk);
+            yield chunk;
+          }
+        }
+      }
     }
+
     if (usage && onUsage) onUsage(usage);
+
+    // A stream that settles with no visible content must fail loudly with the
+    // reason, never return an empty success that the UI renders as a blank
+    // bubble. This is the generic counterpart to the reasoning-only and
+    // length-truncated responses seen in the wild.
+    if (!sawContent) {
+      throw this.#emptyCompletionError({ finishReason, sawReasoning, usage });
+    }
   }
 
   /**
@@ -654,6 +742,26 @@ After the thought block, output the public prose and dialogue.`);
     const detail = typeof error === "string" ? error : error?.message || error?.type || "unknown provider error";
     const code = typeof error === "object" && error?.code ? ` (code: ${error.code})` : "";
     return new Error(`Provider error: ${detail}${code}`);
+  }
+
+  /**
+   * Describes a completion that carried no visible text. The reason is derived
+   * from what the stream actually reported, so a reasoning-only model, a
+   * length-truncated reply, and a genuinely empty response are distinguishable
+   * instead of all surfacing as a blank bubble.
+   */
+  static #emptyCompletionError({ finishReason, sawReasoning, usage }) {
+    const detail =
+      finishReason === "length"
+        ? "the output token limit was reached before any visible text was produced"
+        : sawReasoning
+          ? "the model produced only reasoning/thinking tokens and no visible reply"
+          : "the provider returned no message content";
+    const completion = usage && typeof usage.completion_tokens === "number" ? ` (completion_tokens: ${usage.completion_tokens})` : "";
+    const finish = finishReason ? ` (finish_reason: ${finishReason})` : "";
+    return new Error(
+      `The model returned an empty reply: ${detail}${finish}${completion}. Retry, or raise the max output tokens for this model.`
+    );
   }
 
   /** Prompt tokens the provider actually billed, when it reports usage. */
