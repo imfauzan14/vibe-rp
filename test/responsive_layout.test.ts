@@ -113,4 +113,75 @@ describe("Responsive layout guards", () => {
       expect(rule).toContain("text-overflow: ellipsis");
     });
   });
+
+  // A character/preset name is user data and can be arbitrarily long. An
+  // unbounded name stretched one card five lines tall and pushed the detail
+  // sheet's byline, scenario pill and tabs far down the page. Both name
+  // surfaces must clamp to a bounded number of lines with an ellipsis.
+  describe("long character names are clamped, not allowed to push layout", () => {
+    test("the card title clamps to two lines", () => {
+      const rule = ruleFor(componentsCss, ".rp-card__title {");
+      expect(rule).not.toBeNull();
+      expect(rule).toContain("-webkit-line-clamp: 2");
+      expect(rule).toContain("-webkit-box-orient: vertical");
+      expect(rule).toContain("overflow: hidden");
+    });
+
+    test("the detail-sheet name clamps and steps its size down on a narrow sheet", () => {
+      const rule = ruleFor(libraryCss, ".rp-detail__name {");
+      expect(rule).not.toBeNull();
+      expect(rule).toContain("-webkit-line-clamp: 2");
+      expect(rule).toContain("overflow: hidden");
+      // A clamp without a shrink step still overflows at a big display size.
+      expect(rule).toContain("clamp(");
+    });
+  });
+
+  // On touch there is no hover, so the "Change artwork" scrim used to rest as
+  // the FULL-COVER overlay and dimmed the portrait on every phone. It must
+  // become a small corner chip instead, and the label must give way to an icon
+  // so the chip is not nearly as wide as the portrait it sits on.
+  describe("the artwork affordance never covers the portrait on touch", () => {
+    test("the coarse-pointer scrim is a small fixed-size chip", () => {
+      // There are two `@media (pointer: coarse)` blocks in this sheet; find the
+      // one that styles the portrait hint.
+      const marker = "@media (pointer: coarse) {\n  .rp-detail__portrait-hint {";
+      const start = libraryCss.indexOf(marker);
+      expect(start).toBeGreaterThan(-1);
+      const open = libraryCss.indexOf("{", start);
+      let depth = 0;
+      let block = "";
+      for (let i = open; i < libraryCss.length; i++) {
+        if (libraryCss[i] === "{") depth++;
+        else if (libraryCss[i] === "}") {
+          depth--;
+          if (depth === 0) {
+            block = libraryCss.slice(open + 1, i);
+            break;
+          }
+        }
+      }
+      expect(block).toContain("width: 30px");
+      expect(block).toContain("height: 30px");
+      // It must pin to a corner, not stretch to `inset: 0`.
+      expect(block).toContain("inset: auto");
+      // The label is dropped on touch; the icon is shown in its place.
+      expect(block).toContain(".rp-detail__portrait-hint-text");
+      expect(block).toContain("display: none");
+      expect(block).toContain(".rp-detail__portrait-hint-icon");
+    });
+
+    test("the icon is hidden by default so it only appears on the touch chip", () => {
+      const rule = ruleFor(libraryCss, ".rp-detail__portrait-hint-icon {");
+      expect(rule).not.toBeNull();
+      expect(rule).toContain("display: none");
+    });
+
+    test("the fine-pointer scrim still rests as the full overlay", () => {
+      // Guard the other direction: the desktop hover treatment is unchanged.
+      const rule = ruleFor(libraryCss, ".rp-detail__portrait-hint {");
+      expect(rule).not.toBeNull();
+      expect(rule).toContain("inset: 0");
+    });
+  });
 });

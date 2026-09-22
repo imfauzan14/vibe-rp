@@ -180,59 +180,11 @@
 
 /* =========================================================== SETTINGS == */
 
-
-/* .rp-settings__panel is now the same box as .rp-tabpanel, which owns the
-   panel rhythm in design/components.css so the chat settings popup (which
-   does not load this file) cannot drift from the library dialog. */
-
-.rp-settings__guidance {
-  padding: var(--space-3) var(--space-4);
-  background-color: var(--surface-raised);
-  border: var(--border-width) solid var(--border-hairline);
-  border-radius: var(--radius-md);
-}
-
-.rp-settings__guidance-title {
-  font-weight: 600;
-  margin-bottom: var(--space-1);
-}
-
-.rp-settings__guidance-text {
-  font-size: var(--text-sm);
-  color: var(--ink-muted);
-  line-height: var(--leading-prose);
-}
-
-/* .rp-settings__list-head and .rp-settings__list-title now live in
-   design/components.css so the chat settings popup, which does not load this
-   file, shares one definition. */
-
-.rp-settings__status {
-  font-size: var(--text-xs);
-  color: var(--ink-faint);
-  min-height: 1.2em;
-}
-
-.rp-settings__check {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-  cursor: pointer;
-}
-
-.rp-settings__check input {
-  margin-top: 3px;
-  accent-color: var(--accent-annotation);
-}
-
-.rp-settings__divider {
-  border-top: var(--border-width) solid var(--border-hairline);
-  padding-top: var(--space-4);
-}
-
-/* The persona and directive row layouts now live in design/components.css:
-   the chat settings popup renders the same rows but loads only the shared
-   layer, so one definition keeps the two surfaces identical. */
+/* Every rule the settings modal needs (.rp-settings__guidance, __status,
+   __check, __divider, __footer, .rp-field__head, .rp-dialog--wide) now lives
+   in design/components.css, the layer BOTH pages load. It was stated here
+   alone, so the chat settings modal rendered the same markup without the
+   guidance card, status line, checkbox box, footer or wide dialog. */
 
 /* ----------------------------------------------------------- editors ---- */
 
@@ -270,19 +222,13 @@
   line-height: 1.55;
   min-height: 180px;
 }
-/* ============================================================== DETAIL == */
-/* The UA-box reset for `.rp-dialog` lives in components.css, the layer both
-   pages load; it was stated here alone before, so the chat page went without
-   it. */
 
-/* Required companion to that reset. The component layer sets `display: grid`
-   on `.rp-dialog` at author origin, which outranks the user agent's
-   `dialog:not([open]) { display: none }`. Without this a closed dialog stays
-   in the layout and, being `position: fixed; inset: 0`, silently swallows
-   every pointer event on the page. */
-.rp-dialog:not([open]) {
-  display: none;
-}
+/* ============================================================== DETAIL == */
+
+/* The `.rp-dialog` UA-box reset and the `dialog.rp-dialog:not([open])` hiding
+   guard both live in design/components.css, the layer both pages load; the
+   guard was stated in each page sheet before, and the two specificities had
+   drifted apart. */
 
 /* The component layer gives coarse pointers 44px on buttons, tabs and chips.
    Text controls are not in that list, so the floor is applied here. */
@@ -301,10 +247,6 @@
   }
 }
 
-
-.rp-dialog--wide .rp-dialog__panel {
-  width: min(720px, 100%);
-}
 
 /* The header's trailing action group. Centred on the header height so the
    close control lands mid-header, exactly like a bare .rp-dialog__close. */
@@ -384,6 +326,12 @@
   transition: opacity var(--dur-fast) var(--ease-out);
 }
 
+/* The label carries the affordance on fine pointers; the icon exists only for
+   the compact touch chip below, so it stays hidden here. */
+.rp-detail__portrait-hint-icon {
+  display: none;
+}
+
 /* Revealed on hover for fine pointers and on keyboard focus everywhere, so a
    keyboard user sees the same affordance as a mouse user. */
 .rp-detail__portrait:focus-visible .rp-detail__portrait-hint {
@@ -396,11 +344,32 @@
   }
 }
 
-/* No hover on touch: the scrim would be undiscoverable, so it rests visible
-   and the portrait behind it is still the control. */
+/* No hover on touch, so the scrim cannot rely on hover to appear. It used to
+   rest as the FULL-COVER scrim, which dimmed the artwork on every phone and
+   made the picture unreadable behind a "Change artwork" label. On touch it
+   becomes a small icon chip in the corner instead: the affordance is still
+   always visible, the label is redundant once the chip is a persistent
+   control, and the portrait is never covered. */
 @media (pointer: coarse) {
   .rp-detail__portrait-hint {
     opacity: 1;
+    inset: auto var(--space-1) var(--space-1) auto;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border-radius: var(--radius-sm);
+    background-color: rgba(10, 12, 14, 0.78);
+    background-color: color-mix(in srgb, var(--canvas-sunken) 78%, transparent);
+  }
+
+  .rp-detail__portrait-hint-text {
+    display: none;
+  }
+
+  .rp-detail__portrait-hint-icon {
+    display: block;
+    width: 16px;
+    height: 16px;
   }
 }
 
@@ -413,9 +382,19 @@
 
 .rp-detail__name {
   font-family: var(--font-prose);
-  font-size: var(--text-2xl);
   font-weight: 500;
   letter-spacing: var(--tracking-tight);
+  /* A card name is user data and can be arbitrarily long. Unbounded, a long
+     name wrapped to five lines and pushed the byline, the scenario pill and
+     the tab strip far down the sheet. Clamp it to two lines with an ellipsis
+     (the full name stays in the accessible title and the card) and let the
+     font step down on a narrow viewport so the hero keeps its proportion. */
+  font-size: clamp(1.25rem, 5vw, var(--text-2xl));
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
 .rp-detail__nickname {
@@ -810,40 +789,6 @@ input[type="search"]::-webkit-search-results-decoration {
 .rp-input:focus,
 .rp-input:focus-visible {
   border-color: var(--border-control);
-}
-
-.rp-field__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.rp-settings__footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-2);
-}
-
-.rp-settings__footer-spacer {
-  flex: 1;
-  min-height: 38px;
-  cursor: default;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.rp-settings__check-box {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-}
-
-.rp-settings__check-title {
-  display: block;
-  font-weight: 600;
 }
 
 /* ============================================================== TOAST == */

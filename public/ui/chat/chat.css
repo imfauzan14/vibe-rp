@@ -350,13 +350,8 @@ mark.rp-search-hit.is-current {
   min-width: 8ch;
 }
 
-/* The design system gives .rp-dialog `display: grid`, which outranks the user
-   agent's `dialog:not([open]) { display: none }` and would leave every closed
-   dialog painted over the page, swallowing pointer events. Restore the hiding
-   rule at matching specificity. */
-dialog.rp-dialog:not([open]) {
-  display: none;
-}
+/* The `dialog.rp-dialog:not([open]) { display: none }` guard lives in
+   design/components.css, the layer both pages load. */
 
 /* A dialog opened over another dialog must paint above it. */
 dialog.rp-dialog[open] {

@@ -193,11 +193,19 @@ export function openDetailModal({ card, sessions = [], loadSessions = null, hand
   // screen reader must not hear the affordance twice.
   changeAvatar.appendChild(portraitInner);
   changeAvatar.appendChild(
-    el("span", {
-      class: "rp-detail__portrait-hint",
-      text: "Change artwork",
-      attrs: { "aria-hidden": "true" },
-    })
+    el("span", { class: "rp-detail__portrait-hint", attrs: { "aria-hidden": "true" } }, [
+      // On touch the full "Change artwork" scrim covered most of a 96px
+      // portrait, so the picture was unreadable. The label is shown on fine
+      // pointers (where the scrim only appears on hover) and the icon alone on
+      // touch, where the chip rests visible in the corner without hiding the
+      // art. Both are aria-hidden: the button's aria-label carries the name.
+      el("span", {
+        class: "rp-detail__portrait-hint-icon",
+        attrs: { "aria-hidden": "true" },
+        html: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17v3z"/><path d="M14 7l3 3"/></svg>',
+      }),
+      el("span", { class: "rp-detail__portrait-hint-text", text: "Change artwork" }),
+    ])
   );
 
   function paintPortrait(url) {

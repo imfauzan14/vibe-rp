@@ -83,4 +83,51 @@ describe("Unified settings surface", () => {
     expect(src).toContain('openSettingsPopup("settings-personas-tab")');
     expect(src).toContain('openSettingsPopup("settings-system-prompts-tab")');
   });
+
+  // Unifying the markup was not enough: the modal's own CSS lived in the
+  // library page sheet, which the chat page never loads, so the two surfaces
+  // still looked like different products. Every rule the shared modal needs
+  // must live in design/components.css, the one layer both pages load.
+  test("the settings modal's CSS lives in the shared layer, not a page sheet", () => {
+    const components = read("design/components.css");
+    const library = read("ui/library.css");
+    for (const sel of [
+      ".rp-settings__guidance {",
+      ".rp-settings__status {",
+      ".rp-settings__check {",
+      ".rp-settings__check-box {",
+      ".rp-settings__divider {",
+      ".rp-settings__footer {",
+      ".rp-settings__footer-spacer {",
+      ".rp-field__head {",
+      ".rp-dialog--wide .rp-dialog__panel {",
+    ]) {
+      expect(components).toContain(sel);
+      // And it must NOT also live in the library sheet, or the two can drift.
+      expect(library).not.toContain(sel);
+    }
+  });
+
+  // The character's own name is marginalia: tokens.css reserves the gold for
+  // it. It was rendered in plain ink, so the chat lost the at-a-glance signal
+  // the design contract calls for (and the user reported).
+  test("the assistant speaker name wears the annotation gold", () => {
+    const components = read("design/components.css");
+    const rule = components.slice(components.indexOf(".rp-message--assistant .rp-message__speaker {"));
+    const body = rule.slice(rule.indexOf("{") + 1, rule.indexOf("}"));
+    expect(body).toContain("color: var(--accent-annotation)");
+  });
+
+  // The closed-dialog hiding guard was stated in BOTH page sheets, at
+  // different specificities, so a fix to one would not reach the other. It is
+  // now in the shared layer only.
+  test("the closed-dialog hiding guard lives in the shared layer only", () => {
+    // Comments are prose: the page sheets document the move, so strip them
+    // before scanning for the actual rule.
+    const strip = (css) => css.replace(/\/\*[\s\S]*?\*\//g, "");
+    const guard = "dialog.rp-dialog:not([open])";
+    expect(strip(read("design/components.css"))).toContain(guard);
+    expect(strip(read("ui/library.css"))).not.toContain(".rp-dialog:not([open])");
+    expect(strip(read("ui/chat/chat.css"))).not.toContain(".rp-dialog:not([open])");
+  });
 });

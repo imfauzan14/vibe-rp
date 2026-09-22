@@ -208,7 +208,7 @@ bun test test/
 
 ### Stats
 
-355 tests, 2187 expect() calls, 24 files (measured with `bun test test/`).
+363 tests, 2228 expect() calls, 24 files (measured with `bun test test/`).
 
 ### Existing Test Files
 

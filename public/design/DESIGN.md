@@ -558,7 +558,7 @@ with `.rp-error-state__title` and `.rp-error-state__body`.
 | `.rp-message__rail`, `.rp-rail` | Portrait column; collapses inline below 720px. |
 | `.rp-message__content` | Text column. |
 | `.rp-message__head` | Speaker line: portrait, name, timestamp, token figure. It is the tray's control: tapping it, hovering the turn, or focusing inside reveals the tray. |
-| `.rp-message__speaker` | Name. Gold is not used here; user gets `--accent-user`. |
+| `.rp-message__speaker` | Name. The character's own name is marginalia, so it wears `--accent-annotation`; the author's hand gets `--accent-user`. Colour alone then tells a reader whose turn it is. |
 | `.rp-message__meta` | Timestamp and token figure, mono, tabular. |
 | `.rp-message__prose` | The reading surface. Serif, 68ch, 1.72 leading. |
 | `.rp-message__tray` | Hidden until hover, focus-within, or `data-open="true"`. |

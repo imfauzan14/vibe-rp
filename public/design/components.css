@@ -685,6 +685,15 @@
   line-height: var(--leading-tight);
   letter-spacing: var(--tracking-tight);
   color: var(--ink);
+  /* A card name is user data and can be arbitrarily long. Unbounded, a long
+     name wrapped to five lines and stretched one card far taller than its
+     neighbours, breaking the grid rhythm. Clamp to two lines with an
+     ellipsis; the full name stays on the card's detail sheet. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
 .rp-card__byline {
@@ -777,6 +786,17 @@
 .rp-dialog::backdrop {
   background-color: rgba(10, 12, 14, 0.78);
   background-color: color-mix(in srgb, var(--canvas-sunken) 78%, transparent);
+}
+
+/* Required companion to the reset above. This layer sets `display: grid` on
+   `.rp-dialog` at author origin, which outranks the user agent's
+   `dialog:not([open]) { display: none }`. Without this a closed dialog stays
+   in the layout and, being `position: fixed; inset: 0`, silently swallows
+   every pointer event on the page. Stated here, in the layer both pages load,
+   rather than in each page sheet (the two sheets had drifted to different
+   specificities). */
+dialog.rp-dialog:not([open]) {
+  display: none;
 }
 
 /* A <dialog> does not inherit body colour in every engine, so the ground
@@ -1062,6 +1082,104 @@
   font-weight: 600;
   color: var(--ink-muted);
   letter-spacing: var(--tracking-micro);
+}
+
+/* The settings surface is one modal mounted by BOTH pages, so every rule it
+   needs lives in this shared layer. These were stated in the library page
+   stylesheet alone, which meant the chat page rendered the same markup
+   without the guidance card, the status line, the checkbox box, the footer or
+   the wide dialog — the two surfaces looked like different products. */
+
+/* A wide dialog for a settings sheet: a parameters column is unreadable at
+   the 560px default. */
+.rp-dialog--wide .rp-dialog__panel {
+  width: min(720px, 100%);
+}
+
+/* The intro card at the top of a settings tab: a raised box that separates
+   the "what this tab is for" copy from the controls below it. */
+.rp-settings__guidance {
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--surface-raised);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+}
+
+.rp-settings__guidance-title {
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+}
+
+.rp-settings__guidance-text {
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+  line-height: var(--leading-prose);
+}
+
+/* A live region under a form: reserve the line so a save result never shifts
+   the footer. */
+.rp-settings__status {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+  min-height: 1.2em;
+}
+
+/* The checkbox box: a raised panel holding one or more check rows. */
+.rp-settings__check-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+
+.rp-settings__check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  cursor: pointer;
+}
+
+.rp-settings__check input {
+  margin-top: 3px;
+  accent-color: var(--accent-annotation);
+}
+
+.rp-settings__check-title {
+  display: block;
+  font-weight: 600;
+}
+
+/* A hairline that separates a trailing block (the session import) from the
+   fields above it. */
+.rp-settings__divider {
+  border-top: var(--border-width) solid var(--border-hairline);
+  padding-top: var(--space-4);
+}
+
+/* A label paired with a trailing control (the model select's Fetch button):
+   the pair shares one row and pushes apart. */
+.rp-field__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* The save row at the foot of a settings panel. The spacer keeps the primary
+   action on the right even when it is the only visible control. */
+.rp-settings__footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.rp-settings__footer-spacer {
+  flex: 1;
+  min-height: 38px;
+  cursor: default;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* The saved-persona and saved-prompt rows. Shared so the library dialog and
@@ -1356,8 +1474,14 @@
   color: var(--accent-user);
 }
 
+/* The character's own name is marginalia. tokens.css reserves the gold for
+   exactly this ("continuity marks, thought blocks, context flags, the
+   character's own name"), so the assistant name wears the same accent the
+   settings surface uses for its active tab, focus ring and badges. The
+   author's hand keeps its separate cool hue, so a reader can tell whose turn
+   it is by colour alone. */
 .rp-message--assistant .rp-message__speaker {
-  color: var(--ink);
+  color: var(--accent-annotation);
 }
 
 /* -- thought block: an annotation, so it wears the gold ---------------- */
