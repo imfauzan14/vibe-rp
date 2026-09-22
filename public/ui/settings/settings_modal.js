@@ -94,6 +94,20 @@ export function openSettingsModal(options = {}) {
       el("p", { class: "rp-help", text: "Stored in this browser only." }),
     ]),
     el("div", { class: "rp-field" }, [
+      el("label", { class: "rp-label", for: "popup-cache-key", text: "Prompt cache key (optional)" }),
+      el("input", {
+        type: "text",
+        id: "popup-cache-key",
+        class: "rp-input",
+        placeholder: "e.g. vibe-rp-story-01",
+        attrs: { maxlength: "128" },
+      }),
+      el("p", {
+        class: "rp-help",
+        text: "Routes every turn of a story to the machine holding its cache. Not part of the prompt.",
+      }),
+    ]),
+    el("div", { class: "rp-field" }, [
       el("div", { class: "rp-settings__list-head" }, [
         el("label", { class: "rp-label", for: "popup-model-select", text: "Primary story model" }),
         el("button", { type: "button", id: "popup-fetch-models-btn", class: "rp-btn rp-btn--ghost rp-btn--sm", text: "Fetch models" }),
@@ -114,19 +128,27 @@ export function openSettingsModal(options = {}) {
         el("select", { id: "popup-subagent-model-select", class: "rp-select" }),
       ]),
     ]),
-    el("div", { class: "rp-field rp-settings__divider", id: "popup-import-session-wrap", hidden: true }, [
-      el("label", { class: "rp-label", for: "popup-import-session-input", text: "Import session" }),
-      el("textarea", {
-        id: "popup-import-session-input",
-        class: "rp-textarea rp-textarea--mono",
-        rows: 3,
-        placeholder: "Paste exported session cookies JSON",
-      }),
-      el("p", { class: "rp-help", text: "Grants access to fetch full character definitions from character pages. Treat it like a password." }),
-      el("div", {}, [
-        el("button", { type: "button", id: "popup-save-import-session-btn", class: "rp-btn rp-btn--secondary rp-btn--sm", text: "Save session" }),
-      ]),
-    ]),
+    // The session-import control is a library-only concern (it unlocks full
+    // card definitions during import). Only render it when the caller supplies
+    // a `saveSession` handler, so the chat surface does not carry a hidden
+    // import affordance it cannot service.
+    ...(options.saveSession
+      ? [
+          el("div", { class: "rp-field rp-settings__divider", id: "popup-import-session-wrap", hidden: true }, [
+            el("label", { class: "rp-label", for: "popup-import-session-input", text: "Import session" }),
+            el("textarea", {
+              id: "popup-import-session-input",
+              class: "rp-textarea rp-textarea--mono",
+              rows: 3,
+              placeholder: "Paste exported session cookies JSON",
+            }),
+            el("p", { class: "rp-help", text: "Grants access to fetch full character definitions from character pages. Treat it like a password." }),
+            el("div", {}, [
+              el("button", { type: "button", id: "popup-save-import-session-btn", class: "rp-btn rp-btn--secondary rp-btn--sm", text: "Save session" }),
+            ]),
+          ]),
+        ]
+      : []),
     el("p", { id: "popup-engine-status", class: "rp-settings__status", attrs: { role: "status" } }),
     el("div", { class: "rp-settings__footer" }, [
       el("span", { class: "rp-settings__footer-spacer", id: "popup-secret-session-trigger" }),
@@ -291,6 +313,7 @@ export function openSettingsModal(options = {}) {
     tabs.destroy();
     closeModal(dialog);
     dialog.remove();
+    options.onClose?.();
   }
 
   dialog.querySelector(".rp-dialog__close").addEventListener("click", close);
@@ -308,7 +331,9 @@ export function openSettingsModal(options = {}) {
   openModal({
     element: dialog,
     onClose: () => {
+      if (settled) return;
       settled = true;
+      options.onClose?.();
     },
     initialFocus: tablist.querySelector('[aria-selected="true"]'),
   });

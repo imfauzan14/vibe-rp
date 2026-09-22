@@ -57,6 +57,7 @@ export function mountEnginePanel(root, options = {}) {
 
   const endpoint = qs(root, "#popup-api-endpoint");
   const apiKey = qs(root, "#popup-api-key");
+  const cacheKey = qs(root, "#popup-cache-key");
   const modelSelect = qs(root, "#popup-model-select");
   const subagentSelect = qs(root, "#popup-subagent-model-select");
   const thoughts = qs(root, "#popup-enable-thoughts");
@@ -89,6 +90,7 @@ export function mountEnginePanel(root, options = {}) {
     const settings = getSettings?.() || {};
     if (endpoint) endpoint.value = settings.apiEndpoint || "";
     if (apiKey) apiKey.value = settings.apiKey || "";
+    if (cacheKey) cacheKey.value = settings.cacheKey || "";
     const thoughtsOn = settings.enableSubagentThoughts !== false;
     if (thoughts) thoughts.checked = thoughtsOn;
     syncThoughtVisibility();
@@ -136,6 +138,7 @@ export function mountEnginePanel(root, options = {}) {
     saveSettings?.({
       apiEndpoint: endpoint?.value.trim() ?? "",
       apiKey: apiKey?.value.trim() ?? "",
+      cacheKey: cacheKey?.value.trim() ?? "",
       model: modelSelect?.value ?? "",
       enableSubagentThoughts: thoughts?.checked ?? true,
       thoughtModel: chosen,

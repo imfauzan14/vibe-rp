@@ -12,8 +12,8 @@
     import { createComposer } from "./composer.js";
     import { createSearch } from "./search.js";
     import { downloadExport, buildPlainText, readImportFile } from "./export.js";
-
-    import { createSettingsPanel } from "./settings_panel.js";
+    import { compressImage } from "../image.js";
+    import { openSettingsModal } from "../settings/settings_modal.js";
 
     const $ = (id) => document.getElementById(id);
     const controller = new SessionController();
@@ -457,21 +457,18 @@
     $("chat-search-prev").addEventListener("click", () => search.prev());
     $("chat-search-close").addEventListener("click", () => setSearchOpen(false));
 
-    // Dialogs: native <dialog> handles focus trap and Escape.
+    // Dialogs: native <dialog> handles focus trap and Escape. The history
+    // modal is page-owned static markup; the settings modal and both editors
+    // are built and owned by ui/settings/settings_modal.js, so they are not
+    // in this map.
     const dialogs = {
       history: $("history-modal"),
-      settings: $("settings-popup"),
-      personaEditor: $("editor-modal"),
-      directiveEditor: $("editor-modal-directive"),
     };
     // The shared modal controller owns the visible stack, focus, the backdrop
-    // and Escape. The page keeps only the name -> element map and mirrors the
-    // top of that stack into the controller, so an editor opened over settings
-    // closes back to settings rather than closing everything.
+    // and Escape. The page mirrors the top of that stack into the controller.
     const nameOf = (el) => Object.keys(dialogs).find((key) => dialogs[key] === el) || null;
-    // Payloads are remembered per name so returning to an outer dialog (an
-    // editor closing back to settings) restores that dialog's own payload
-    // rather than inheriting the editor's.
+    // Payloads are remembered per name so returning to an outer dialog restores
+    // that dialog's own payload rather than inheriting the inner one.
     const payloads = new Map();
 
     function syncModalName() {
@@ -659,31 +656,58 @@
       }
     });
 
-    // Settings surface (engine, parameters, personas, directives, editors).
-    // The whole panel lives in ui/chat/settings_panel.js so this page stays a thin bootstrap.
-    const settingsPanel = createSettingsPanel({
-      root: dialogs.settings,
-      personaEditor: dialogs.personaEditor,
-      directiveEditor: dialogs.directiveEditor,
-      db: controller.db,
-      engine: BrowserChatEngine,
-      openDialog,
-      closeDialog,
-      confirm: confirmAction,
-      getModalPayload: () => controller.modalPayload,
-      toast: (msg, tone) => showToast(msg, tone),
-      onSettingsChanged: () => {
-        controller.settings = controller.db.getSettings();
-        updateContextStats();
-      },
-      onPresetsChanged: () => refreshPresets(),
-    });
+    // Settings surface. The chat page mounts the SAME modal as the library
+    // (ui/settings/settings_modal.js) instead of carrying its own copy, so
+    // engine, parameters, personas and directives have one implementation and
+    // one source of truth. The library-only session-import block is omitted
+    // here because no `saveSession` handler is passed.
+    const toastHost = { toast: (msg, opts) => showToast(msg, opts?.tone) };
+    const confirmPreset = async (kind, label) => {
+      const noun = kind === "persona" ? "persona" : "prompt";
+      return confirmAction({
+        title: `Delete this ${noun}?`,
+        body: `"${label}" is removed.`,
+        confirmLabel: `Delete ${noun}`,
+        tone: "danger",
+      });
+    };
 
-    $("toggle-settings-btn").addEventListener("click", () => settingsPanel.open());
-    $("close-settings-popup-btn").addEventListener("click", () => {
-      closeDialog();
-      refreshPresets();
-    });
+    let settingsModal = null;
+    function openSettingsPopup(tabId = null) {
+      if (settingsModal) return settingsModal;
+      controller.openModal("settings");
+      settingsModal = openSettingsModal({
+        host: toastHost,
+        tab: tabId,
+        confirm: confirmPreset,
+        compressImage,
+        getSettings: () => controller.db.getSettings(),
+        saveSettings: (patch) => {
+          const next = { ...controller.db.getSettings(), ...patch };
+          controller.db.saveSettings(next);
+          controller.settings = next;
+          updateContextStats();
+          window.dispatchEvent(new CustomEvent("settings-saved", { detail: next }));
+        },
+        fetchModels: ({ endpoint, key }) => BrowserChatEngine.fetchAvailableModels(endpoint, key),
+        listPersonas: () => controller.db.getAllPersonas(),
+        savePersona: (p) => controller.db.savePersona(p),
+        deletePersona: (id) => controller.db.deletePersona(id),
+        setDefaultPersona: (id) => controller.db.setDefaultPersona(id),
+        listDirectives: () => controller.db.getAllDirectives(),
+        saveDirective: (d) => controller.db.saveDirective(d),
+        deleteDirective: (id) => controller.db.deleteDirective(id),
+        setDefaultDirective: (id) => controller.db.setDefaultDirective(id),
+        onClose: () => {
+          settingsModal = null;
+          controller.closeModal();
+          refreshPresets();
+        },
+      });
+      return settingsModal;
+    }
+
+    $("toggle-settings-btn").addEventListener("click", () => openSettingsPopup());
 
     // Persona and directive presets sync.
     $("history-persona-select").addEventListener("change", async (e) => {

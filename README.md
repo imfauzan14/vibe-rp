@@ -39,7 +39,7 @@ bun start        # serve.js, http://localhost:3000
 Run the tests:
 
 ```bash
-bun test test/   # 341 tests across 22 files
+bun test test/   # 355 tests across 24 files
 ```
 
 `bun run build` is a no-op; the client ships as static files.
@@ -101,7 +101,7 @@ public/
   chat.html             Conversation shell (375 lines, markup only; bootstrap is ui/chat/chat_boot.js)
   ui/                   UI modules: shared (toast, modal, tabs, confirm, dom, theme, image),
                         library (library_page/_controller/_view, character_card, detail_modal, import_flow),
-                        settings/**, editors/**, and chat/** for the conversation view
+                        settings/** (the ONE settings surface both pages mount), editors/**, and chat/** for the conversation view
   design/               Design system: DESIGN.md, tokens.css (all colour values), components.css (rp- classes)
   design/fonts/         Self-hosted design-system webfonts
   fonts/                Self-hosted prose webfonts (Newsreader, JetBrains Mono)
@@ -122,7 +122,7 @@ Card URLs are accepted directly too: open **Import Card** and paste a JSON/JSONC
 
 ## Testing
 
-Bun's native test runner, 341 tests across 22 files under `test/`: engine interface contract, compaction seam edges (fold headroom, boundary alignment, shake bounds, adaptive summary budget and its bounded retry), long-run compaction stress (100-fold drift, ledger hard bound, canonical-transcript preservation), large-static-preset request accounting (the full-context invariant through the real `streamTurn` seam), core hardening (null-chunk suppression, degraded-fold notices, provider errors inside a 200 SSE body), session controller behavior against injected fakes (no DOM, cancellation, rollback, message forking), local-database hardening (the v1 to v2 in-place upgrade, single-transaction card deletion, typed quota and blocked errors), preset stores, preset resolution and defaults, message formatting, universal macro substitution, adaptive context limits, the HTML-to-markup converter for imported character cards (entity decoding, attribute stripping, idempotence), remote/direct-URL card import (URL validation, API mapping, content sniffing, stripped-definition fallbacks, session token exchange and proactive refresh), module seams, and unified singleton contracts.
+Bun's native test runner, 355 tests across 24 files under `test/`: engine interface contract, compaction seam edges (fold headroom, boundary alignment, shake bounds, adaptive summary budget and its bounded retry), long-run compaction stress (100-fold drift, ledger hard bound, canonical-transcript preservation), large-static-preset request accounting (the full-context invariant through the real `streamTurn` seam), responsive layout guards (phone-width filter bar, preset-row badge, message speaker truncation), settings-surface unification (both pages mount one modal; cache key and session-import gating), core hardening (null-chunk suppression, degraded-fold notices, provider errors inside a 200 SSE body), session controller behavior against injected fakes (no DOM, cancellation, rollback, message forking), local-database hardening (the v1 to v2 in-place upgrade, single-transaction card deletion, typed quota and blocked errors), preset stores, preset resolution and defaults, message formatting, universal macro substitution, adaptive context limits, the HTML-to-markup converter for imported character cards (entity decoding, attribute stripping, idempotence), remote/direct-URL card import (URL validation, API mapping, content sniffing, stripped-definition fallbacks, session token exchange and proactive refresh), module seams, and unified singleton contracts.
 
 ```bash
 bun test test/

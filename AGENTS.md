@@ -43,14 +43,15 @@ Top-level logic (all zero DOM unless noted):
 Page shells (markup plus a thin bootstrap only):
 
 - **`public/index.html`** (92 lines): character library shell. Imports `ui/library_page.js`.
-- **`public/chat.html`** (375 lines): conversation shell. Loads `ui/chat/chat_boot.js` with `<script src>`.
+- **`public/chat.html`** (184 lines): conversation shell. Loads `ui/chat/chat_boot.js` with `<script src>`.
 
-Shared UI modules (**`public/ui/`**, 27 modules, ~5500 lines). Reuse these instead of re-implementing:
+Shared UI modules (**`public/ui/`**, 26 modules, ~5400 lines). Reuse these instead of re-implementing:
 
 - Shared: `dom.js`, `toast.js`, `modal.js`, `tabs.js`, `confirm.js`, `theme.js`, `image.js`
 - Library: `library_page.js`, `library_controller.js`, `library_view.js`, `character_card.js`, `detail_modal.js`, `import_flow.js`
 - Library subfolders: `settings/**` (modal, persona/directive lists, params and engine panels), `editors/**` (persona and directive editors)
-- Chat: `ui/chat/**` (feed, composer, search, export, confirm, settings panel)
+- Chat: `ui/chat/**` (feed, composer, search, export, confirm)
+- Both pages mount the SAME settings surface: `ui/settings/settings_modal.js` (plus `ui/editors/**`). There is no chat-only settings panel; the library-only session-import block is rendered only when the caller passes `saveSession`.
 
 Design system (**`public/design/`**): `DESIGN.md` (the contract), `tokens.css` (every colour value), `components.css` (the `rp-` classes), `fonts/`.
 
@@ -207,7 +208,7 @@ bun test test/
 
 ### Stats
 
-341 tests, 2147 expect() calls, 22 files (measured with `bun test test/`).
+355 tests, 2187 expect() calls, 24 files (measured with `bun test test/`).
 
 ### Existing Test Files
 
@@ -232,6 +233,8 @@ bun test test/
 - `test/compaction_stress.test.ts`: long-run compaction (100-fold drift, fold-coverage monotonicity, ledger hard bound, degraded-fold accumulation, per-window prompt/output invariant)
 - `test/summary_budget.test.ts`: the adaptive summarizer budget, its context-headroom clamp, the bounded single retry, and the generation output clamp
 - `test/large_preset_context.test.ts`: the full-context invariant through the real `streamTurn` seam (large static presets, dynamic-lore/post-history accounting, output preservation vs reduction, no premature compaction, observable impossible-prompt case)
+- `test/responsive_layout.test.ts`: phone-width CSS guards (library filter bar stays inline, preset-row badge atomicity, message speaker truncation)
+- `test/settings_unification.test.ts`: one settings surface for both pages (shared modal import, cache-key read/write, session-import gating, no chat-only panel or markup)
 - `test/unified_modules.test.ts`: single escapeHtml/toast/theme implementations, sw.js shell hygiene
 
 ### When to Add Tests
