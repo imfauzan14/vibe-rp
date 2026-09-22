@@ -20,6 +20,7 @@ import {
   SUMMARY_UPDATE_PROMPT,
   SUMMARY_TARGET_WORDS,
   SUMMARY_UPDATE_TARGET_WORDS,
+  LEDGER_HARD_MAX_TOKENS,
 } from "../public/browser_engine.js";
 
 afterEach(() => {
@@ -93,7 +94,9 @@ describe("Adaptive summary budget - pure helper", () => {
     expect(resolveSummaryBudget({ transcriptTokens: SUMMARY_DEFAULT_TOKENS })).toBe(SUMMARY_DEFAULT_TOKENS);
   });
 
-  test("2. a larger fold earns a larger budget", () => {
+  test("2. a larger fold earns a larger workload-derived target", () => {
+    // No window is passed, so this pins the *target* (which is monotonic), not
+    // the final budget (which the window's headroom can pull back down).
     const small = resolveSummaryBudget({ transcriptTokens: 1200 });
     const medium = resolveSummaryBudget({ transcriptTokens: 3000 });
     const large = resolveSummaryBudget({ transcriptTokens: 8000 });
@@ -144,6 +147,42 @@ describe("Adaptive summary budget - pure helper", () => {
     expect(SUMMARY_TARGET_WORDS).toBeLessThan(SUMMARY_UPDATE_TARGET_WORDS);
     expect(SUMMARY_UPDATE_TARGET_WORDS).toBeLessThanOrEqual(1000);
   });
+
+  test("9. the workload target is monotonic, but the final budget may fall as headroom binds", () => {
+    // The target alone (no window) never decreases as the workload grows.
+    let prev = -Infinity;
+    for (let w = 0; w <= 20000; w += 50) {
+      const v = resolveSummaryBudget({ transcriptTokens: w });
+      expect(v).toBeGreaterThanOrEqual(prev);
+      prev = v;
+    }
+    // With a fixed window the *final* budget is not monotonic: past the point
+    // where headroom becomes limiting, more input yields a smaller ceiling.
+    const window = 8192;
+    let sawDecrease = false;
+    let prevFinal = -Infinity;
+    for (let w = 0; w <= 20000; w += 50) {
+      const v = resolveSummaryBudget({ transcriptTokens: w, promptTokens: 400, contextWindow: window });
+      if (v < prevFinal) sawDecrease = true;
+      prevFinal = v;
+    }
+    expect(sawDecrease).toBe(true);
+    // The decrease is the window responding, not the policy: the pure target
+    // for the larger workload is still >= the smaller one's.
+    expect(resolveSummaryBudget({ transcriptTokens: 4000 })).toBeGreaterThanOrEqual(
+      resolveSummaryBudget({ transcriptTokens: 3000 })
+    );
+    // A prior ledger consumes headroom, so the final budget can fall below the
+    // no-ledger case even though the target rose.
+    const withBigLedger = resolveSummaryBudget({
+      transcriptTokens: 2048,
+      ledgerTokens: 5000,
+      promptTokens: 400,
+      contextWindow: 8192,
+      hasPriorLedger: true,
+    });
+    expect(withBigLedger).toBeLessThan(resolveSummaryBudget({ transcriptTokens: 2048, promptTokens: 400, contextWindow: 8192 }));
+  });
 });
 
 describe("Adaptive summary budget - through the fold seam", () => {
@@ -163,9 +202,11 @@ describe("Adaptive summary budget - through the fold seam", () => {
     }
   });
 
-  test("a prior-ledger update is budgeted at least as high as an initial fold of the same size", async () => {
+  test("in this fixture a prior-ledger update is budgeted at least as high as an initial fold of the same size", async () => {
     // Both folds are grown the same way; only the presence of a prior ledger
-    // differs. The merge case is the reasoning-heavy one.
+    // differs. In this window the headroom does not bind, so the update's
+    // reasoning headroom survives into the final budget. (When headroom does
+    // bind, the final budget can be smaller — see test 9.)
     const noLedger = grownSession();
     const withLedger = grownSession({ priorLedger: "L".repeat(1200) });
 
@@ -179,7 +220,9 @@ describe("Adaptive summary budget - through the fold seam", () => {
     const update = updateFolds[0].max_tokens;
     expect(update).toBeGreaterThanOrEqual(initial);
     expect(update).toBeLessThanOrEqual(SUMMARY_MAX_TOKENS);
-    // The pure helper agrees: identical workload + a ledger is strictly larger.
+    // The pure helper agrees when no window is supplied: identical workload plus
+    // a ledger raises the *target*. (With a window, the ledger also consumes
+    // headroom, so the final budget need not be larger — see test 9.)
     expect(resolveSummaryBudget({ transcriptTokens: 2048, hasPriorLedger: true })).toBeGreaterThan(
       resolveSummaryBudget({ transcriptTokens: 2048 })
     );
@@ -212,6 +255,34 @@ describe("Adaptive summary budget - through the fold seam", () => {
     expect(budgets[1]).toBeLessThanOrEqual(SUMMARY_MAX_TOKENS);
     // The retry's ledger won.
     expect(session.ledger).toBe("ledger");
+  });
+
+  test("6c. when the retry also fails there are still exactly two attempts, never a loop", async () => {
+    // A window big enough that the retry's larger budget is genuinely available
+    // (headroom does not clamp), and a model that fails both times. This is the
+    // only fixture that exercises "retry fires AND fails", which is what bounds
+    // the loop count: test 6 succeeds on retry, and 6b never retries at all.
+    const bigWindow = { ...settings, maxContextTokens: 8192 };
+    const budgets = [];
+    globalThis.fetch = async (url, opts) => {
+      const body = JSON.parse(opts.body);
+      if (body.stream) return new Response(SSE_OK, { headers: { "Content-Type": "text/event-stream" } });
+      budgets.push(body.max_tokens);
+      // Always length-truncated and empty, so the retry can never "succeed".
+      return new Response(JSON.stringify({ choices: [{ finish_reason: "length", message: { content: "" } }] }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+    const session = grownSession();
+    await BrowserChatEngine.streamTurn({ card: null, session, settings: bigWindow, persona: null, agentsContract: "" });
+    // The first fold produced no text, so a retry was warranted (budget rose)…
+    expect(budgets.length).toBe(2);
+    expect(budgets[1]).toBeGreaterThan(budgets[0]);
+    // …but the retry failing must not start a third attempt.
+    expect(budgets.length).toBeLessThanOrEqual(2);
+    // The deterministic digest took over, and the ledger is still bounded.
+    expect(session.ledger.length).toBeGreaterThan(0);
+    expect(estimateTokens(session.ledger)).toBeLessThanOrEqual(LEDGER_HARD_MAX_TOKENS);
   });
 
   test("6b. a content-less fold that has no headroom left does not loop", async () => {

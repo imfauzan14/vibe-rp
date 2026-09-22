@@ -127,10 +127,15 @@ Rules:
 - Keep it under ${SUMMARY_TARGET_WORDS} words.`;
 
 /**
- * Piecewise-linear summary budget for a given workload (estimated tokens of
- * material to compress). A tiny fold gets the floor, a fold the size of the
- * default budget gets the default, and anything larger scales toward the
- * ceiling over one further budget's worth of input. Monotonic and bounded.
+ * Piecewise-linear *workload target* for a fold (estimated tokens of material
+ * to compress). A tiny fold gets the floor, a fold the size of the default
+ * budget gets the default, and anything larger scales toward the ceiling over
+ * one further budget's worth of input.
+ *
+ * This target is monotonic non-decreasing in the workload and bounded. It is
+ * not the final budget: `resolveSummaryBudget` clamps it to the request's
+ * available context headroom, which shrinks as the input grows, so the final
+ * budget can fall when headroom becomes the limiting term.
  */
 function scaleSummaryBudget(workload) {
   if (!(workload > 0)) return SUMMARY_MIN_TOKENS;
@@ -145,11 +150,19 @@ function scaleSummaryBudget(workload) {
 /**
  * Maximum output tokens for one fold request.
  *
- * Pure and dependency-free so the policy is testable in isolation. The budget
- * grows with the *workload* (the material the fold must read and compress), not
+ * Pure and dependency-free so the policy is testable in isolation. The
+ * *workload target* grows with the work the fold must read and compress, not
  * with the context window: a 64k window does not want a four-times-larger
  * ledger, it wants enough completion headroom that a reasoning model can finish
  * the extraction instead of being cut off at `finish_reason: "length"`.
+ *
+ * Two distinct quantities are involved, and only the first is monotonic:
+ *   - the workload-derived target = monotonic non-decreasing in the workload;
+ *   - the final budget = that target clamped by the request's available context
+ *     headroom. Headroom shrinks as the input grows, so the final budget may
+ *     *decrease* when headroom becomes the limiting term. More input can
+ *     therefore yield a smaller request ceiling — the window responding to a
+ *     larger request, not a policy regression.
  *
  * The result is always clamped to the fold request's own context headroom
  * (`contextWindow` minus its whole input minus a tokenizer safety margin),
