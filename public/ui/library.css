@@ -884,6 +884,24 @@ input[type="search"]::-webkit-search-results-decoration {
     width: 100%;
   }
 
+  /* Sort and Tag must stay on one row below the search field, sharing it
+     evenly. Their desktop `min-width: 140px` plus the gap exceeds the row on
+     a ~360px phone, which wrapped Tag onto a third row and broke the inline
+     alignment. Let the pair split the row and let each select shrink; the
+     selected option clips (native select behaviour) instead of forcing a
+     wrap. */
+  .rp-library__sort,
+  .rp-library__tags {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .rp-library__sort .rp-select,
+  .rp-library__tags .rp-select {
+    width: 100%;
+    min-width: 0;
+  }
+
   .rp-library__grid {
     grid-template-columns: minmax(0, 1fr);
   }

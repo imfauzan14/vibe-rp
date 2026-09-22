@@ -1126,12 +1126,16 @@
 /* A status badge must not outrank the real control beside it. The filled
    gold --annotation fill reads as a button, so in these rows the badge goes
    quiet: a hairline outline and muted ink, leaving Edit the only thing that
-   looks pressable. */
+   looks pressable. The badge is also atomic: a long preset name truncates
+   (the title already carries the ellipsis) while the badge keeps its full
+   size, so "Default" never wraps or spills past its own border. */
 .rp-persona-row__heading .rp-badge,
 .rp-directive-row__heading .rp-badge {
   background-color: transparent;
   border: var(--border-width) solid var(--border-control);
   color: var(--ink-muted);
+  flex: none;
+  white-space: nowrap;
 }
 
 /* Under 720px the label and its create action stack, so the button keeps the
@@ -1277,6 +1281,12 @@
   color: inherit;
   cursor: pointer;
   text-align: start;
+  /* The title is the flex item that must yield: without an explicit
+     `min-width: 0` a flex item's automatic minimum size is its content, so a
+     long user persona name refused to shrink, pushed the speaker span past the
+     viewport, and the name ran off the screen on a phone. With this the button
+     shrinks and `.rp-message__speaker` truncates with its ellipsis. */
+  min-width: 0;
 }
 
 .rp-message__title:focus-visible {
