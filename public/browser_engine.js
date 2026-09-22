@@ -72,6 +72,60 @@ export const TOKEN_SAFETY_MARGIN = 512;
 export const SUMMARY_TARGET_WORDS = 700;
 export const SUMMARY_UPDATE_TARGET_WORDS = 900;
 
+// The stored ledger is *derived* data: `session.messages` is the canonical
+// transcript and compaction never modifies it. The ledger is still bounded so
+// that a provider which ignores `max_tokens`, or a long run of degraded folds,
+// cannot inflate the payload until assembling a request exhausts memory. Above
+// the adaptive ceiling the ledger is first *compressed* (facts kept); the hard
+// maximum is a last-resort clip so the failure mode is a lossy ledger rather
+// than a crash. Both are far above any compliant fold's output.
+export const LEDGER_HARD_MAX_TOKENS = 16384;
+
+/**
+ * Clips a ledger to a token ceiling at a line boundary, so a fact is never cut
+ * mid-sentence, and appends a marker naming what happened. Pure and exported so
+ * the last-resort bound is directly testable. The canonical transcript is not
+ * involved: only this derived string is shortened.
+ */
+export function clipLedgerToTokens(text, maxTokens, marker = "\n- [older ledger material omitted at the size ceiling; the full transcript is preserved]") {
+  const str = typeof text === "string" ? text : String(text ?? "");
+  const limit = Math.max(0, Math.floor(Number(maxTokens) || 0));
+  if (!str) return "";
+  if (limit <= 0) return marker.trim();
+  if (estimateTokens(str) <= limit) return str;
+  // `estimateTokens` is `(utf8Bytes + 3) >> 2`, so a byte budget of `4 * tokens`
+  // guarantees the kept prefix never exceeds its token allowance. Byte-slicing
+  // (rather than line-slicing) is what makes this bound hold for a ledger that
+  // is a single enormous line, which is exactly what a model ignoring the word
+  // target tends to produce.
+  const markerTokens = estimateTokens(marker);
+  const byteBudget = Math.max(0, (limit - markerTokens) * 4);
+  const bytes = new TextEncoder().encode(str);
+  let kept;
+  if (bytes.length <= byteBudget) {
+    kept = str;
+  } else {
+    // `stream: true` withholds any trailing partial multi-byte sequence, so a
+    // CJK or emoji character is never cut in half.
+    kept = new TextDecoder().decode(bytes.subarray(0, byteBudget), { stream: true });
+    const nl = kept.lastIndexOf("\n");
+    const sp = kept.lastIndexOf(" ");
+    const cut = nl > kept.length * 0.5 ? nl : sp > kept.length * 0.5 ? sp : -1;
+    if (cut > 0) kept = kept.slice(0, cut);
+  }
+  return `${kept}${marker}`;
+}
+
+export const LEDGER_COMPRESS_PROMPT = `The continuity ledger above has grown too large. Compress it into a smaller continuity ledger.
+
+Rules:
+- Keep every fact: names, roles, relationships, places, objects, numbers, dates, promises, unresolved threads, and current conditions.
+- Cut wording, repetition, and atmospheric commentary. Never cut a fact.
+- Use the same sections as the input (Cast, Timeline, World, Threads, Voice).
+- Preserve every proper noun exactly as written. Never invent, infer, or continue the story.
+- Anything you do not carry forward is lost forever.
+- Keep it under ${SUMMARY_TARGET_WORDS} words.`;
+
 /**
  * Piecewise-linear summary budget for a given workload (estimated tokens of
  * material to compress). A tiny fold gets the floor, a fold the size of the
@@ -666,7 +720,7 @@ After the thought block, output the public prose and dialogue.`);
     if (!transcript.trim()) return null;
     const { base, headers } = this.#resolveEndpoint(settings);
     const first = await this.#summaryAttempt({ base, headers, settings, transcript, previousLedger, signal });
-    if (!first.retry) return first.text;
+    if (!first.retry) return { text: first.text, truncated: first.truncated };
     const second = await this.#summaryAttempt({
       base,
       headers,
@@ -678,7 +732,9 @@ After the thought block, output the public prose and dialogue.`);
     });
     // Prefer the retry, but never throw away usable text: a partial ledger from
     // the first attempt still beats the extractive digest.
-    return second.text || first.text;
+    return second.text
+      ? { text: second.text, truncated: second.truncated }
+      : { text: first.text, truncated: first.truncated };
   }
 
   /** One fold request. Reports whether a larger-budget retry is warranted. */
@@ -706,6 +762,10 @@ After the thought block, output the public prose and dialogue.`);
       text: hasText ? text.trim() : null,
       retry,
       extraTokens: retry ? extra : 0,
+      // A ledger that settled at `length` is known-incomplete canon: it is still
+      // stored (a partial ledger beats the extractive digest), but the caller
+      // must be able to tell the user it was cut off.
+      truncated,
     };
   }
 
@@ -733,13 +793,21 @@ After the thought block, output the public prose and dialogue.`);
       body.presence_penalty = settings.presencePenalty;
     }
     // `maxTokens` is a ceiling the user asked for, not a promise the window can
-    // keep: the planner reserves `reservedOutput` (at most half the window) for
-    // the reply, so requesting more than that would push prompt + output past
-    // `maxContextTokens` on every turn. Clamp to the reserved allowance, and
-    // keep the key absent when the user set no ceiling at all, so the provider
+    // keep. Two separate bounds apply:
+    //   1. the planner's reserved allowance (at most half the window), so a
+    //      maximum-length reply always has somewhere to go; and
+    //   2. the *actual* remaining headroom after this payload's real prompt,
+    //      because a prompt near the nominal budget leaves less room than the
+    //      reservation assumes. Without (2), `context=2048, maxTokens=4096`
+    //      asked for a 1024-token reply beside a 1400-token prompt and pushed
+    //      the request past the configured window on every turn.
+    // Keep the key absent when the user set no ceiling at all, so the provider
     // default still applies.
     if (typeof settings.maxTokens === "number") {
-      body.max_tokens = this.resolveBudgets(settings).reservedOutput;
+      const { reservedOutput, contextWindow, safetyMargin } = this.resolveBudgets(settings);
+      const promptTokens = countMessages(messages);
+      const headroom = Math.max(256, contextWindow - promptTokens - safetyMargin);
+      body.max_tokens = Math.max(256, Math.min(reservedOutput, headroom));
     }
     if (settings.cacheKey) body.prompt_cache_key = settings.cacheKey;
     return body;
@@ -1004,6 +1072,14 @@ After the thought block, output the public prose and dialogue.`);
         // emit, and passing a null chunk here used to be stringified into the
         // reply as the literal text "null".
         if (result.degraded && onNotice) onNotice(`Continuity condensed without summarizer: ${result.error}`);
+        // A fold that was cut off at the output limit, or a ledger that had to
+        // be compressed at the size ceiling, means continuity is now lossy.
+        // The ledger is still stored (a partial ledger beats the digest), but
+        // the user is told rather than left to discover a missing fact later.
+        if (result.truncated) {
+          session.ledgerTruncated = true;
+          if (onNotice) onNotice("Continuity ledger reached its size limit and was compressed; some detail may be condensed.");
+        }
         // Re-plan: the ledger changed size, so the tail must be re-measured.
         plan = this.planContext({
           systemPrompt,
@@ -1021,6 +1097,20 @@ After the thought block, output the public prose and dialogue.`);
           if (truncated.length !== plan.history.length) plan = { ...plan, history: truncated };
         }
       }
+    }
+
+    // A ledger can legitimately remain larger than the prompt budget — it is
+    // canon, and the audit decision is to preserve and report rather than
+    // silently truncate. Report the *transition* into overflow (not every turn)
+    // so a user whose configured window is too small for their ledger is told
+    // why their history is being truncated, and can raise the window.
+    if (plan.overflow) {
+      if (!session.ledgerOverflowReported) {
+        session.ledgerOverflowReported = true;
+        if (onNotice) onNotice(plan.overflowWarning || "System prompt and ledger exceed the configured prompt budget; raise the context window or the ledger will crowd out history.");
+      }
+    } else if (session.ledgerOverflowReported) {
+      session.ledgerOverflowReported = false;
     }
 
     const recentText = all.slice(-3).map((m) => m?.content || "").join(" ");
@@ -1110,8 +1200,17 @@ After the thought block, output the public prose and dialogue.`);
       bodyChars += line.length + 1;
     }
     const body = bodyLines.join("\n");
-    const header = previousLedger
-      ? `## Prior continuity\n${previousLedger}\n\n## Later events (condensed verbatim)\n`
+    // A degraded fold cannot compress the prior ledger, so re-embedding it whole
+    // would let the digest grow without bound across repeated summarizer
+    // failures. Bound the carried-over portion to the same character scale as
+    // the fresh material, newest-last, so the digest stays proportionate to the
+    // prompt budget and recent turns are never crowded out by stale ones.
+    let carried = previousLedger || "";
+    if (carried.length > fallbackMaxChars) {
+      carried = `- [earlier ledger material omitted at the digest ceiling; the full transcript is preserved]\n${carried.slice(-fallbackMaxChars)}`;
+    }
+    const header = carried
+      ? `## Prior continuity\n${carried}\n\n## Later events (condensed verbatim)\n`
       : "## Events (condensed verbatim)\n";
     return `${header}${body}`;
   }
@@ -1124,17 +1223,87 @@ After the thought block, output the public prose and dialogue.`);
   static async #foldLedger({ settings, messages, card, persona, previousLedger, signal }) {
     try {
       const summarized = await this.#summarize({ settings, messages, card, persona, previousLedger, signal });
-      if (summarized) return { ledger: summarized, degraded: false };
+      if (summarized && summarized.text) {
+        const bounded = await this.#boundLedger({ settings, ledger: summarized.text, signal });
+        return { ledger: bounded.ledger, degraded: false, truncated: summarized.truncated || bounded.compressed };
+      }
     } catch (err) {
       // A user cancellation is not a degraded summarizer: the extractive
       // fallback must never resurrect an aborted turn. Propagate it untouched.
       if (err && err.name === "AbortError") throw err;
       const fallback = this.#buildFallbackLedger(messages, card, persona, previousLedger, settings);
-      if (fallback) return { ledger: fallback, degraded: true, error: err.message };
+      if (fallback) {
+        const bounded = this.#boundLedgerSync(fallback);
+        return { ledger: bounded, degraded: true, error: err.message, truncated: bounded !== fallback };
+      }
       throw err;
     }
     const fallback = this.#buildFallbackLedger(messages, card, persona, previousLedger, settings);
-    return { ledger: fallback, degraded: true, error: "summarizer returned no text" };
+    const bounded = this.#boundLedgerSync(fallback);
+    return { ledger: bounded, degraded: true, error: "summarizer returned no text", truncated: bounded !== fallback };
+  }
+
+  /**
+   * Last-resort bound on a stored ledger, applied to the *derived* ledger only
+   * (`session.messages` is canonical and never touched).
+   *
+   * An oversized ledger is first compressed by the summarizer itself — facts
+   * kept, wording cut — which is why this is async. The clip below is the floor
+   * of last resort: it only runs when compression is unavailable or itself
+   * returned something still over the hard ceiling, and it is bounded to one
+   * extra request so a misbehaving model cannot loop.
+   */
+  static async #boundLedger({ settings, ledger, signal }) {
+    if (!ledger || estimateTokens(ledger) <= LEDGER_HARD_MAX_TOKENS) return { ledger, compressed: false };
+    try {
+      const { base, headers } = this.#resolveEndpoint(settings);
+      // The compression request shares one window between its own input (the
+      // oversized ledger) and its output, exactly like a fold. Reuse the tested
+      // helper rather than requesting a flat ceiling: with a 16k ledger in a
+      // small window the headroom clamp drives this to the viable floor, which
+      // is the correct bounded overage (refusing to compress loses continuity).
+      const compressBudget = resolveSummaryBudget({
+        transcriptTokens: 0,
+        ledgerTokens: estimateTokens(ledger),
+        promptTokens: estimateTokens(SUMMARY_SYSTEM_PROMPT) + estimateTokens(LEDGER_COMPRESS_PROMPT) + 16,
+        contextWindow: this.resolveBudgets(settings).contextWindow,
+        hasPriorLedger: true,
+      });
+      const body = {
+        model: String(settings?.model || "").trim(),
+        messages: [
+          { role: "system", content: SUMMARY_SYSTEM_PROMPT },
+          { role: "user", content: `<prior-ledger>\n${ledger}\n</prior-ledger>\n\n${LEDGER_COMPRESS_PROMPT}` },
+        ],
+        stream: false,
+        temperature: 0.1,
+        max_tokens: compressBudget,
+      };
+      const res = await fetch(`${base}/chat/completions`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(body),
+        signal,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data?.choices?.[0]?.message?.content;
+        if (typeof text === "string" && text.trim() && estimateTokens(text.trim()) < estimateTokens(ledger)) {
+          return { ledger: this.#boundLedgerSync(text.trim()), compressed: true };
+        }
+      }
+    } catch (err) {
+      if (err && err.name === "AbortError") throw err;
+      // Compression is best-effort; the deterministic clip below still bounds it.
+    }
+    return { ledger: this.#boundLedgerSync(ledger), compressed: true };
+  }
+
+  /** Synchronous hard ceiling: the final backstop against unbounded growth. */
+  static #boundLedgerSync(ledger) {
+    if (!ledger) return ledger;
+    if (estimateTokens(ledger) <= LEDGER_HARD_MAX_TOKENS) return ledger;
+    return clipLedgerToTokens(ledger, LEDGER_HARD_MAX_TOKENS);
   }
 
   static async fetchAvailableModels(endpoint, apiKey) {

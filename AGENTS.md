@@ -207,7 +207,7 @@ bun test test/
 
 ### Stats
 
-320 tests, 796 expect() calls, 20 files (measured with `bun test test/`).
+330 tests, 1679 expect() calls, 21 files (measured with `bun test test/`).
 
 ### Existing Test Files
 
@@ -229,6 +229,7 @@ bun test test/
 - `test/session_controller.test.ts`: controller behavior against injected fakes (no DOM)
 - `test/session_refresh.test.ts`: JWT decode, expiry skew, rotation, single-flight, no token leak
 - `test/stream_robustness.test.ts`: the OpenAI-compatible streaming contract (delta/message content, `data:` framing, non-streaming bodies, max_tokens forwarding)
+- `test/compaction_stress.test.ts`: long-run compaction (100-fold drift, fold-coverage monotonicity, ledger hard bound, degraded-fold accumulation, per-window prompt/output invariant)
 - `test/summary_budget.test.ts`: the adaptive summarizer budget, its context-headroom clamp, the bounded single retry, and the generation output clamp
 - `test/unified_modules.test.ts`: single escapeHtml/toast/theme implementations, sw.js shell hygiene
 

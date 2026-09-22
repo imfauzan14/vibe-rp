@@ -39,7 +39,7 @@ bun start        # serve.js, http://localhost:3000
 Run the tests:
 
 ```bash
-bun test test/   # 320 tests across 20 files
+bun test test/   # 330 tests across 21 files
 ```
 
 `bun run build` is a no-op; the client ships as static files.
@@ -71,7 +71,7 @@ The engine (`public/browser_engine.js`) assembles every request under four rules
 
 1. **Byte-stable prefix** — the system prompt is assembled once per session and reused verbatim, so the provider's prompt cache survives every turn.
 2. **Append-only history** — turns are only ever appended; compaction never rewrites a message the provider has already seen.
-3. **Summarize, never drop** — when the budget is exceeded, history between the pinned opening and the live tail is folded into a rolling continuity ledger carried forward across compactions. The summarizer's output budget is adaptive (bounded by the window's own headroom) so reasoning-heavy models have room to finish the extraction; a fold that is truncated or empty earns one larger retry. If the summarizer is unreachable, a deterministic extractive digest keeps a degraded, lossy condensation rather than dropping the stored transcript, which is never modified.
+3. **Summarize, never drop** — when the budget is exceeded, history between the pinned opening and the live tail is folded into a rolling continuity ledger carried forward across compactions. The summarizer's output budget is adaptive (bounded by the window's own headroom) so reasoning-heavy models have room to finish the extraction; a fold that is truncated or empty earns one larger retry. If the summarizer is unreachable, a deterministic extractive digest keeps a degraded, lossy condensation rather than dropping the stored transcript, which is never modified. The derived ledger is itself hard-bounded: a model that ignores the word target (or a long run of degraded folds) triggers a bounded compression pass and, failing that, a line-boundary clip that names what it omitted — the transcript remains the canonical record.
 4. **Cache-aware timing** — a destructive reduction is only allowed when the suffix it would invalidate is already cheap to re-send.
 
 Folds target ~60% of the tail budget, leaving headroom so many turns pass between compactions. `<thought>` blocks are shaken from older history with tight bounds so the re-bill stays cheap. Cache routing: `prompt_cache_key` is sent on generation requests only (when the user sets a cache key), never on one-off fold requests, which must not pay the cache-write premium.
@@ -122,7 +122,7 @@ Card URLs are accepted directly too: open **Import Card** and paste a JSON/JSONC
 
 ## Testing
 
-Bun's native test runner, 320 tests across 20 files under `test/`: engine interface contract, compaction seam edges (fold headroom, boundary alignment, shake bounds, adaptive summary budget and its bounded retry), core hardening (null-chunk suppression, degraded-fold notices, provider errors inside a 200 SSE body), session controller behavior against injected fakes (no DOM, cancellation, rollback, message forking), local-database hardening (the v1 to v2 in-place upgrade, single-transaction card deletion, typed quota and blocked errors), preset stores, preset resolution and defaults, message formatting, universal macro substitution, adaptive context limits, the HTML-to-markup converter for imported character cards (entity decoding, attribute stripping, idempotence), remote/direct-URL card import (URL validation, API mapping, content sniffing, stripped-definition fallbacks, session token exchange and proactive refresh), module seams, and unified singleton contracts.
+Bun's native test runner, 330 tests across 21 files under `test/`: engine interface contract, compaction seam edges (fold headroom, boundary alignment, shake bounds, adaptive summary budget and its bounded retry), long-run compaction stress (100-fold drift, ledger hard bound, canonical-transcript preservation), core hardening (null-chunk suppression, degraded-fold notices, provider errors inside a 200 SSE body), session controller behavior against injected fakes (no DOM, cancellation, rollback, message forking), local-database hardening (the v1 to v2 in-place upgrade, single-transaction card deletion, typed quota and blocked errors), preset stores, preset resolution and defaults, message formatting, universal macro substitution, adaptive context limits, the HTML-to-markup converter for imported character cards (entity decoding, attribute stripping, idempotence), remote/direct-URL card import (URL validation, API mapping, content sniffing, stripped-definition fallbacks, session token exchange and proactive refresh), module seams, and unified singleton contracts.
 
 ```bash
 bun test test/
