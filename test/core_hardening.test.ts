@@ -307,7 +307,7 @@ describe("Defect 1 - controller ignores null chunks but keeps the notice", () =>
   });
 });
 
-describe("Defect 2 - a failed turn leaves no trace", () => {
+describe("Defect 2 - a failed turn leaves no placeholder", () => {
   test("streamResponse leaves the transcript byte-identical on failure", async () => {
     const engine = makeEngine({
       onStream: async () => {
@@ -325,21 +325,49 @@ describe("Defect 2 - a failed turn leaves no trace", () => {
     ).toBe(false);
   });
 
-  test("send rolls the whole turn back on failure and persists no phantom", async () => {
+  test("send keeps the canonical user turn on failure and drops only the placeholder", async () => {
     const engine = makeEngine({
       onStream: async () => {
         throw new Error("HTTP 500");
       },
     });
     const { ctl, db } = await makeController({ engine });
-    const before = JSON.stringify(ctl.activeSession.messages);
     await expect(ctl.send("boom")).rejects.toThrow("HTTP 500");
-    // Byte-identical to before the turn: user turn and placeholder both gone.
-    expect(JSON.stringify(ctl.activeSession.messages)).toBe(before);
-    expect(ctl.messages.some((m) => m.content === "boom")).toBe(false);
+    // The user's turn survives: it is canonical, already durable, and the
+    // reader already sent it, so a provider failure must never make them retype
+    // it. Only the assistant placeholder is rolled back.
+    expect(ctl.messages.some((m) => m.content === "boom" && m.role === "user")).toBe(true);
     expect(ctl.messages.some((m) => m.role === "assistant" && m.content === "")).toBe(false);
     const lastSaved = db.savedSessions.at(-1);
-    expect(lastSaved.messages.some((m) => m.content === "boom")).toBe(false);
+    expect(lastSaved.messages.some((m) => m.content === "boom")).toBe(true);
+  });
+
+  test("retryLastTurn re-streams the same turn without duplicating it", async () => {
+    let attempts = 0;
+    const engine = makeEngine({
+      onStream: async (args) => {
+        attempts += 1;
+        if (attempts === 1) throw new Error("HTTP 500");
+        args.onChunk("recovered");
+        return "recovered";
+      },
+    });
+    const { ctl } = await makeController({ engine });
+    await expect(ctl.send("keep me")).rejects.toThrow("HTTP 500");
+    const afterFailure = ctl.messages.filter((m) => m.content === "keep me").length;
+    expect(afterFailure).toBe(1);
+
+    const assistantMsg = await ctl.retryLastTurn();
+    expect(assistantMsg.content).toBe("recovered");
+    // Exactly one user turn and one assistant turn: the retry appended nothing.
+    expect(ctl.messages.filter((m) => m.content === "keep me").length).toBe(1);
+    expect(ctl.messages.at(-1).content).toBe("recovered");
+  });
+
+  test("retryLastTurn returns null when the newest message is not a user turn", async () => {
+    const { ctl } = await makeController();
+    await ctl.send("first");
+    expect(await ctl.retryLastTurn()).toBeNull();
   });
 });
 

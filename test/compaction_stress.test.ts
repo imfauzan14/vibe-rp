@@ -179,6 +179,13 @@ describe("Compaction stress - long-run stability", () => {
     // The model produces an oversized ledger on the fold, then honours the
     // compression request and returns a compact one. The stored ledger must be
     // the compressed version (facts kept), not the clip marker.
+    //
+    // The window is large on purpose: compression is a *second* LLM call whose
+    // input is the oversized ledger itself, so it can only run where that input
+    // fits. On a small window the engine skips straight to the deterministic
+    // clip instead of spending a request the provider would reject (covered in
+    // `summary_budget.test.ts`).
+    const wide = { ...BASE, maxContextTokens: 32768 };
     const foldBodies = [];
     const compressBodies = [];
     globalThis.fetch = async (url, init) => {
@@ -192,7 +199,7 @@ describe("Compaction stress - long-run stability", () => {
           });
         }
         foldBodies.push(body);
-        return new Response(JSON.stringify({ choices: [{ message: { content: words(60000) }, finish_reason: "stop" }] }), {
+        return new Response(JSON.stringify({ choices: [{ message: { content: words(14000) }, finish_reason: "stop" }] }), {
           headers: { "Content-Type": "application/json" },
         });
       }
@@ -200,12 +207,12 @@ describe("Compaction stress - long-run stability", () => {
     };
     const session = { messages: [{ role: "assistant", content: words(30) }], ledger: "", consumed: 1 };
     const card = { data: { name: "N", first_mes: "hi" } };
-    for (let t = 0; t < 40; t++) {
+    for (let t = 0; t < 120; t++) {
       session.messages.push({ role: "user", content: words(150) });
       await BrowserChatEngine.streamTurn({
         card,
         session,
-        settings: BASE,
+        settings: wide,
         persona: { name: "P" },
         onChunk: () => {},
         onNotice: () => {},
@@ -216,14 +223,16 @@ describe("Compaction stress - long-run stability", () => {
     expect(compressBodies.length).toBeGreaterThanOrEqual(1);
     expect(estimateTokens(session.ledger)).toBeLessThanOrEqual(SUMMARY_COMPRESS_TARGET_MAX);
     expect(session.ledger).not.toContain("omitted at the size ceiling");
-    // The compression request is itself budgeted, never a flat ceiling.
+    // The compression request is itself budgeted, never a flat ceiling, and its
+    // whole input plus output fits the window it was sent against.
     for (const body of compressBodies) {
       expect(body.max_tokens).toBeGreaterThanOrEqual(256);
       expect(body.stream).toBe(false);
       expect(body.prompt_cache_key).toBeUndefined();
+      expect(countMessages(body.messages) + body.max_tokens).toBeLessThanOrEqual(wide.maxContextTokens);
     }
     // Canonical transcript intact.
-    expect(session.messages.length).toBe(1 + 40 * 2);
+    expect(session.messages.length).toBe(1 + 120 * 2);
   });
 
   test("a permanently unreachable summarizer cannot inflate the ledger without bound", async () => {

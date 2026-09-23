@@ -285,7 +285,157 @@ mark.rp-search-hit.is-current {
   color: var(--ink-inverse);
 }
 
-/* ------------------------------------------------------ Context ledger --- */
+/* ================================================ CHOICE MODE PANEL ===== */
+
+/* The interaction layer. It rides the sticky dock, so it never covers the
+   reading well and never scrolls away from the reply it belongs to; the reader
+   keeps the prose above it and the composer below it. It shares the composer's
+   measure so the column has one set of edges. */
+.rp-choices {
+  max-width: var(--measure-wide);
+  margin-inline: auto;
+  margin-bottom: var(--space-2);
+  padding: var(--space-3);
+  background-color: var(--surface);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.rp-choices[hidden] {
+  display: none;
+}
+
+/* A quiet heading, not a banner: the panel is a prompt, not a section of the
+   document, so it stays small and muted. */
+.rp-choices__title {
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 0;
+}
+
+.rp-choices__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* A real button, styled as a menu line. Full width, left aligned, text wraps
+   without truncation so a long action is never cut off. */
+.rp-choices__option {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3);
+  text-align: left;
+  font-family: var(--font-prose);
+  font-size: var(--text-base);
+  line-height: var(--leading-ui);
+  color: var(--ink);
+  background-color: var(--surface-raised);
+  border: var(--border-width) solid var(--border-control);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease-out),
+              background-color var(--dur-fast) var(--ease-out);
+}
+
+.rp-choices__key {
+  flex: none;
+  min-width: 1.5ch;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--ink-faint);
+}
+
+.rp-choices__text {
+  flex: 1;
+  min-width: 0;
+  /* Natural wrapping, never an ellipsis: the whole action must be readable. */
+  overflow-wrap: anywhere;
+}
+
+.rp-choices__option:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* The chosen line is acknowledged before the turn starts, so the click is
+   visibly registered rather than leaving the reader guessing. */
+.rp-choices__option.is-selected {
+  border-color: var(--accent-annotation);
+  background-color: var(--annotation-subtle);
+}
+
+.rp-choices__notice {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+
+.rp-choices[data-status="error"] .rp-choices__notice {
+  color: var(--danger);
+}
+
+.rp-choices__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  /* The secondary escapes sit apart from the primary menu above them. */
+  padding-top: var(--space-1);
+}
+
+/* The mode selector: two chips in the composer's action row. Compact enough to
+   stay discoverable without competing with the prose. */
+.rp-mode-switch {
+  flex: none;
+}
+
+@media (max-width: 720px) {
+  /* On a phone the panel is the primary input, so it stacks full width and the
+     mode switch drops to its own row above the composer controls. */
+  .rp-choices {
+    padding: var(--space-2);
+  }
+
+  .rp-choices__option {
+    /* Comfortable touch target; the dock already sits above the safe area. */
+    min-height: var(--tap-min);
+  }
+
+  .rp-composer__actions {
+    flex-wrap: wrap;
+  }
+
+  .rp-mode-switch {
+    order: -1;
+    width: 100%;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .rp-choices__option:not(:disabled):hover {
+    border-color: var(--border-strong);
+    background-color: var(--surface-hover);
+  }
+}
+
+/* Focus is stated on the option itself, since it is a real control. */
+.rp-choices__option:focus-visible {
+  outline: var(--focus-width) solid var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+
+/* ------------------------------------------------------- Context ledger --- */
 
 .rp-chat__ledger-body {
   display: flex;

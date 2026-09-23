@@ -12,6 +12,13 @@
 //   4. Cache-aware timing. A destructive reduction is only allowed when the
 //      suffix it would invalidate is already cheap to re-send.
 
+import {
+  CHOICE_SYSTEM_PROMPT,
+  choicePrompt,
+  parseChoices,
+  CHOICE_COUNT_DEFAULT,
+} from "./choice_format.js";
+
 const byteLenCache = new Map();
 const BYTE_CACHE_MAX = 4096;
 
@@ -230,6 +237,37 @@ export function resolveSummaryBudget({
     budget = Math.max(SUMMARY_FLOOR_TOKENS, Math.min(budget, headroom));
   }
   return Math.max(SUMMARY_FLOOR_TOKENS, Math.min(SUMMARY_MAX_TOKENS, budget));
+}
+
+/**
+ * The prior ledger a fold may actually send, in tokens.
+ *
+ * A fold request shares one window between its input and its output, and the
+ * output has a floor below which folding is pointless. The *stored* ledger can
+ * legitimately be far larger than a small window — it is bounded by
+ * `LEDGER_HARD_MAX_TOKENS`, not by the window — so passing it whole made the
+ * fold request exceed the model's window before a single transcript token was
+ * counted. The provider then rejected it outright and the fold silently
+ * degraded to the extractive digest, i.e. the summarizer became unreachable
+ * exactly when the ledger was largest and continuity mattered most.
+ *
+ * The ledger is *derived* data that this request is about to rewrite, so the
+ * copy sent to the summarizer is clipped to what fits. Clipping it is not a
+ * loss of canon: the stored ledger is untouched, and the summarizer's output
+ * replaces this input anyway. Only the transcript is treated as irreducible —
+ * when even the floor cannot fit beside it, the floor still wins (refusing to
+ * fold would lose continuity outright), which is the bounded overage the
+ * budget policy already accepts.
+ */
+export function fitFoldLedgerTokens({ contextWindow = 0, promptTokens = 0, transcriptTokens = 0, ledgerTokens = 0 } = {}) {
+  const window = Math.max(0, Number(contextWindow) || 0);
+  const ledger = Math.max(0, Number(ledgerTokens) || 0);
+  if (window <= 0 || ledger <= 0) return ledger;
+  const overhead = Math.max(0, Number(promptTokens) || 0);
+  const transcript = Math.max(0, Number(transcriptTokens) || 0);
+  const forLedger = window - overhead - transcript - SUMMARY_FLOOR_TOKENS - TOKEN_SAFETY_MARGIN;
+  if (forLedger >= ledger) return ledger;
+  return Math.max(0, forLedger);
 }
 
 export const SUMMARY_SYSTEM_PROMPT =
@@ -526,6 +564,129 @@ export function allocateContext({
     included,
     excluded,
     feasible,
+  };
+}
+
+// Choice Mode output ceiling: enough for a small JSON object of four to five
+// short lines, with headroom for a reasoning model that spends tokens before
+// its visible output. It is a ceiling, not a reservation, and the allocator
+// lowers it when the window is tight.
+export const CHOICE_OUTPUT_TOKENS = 600;
+// How much of the continuity ledger a choice request may carry. Choices only
+// need the immediately preceding scene, so the ledger is a small hint, never
+// the full continuity document.
+export const CHOICE_LEDGER_TOKENS = 700;
+// How much of the recent transcript a choice request may carry. The latest
+// assistant turn must always fit; this bounds everything before it.
+export const CHOICE_RECENT_TOKENS = 2200;
+
+/**
+ * Builds the choice-generation request for the scene the reader just finished.
+ *
+ * Choice Mode is auxiliary: it must never be able to break the primary turn, so
+ * this deliberately does NOT reuse the full RP payload. Sending the whole static
+ * preset, the whole ledger and the whole transcript to ask for four short lines
+ * would be wasteful and would make the auxiliary request as fragile as the main
+ * one. Instead it uses the smallest context that preserves correctness:
+ *
+ *   - the choice instruction (system), plus the two names, so register and
+ *     address are right;
+ *   - a clipped hint of the continuity ledger, when one exists;
+ *   - the recent tail of the transcript, ending on the assistant turn the
+ *     choices are for, with the newest message always kept;
+ *   - the task line naming the target count.
+ *
+ * Pure: it depends only on its arguments and mutates nothing, so it is directly
+ * testable and can power an inspector without sending anything. `payload` is the
+ * exact message array, and `inputTokens` is its measured size.
+ */
+export function planChoiceRequest({
+  card = null,
+  session = null,
+  settings = {},
+  persona = null,
+  count = 4,
+  charName = "",
+  playerName = "",
+} = {}) {
+  const budgets = resolveContextBudgets(settings);
+  const contextWindow = budgets.contextWindow;
+  const margin = budgets.safetyMargin;
+  const window = Math.max(0, contextWindow - margin);
+  const floor = MIN_OUTPUT_TOKENS;
+  const outputTokens = Math.max(floor, Math.min(CHOICE_OUTPUT_TOKENS, window - MIN_INPUT_HEADROOM));
+
+  const name = charName || card?.data?.name || card?.name || "the character";
+  const who = playerName || persona?.name || "the player";
+  const system = `${CHOICE_SYSTEM_PROMPT}\n\nScene: ${name} opposite ${who}.`;
+  const task = choicePrompt(count, { charName: name, playerName: who });
+
+  // Everything that is not history or ledger: the fixed instruction overhead.
+  const fixedTokens =
+    estimateTokens(system) + 4 + estimateTokens(task) + 4;
+  let remaining = Math.max(0, window - outputTokens - fixedTokens);
+
+  // The ledger is a hint, never the continuity document: capped both by its own
+  // allowance and by what is left, and charged before the transcript.
+  const storedLedger = session?.ledger || "";
+  let ledger = "";
+  let ledgerTokens = 0;
+  if (storedLedger && remaining > LEDGER_FRAMING_TOKENS) {
+    const ledgerAllowance = Math.min(
+      CHOICE_LEDGER_TOKENS,
+      Math.max(0, remaining - LEDGER_FRAMING_TOKENS)
+    );
+    // Reuse the ledger clip (empty marker: this is a throwaway send, not canon).
+    ledger = clipLedgerToTokens(storedLedger, ledgerAllowance, "");
+    if (ledger) {
+      ledgerTokens = estimateTokens(ledger) + LEDGER_FRAMING_TOKENS;
+      remaining = Math.max(0, remaining - ledgerTokens);
+    }
+  }
+
+  // The recent tail, newest-first while we decide, so the latest assistant turn
+  // is kept even when the window can hold nothing else. Empty-content entries
+  // carry no scene and are skipped. The transcript portion is additionally
+  // capped by its own allowance: a choice only needs the immediately preceding
+  // scene, so a large window must not turn this auxiliary request into a second
+  // full-context send.
+  const all = Array.isArray(session?.messages) ? session.messages : [];
+  let tailBudget = Math.min(remaining, CHOICE_RECENT_TOKENS);
+  const tail = [];
+  for (let i = all.length - 1; i >= 0; i -= 1) {
+    const msg = all[i];
+    if (!msg || !msg.content) continue;
+    const role = msg.role === "user" ? "user" : "assistant";
+    const content = substituteCardPlaceholders(msg.content, card, persona);
+    let tokens = estimateTokens(content) + 4;
+    let text = content;
+    // The newest message is always kept, clipped if it alone exceeds what is
+    // left; older ones are dropped rather than truncated, so a choice is never
+    // offered from a mangled half-sentence.
+    if (tokens > tailBudget) {
+      if (tail.length === 0 && tailBudget > 40) {
+        text = clipLedgerToTokens(content, tailBudget - 4, "");
+        tokens = estimateTokens(text) + 4;
+      } else {
+        break;
+      }
+    }
+    tail.unshift({ role, content: text });
+    tailBudget = Math.max(0, tailBudget - tokens);
+  }
+
+  const payload = [{ role: "system", content: system }];
+  if (ledger) payload.push({ role: "user", content: `${LEDGER_OPEN}${ledger}${LEDGER_CLOSE}` });
+  for (const msg of tail) payload.push(msg);
+  payload.push({ role: "user", content: task });
+
+  return {
+    payload,
+    inputTokens: countMessages(payload),
+    outputTokens,
+    contextWindow,
+    ledgerIncluded: Boolean(ledger),
+    historyIncluded: tail.length,
   };
 }
 
@@ -884,11 +1045,21 @@ export class BrowserChatEngine {
    */
   static #buildSummaryRequest({ settings, transcript, previousLedger, extraTokens = 0 }) {
     const prompt = previousLedger ? SUMMARY_UPDATE_PROMPT : SUMMARY_PROMPT;
+    const promptTokens = estimateTokens(SUMMARY_SYSTEM_PROMPT) + estimateTokens(prompt) + 16;
+    const contextWindow = this.resolveBudgets(settings).contextWindow;
+    // The prior ledger is clipped to what fits beside the transcript, so a
+    // large stored ledger can never make the fold request itself over-window
+    // (which would send it straight to the extractive fallback).
+    const fittedLedger = this.#fitFoldLedger(previousLedger, {
+      contextWindow,
+      promptTokens,
+      transcriptTokens: estimateTokens(transcript),
+    });
     const userContent =
       `<transcript>\n${transcript}\n</transcript>` +
-      (previousLedger ? `\n\n<prior-ledger>\n${previousLedger}\n</prior-ledger>` : "") +
+      (fittedLedger ? `\n\n<prior-ledger>\n${fittedLedger}\n</prior-ledger>` : "") +
       `\n\n${prompt}`;
-    const budget = this.#summaryBudget({ settings, transcript, previousLedger, extraTokens });
+    const budget = this.#summaryBudget({ settings, transcript, previousLedger: fittedLedger, extraTokens });
     return {
       body: {
         model: String(settings?.model || "").trim(),
@@ -902,6 +1073,22 @@ export class BrowserChatEngine {
       },
       budget,
     };
+  }
+
+  /** @see fitFoldLedgerTokens */
+  static #fitFoldLedger(previousLedger, { contextWindow, promptTokens, transcriptTokens }) {
+    const ledger = previousLedger || "";
+    if (!ledger) return "";
+    const fitted = fitFoldLedgerTokens({
+      contextWindow,
+      promptTokens,
+      transcriptTokens,
+      ledgerTokens: estimateTokens(ledger),
+    });
+    if (fitted >= estimateTokens(ledger)) return ledger;
+    // Clipping the *derived* ledger for this request loses no canon: the stored
+    // ledger is untouched and the summarizer's output replaces this input.
+    return clipLedgerToTokens(ledger, fitted, "\n- [older ledger material omitted from this fold request at the window limit]");
   }
 
   /**
@@ -957,7 +1144,14 @@ export class BrowserChatEngine {
     // window clamp, retrying would burn the same wall twice.
     const truncated = choice?.finish_reason === "length";
     const extra = Math.max(SUMMARY_REASONING_HEADROOM, Math.floor(Math.max(0, SUMMARY_MAX_TOKENS - budget) / 2));
-    const nextBudget = this.#summaryBudget({ settings, transcript, previousLedger, extraTokens: extra });
+    // The retry must be measured against the SAME fitted ledger the request
+    // actually sent, or it would compare budgets for two different inputs.
+    const fittedLedger = this.#fitFoldLedger(previousLedger, {
+      contextWindow: this.resolveBudgets(settings).contextWindow,
+      promptTokens: estimateTokens(SUMMARY_SYSTEM_PROMPT) + estimateTokens(previousLedger ? SUMMARY_UPDATE_PROMPT : SUMMARY_PROMPT) + 16,
+      transcriptTokens: estimateTokens(transcript),
+    });
+    const nextBudget = this.#summaryBudget({ settings, transcript, previousLedger: fittedLedger, extraTokens: extra });
     const retry = (!hasText || truncated) && nextBudget > budget;
     return {
       text: hasText ? text.trim() : null,
@@ -1547,6 +1741,15 @@ export class BrowserChatEngine {
     } catch (err) {
       if (err && err.name === "AbortError") throw err;
       const realWindow = this.#providerContextWindow(err);
+      // A request the planner already measured as impossible fails here for
+      // exactly that reason, and the provider's message says only "maximum
+      // context length". Emitting the measured breakdown before the error
+      // propagates is what tells the reader *which* component to shrink —
+      // otherwise the one actionable diagnosis is discarded at the moment it is
+      // most needed.
+      if (request.impossible && onNotice) {
+        onNotice(this.#overflowReport(request, ledgerCondensed));
+      }
       // Adapt only when nothing has been streamed yet: a context-overflow
       // rejection arrives as an HTTP 400 before the first chunk, so a resend is
       // safe. If content already reached the caller, retrying would duplicate
@@ -1607,6 +1810,83 @@ export class BrowserChatEngine {
    */
   static describeRequest({ card, session, settings, persona, agentsContract }) {
     return this.planRequest({ card, session, settings, persona, agentsContract });
+  }
+
+  /** @see planChoiceRequest */
+  static planChoiceRequest(args) {
+    return planChoiceRequest(args);
+  }
+
+  /**
+   * Generates the next set of player choices for the scene that just settled.
+   *
+   * This is an AUXILIARY request and is deliberately separate from the RP turn:
+   * it is non-streaming, it never touches `session.messages`, `session.ledger`
+   * or `session.consumed`, and a failure here must never turn a successful RP
+   * response into a failed turn. The caller (the controller) treats a throw as
+   * "no choices this turn" and keeps the reply.
+   *
+   * It uses the smallest sufficient context (see `planChoiceRequest`) rather
+   * than the full RP payload, so a large preset cannot make choice generation
+   * as expensive or as fragile as the main turn. The request is still measured
+   * against the same effective context window the allocator uses.
+   *
+   * Returns `{ choices, usage, request }` where `choices` is a validated
+   * `[{ id, text }]` list (possibly empty). The raw model text is parsed by
+   * `parseChoices`, which never throws on malformed output.
+   */
+  static async generateChoices({
+    card = null,
+    session = null,
+    settings = {},
+    persona = null,
+    agentsContract = "",
+    count = CHOICE_COUNT_DEFAULT,
+    charName = "",
+    playerName = "",
+    signal,
+  } = {}) {
+    const activeSettings = agentsContract ? { ...settings, agentsContract } : settings;
+    const request = planChoiceRequest({ card, session, settings: activeSettings, persona, count, charName, playerName });
+    const { base, headers } = this.#resolveEndpoint(activeSettings);
+
+    // A choice request is a cheap, one-off extraction-like call: it must not pay
+    // the cache-write premium, so no cache key is attached and `stream` is false.
+    const body = {
+      model: String(activeSettings.model || "").trim(),
+      messages: request.payload,
+      stream: false,
+      max_tokens: request.outputTokens,
+    };
+    if (typeof activeSettings.temperature === "number") {
+      // Slightly cooler than the RP default: choices want variety, not the full
+      // creative spread, and a stable set is easier to scan.
+      body.temperature = Math.min(activeSettings.temperature, 0.85);
+    }
+
+    const res = await fetch(`${base}/chat/completions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal,
+    });
+    if (!res.ok) throw await this.#generationHttpError(res);
+
+    // A body that is not JSON (an HTML error page, a truncated response) is a
+    // malformed choice response, not a crash: it yields no choices, which the
+    // caller reports as a retryable error state.
+    let data = null;
+    try {
+      data = await res.json();
+    } catch {
+      data = null;
+    }
+    // A provider may also report failure inside a 200 body; surface it rather
+    // than parsing a missing `choices` array into an empty (and misleading) menu.
+    if (data && data.error) throw this.#providerError(data.error);
+    const raw = data?.choices?.[0]?.message?.content;
+    const { choices } = parseChoices(typeof raw === "string" ? raw : "");
+    return { choices, usage: data?.usage ?? null, request };
   }
 
   /**
@@ -1766,16 +2046,26 @@ export class BrowserChatEngine {
     if (!ledger || estimateTokens(ledger) <= LEDGER_HARD_MAX_TOKENS) return { ledger, compressed: false };
     try {
       const { base, headers } = this.#resolveEndpoint(settings);
+      const contextWindow = this.resolveBudgets(settings).contextWindow;
+      const promptTokens = estimateTokens(SUMMARY_SYSTEM_PROMPT) + estimateTokens(LEDGER_COMPRESS_PROMPT) + 16;
       // The compression request shares one window between its own input (the
-      // oversized ledger) and its output, exactly like a fold. Reuse the tested
-      // helper rather than requesting a flat ceiling: with a 16k ledger in a
-      // small window the headroom clamp drives this to the viable floor, which
-      // is the correct bounded overage (refusing to compress loses continuity).
+      // oversized ledger) and its output, exactly like a fold. The ledger here
+      // is by definition larger than the hard ceiling, which on a small window
+      // is larger than the whole window, so sending it whole made the request
+      // guaranteed to be rejected: one wasted round trip, every time, followed
+      // by the deterministic clip below anyway.
+      //
+      // Compressing a *clipped* input is not the answer either: the summarizer
+      // would silently drop the part it never saw, losing canon that the clip
+      // below keeps at full detail. So when the whole ledger cannot fit the
+      // request, skip straight to the clip — same outcome, no wasted call.
+      const ledgerFits = this.#fitFoldLedger(ledger, { contextWindow, promptTokens, transcriptTokens: 0 });
+      if (ledgerFits !== ledger) return { ledger: this.#boundLedgerSync(ledger), compressed: true };
       const compressBudget = resolveSummaryBudget({
         transcriptTokens: 0,
         ledgerTokens: estimateTokens(ledger),
-        promptTokens: estimateTokens(SUMMARY_SYSTEM_PROMPT) + estimateTokens(LEDGER_COMPRESS_PROMPT) + 16,
-        contextWindow: this.resolveBudgets(settings).contextWindow,
+        promptTokens,
+        contextWindow,
         hasPriorLedger: true,
       });
       const body = {

@@ -66,9 +66,15 @@ export function createMessageFeed({
   }
 
   function trayHtml(msg, opts) {
-    const { showDelete, showReroll, showFork } = opts;
+    const { showDelete, showReroll, showFork, showRetry } = opts;
     const id = safeId(msg.id);
     const btns = [];
+    if (showRetry) {
+      // A trailing user turn with no reply (its generation failed, or the page
+      // was closed mid-turn). Without this the only way to get a reply would be
+      // to retype the message, because the failure toast is gone by then.
+      btns.push(`<button type="button" class="rp-btn rp-btn--secondary rp-btn--sm" data-action="retry" data-msg-id="${escapeAttr(msg.id)}">Retry reply</button>`);
+    }
     btns.push(`<button type="button" class="rp-btn rp-btn--ghost rp-btn--sm" data-action="copy" data-msg-id="${escapeAttr(msg.id)}">Copy</button>`);
     btns.push(`<button type="button" class="rp-btn rp-btn--ghost rp-btn--sm" data-action="edit" data-msg-id="${escapeAttr(msg.id)}">Edit</button>`);
     if (showFork) btns.push(`<button type="button" class="rp-btn rp-btn--ghost rp-btn--sm" data-action="fork" data-msg-id="${escapeAttr(msg.id)}">Fork from here</button>`);
@@ -158,6 +164,16 @@ export function createMessageFeed({
     return `${(msg.content || "").length}:${(msg.forks || []).length}:${msg.timestamp || 0}`;
   }
 
+  /**
+   * The signature a node was built with. It folds in the tray's shape, not just
+   * the text: a reply landing on the newest user turn removes its "Retry reply"
+   * action while the text is unchanged, so a text-only signature would leave a
+   * stale control behind.
+   */
+  function renderSignature(msg, opts) {
+    return `${signatureOf(msg)}:${opts.showRetry ? "r" : ""}${opts.showReroll ? "R" : ""}${opts.showDelete ? "d" : ""}${opts.showFork ? "f" : ""}`;
+  }
+
   function reconcile(messages) {
     const total = messages.length;
     const start = Math.max(0, total - windowSize);
@@ -182,9 +198,14 @@ export function createMessageFeed({
         showDelete: total > 1,
         showReroll: isLastAssistant,
         showFork: total > 1,
+        // The newest turn is the player's and nothing has answered it: its
+        // generation failed or was interrupted. This is the durable recovery
+        // affordance for that state.
+        showRetry: msg.role === "user" && start + i === total - 1,
       };
       let el = nodes.get(id);
-      if (el && el.dataset.sig !== signatureOf(msg)) {
+      const sig = renderSignature(msg, opts);
+      if (el && el.dataset.sig !== sig) {
         const fresh = buildMessage(msg, opts);
         el.replaceWith(fresh);
         el = fresh;
@@ -193,7 +214,7 @@ export function createMessageFeed({
         el = buildMessage(msg, opts);
         nodes.set(id, el);
       }
-      el.dataset.sig = signatureOf(msg);
+      el.dataset.sig = sig;
       return el;
     });
 
@@ -365,16 +386,13 @@ export function createMessageFeed({
       const tokens = tokenMetaHtml(estimateTokens(msg.content || "")) + forkMetaHtml((msg.forks || []).length);
       meta.innerHTML = `${timeStr}${pill}${tokens}`;
     }
-    content.insertAdjacentHTML("beforeend", trayHtml(msg, {
-      showDelete: true,
-      showReroll: true,
-      showFork: true,
-    }));
+    const settledOpts = { showDelete: true, showReroll: true, showFork: true, showRetry: false };
+    content.insertAdjacentHTML("beforeend", trayHtml(msg, settledOpts));
     // The provisional stream key is replaced by the real message id, so the
     // next reconcile reuses this node instead of rebuilding it.
     const oldKey = String(el.dataset.msgId);
     el.dataset.msgId = msg.id;
-    el.dataset.sig = signatureOf(msg);
+    el.dataset.sig = renderSignature(msg, settledOpts);
     nodes.delete(oldKey);
     nodes.set(String(msg.id), el);
   }

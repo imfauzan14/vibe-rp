@@ -215,13 +215,15 @@ describe("Controller - engine return value is never dropped", () => {
     expect(assistantMsg.content).toBe("returned without chunks");
   });
 
-  test("an engine that streams nothing and returns nothing rejects, leaving no trace", async () => {
+  test("an engine that streams nothing and returns nothing rejects, keeping the user turn", async () => {
     const engine = { async streamTurn() {} };
     const ctl = makeController(engine);
     await ctl.init("card_1", null);
-    const before = JSON.stringify(ctl.activeSession.messages);
     await expect(ctl.send("go")).rejects.toThrow(/empty reply/);
-    expect(JSON.stringify(ctl.activeSession.messages)).toBe(before);
+    // No empty assistant bubble is persisted, and the user's turn survives so
+    // it can be retried without retyping.
+    expect(ctl.messages.some((m) => m.role === "assistant" && !m.content)).toBe(false);
+    expect(ctl.messages.at(-1).content).toBe("go");
   });
 
   test("an engine that both streams and returns the same text does not duplicate it", async () => {

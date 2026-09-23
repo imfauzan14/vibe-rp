@@ -30,11 +30,12 @@ The dependency direction is one-way: UI modules depend on controllers, controlle
 
 Top-level logic (all zero DOM unless noted):
 
-- **`public/browser_engine.js`** (773 lines): `BrowserChatEngine`. Prompt assembly, the four context rules, ledger folding, SSE streaming.
-- **`public/session_controller.js`** (346 lines): `SessionController`. Session lifecycle, modal state machine, message transitions, send/stream flow. Accepts `options.signal` and exposes `cancel()`.
+- **`public/browser_engine.js`** (2100+ lines): `BrowserChatEngine`. Prompt assembly, the four context rules, ledger folding, SSE streaming, the universal allocator, and auxiliary choice generation.
+- **`public/session_controller.js`** (700+ lines): `SessionController`. Session lifecycle, modal state machine, message transitions, send/stream flow, retry of an unanswered turn, and the Choice Mode state machine. Accepts `options.signal` and exposes `cancel()`.
 - **`public/local_db.js`** (315 lines): `LocalDb`. IndexedDB (cards, sessions) plus localStorage (personas, directives, settings). `DB_VERSION` is 2.
 - **`public/safe_html.js`** (38 lines): `escapeHtml` and `escapeAttr`. The single escaping point for the whole app.
 - **`public/message_format.js`** (201 lines): pure `formatProse` and `formatMessages` view models.
+- **`public/choice_format.js`** (~200 lines): the Choice Mode prompt and the resilient parser for untrusted model output (zero DOM).
 - **`public/card_parse.js`** (284 lines): character-card parsing (JSONC strip, normalize, PNG/WebP `chara` extraction).
 - **`public/remote_import.js`** (266 lines): URL import, character-page API mapping, direct card-file fetch.
 - **`public/session_refresh.js`** (336 lines): refresh-token exchange, single-flight, proactive refresh.
@@ -84,6 +85,22 @@ A derived ledger larger than the window is condensed *for the send* (stored
 ledger and transcript untouched). A request is reported as impossible only when
 the measured request actually exceeds the window. The `promptBudget` field of
 `resolveBudgets` is an internal planning figure; it is never the validity test.
+
+Every request the engine sends obeys `input + max_tokens <= the window it was
+planned against`, folds and ledger compression included. The prior ledger a fold
+carries is clipped to fit (`fitFoldLedgerTokens`), because the *stored* ledger is
+bounded by `LEDGER_HARD_MAX_TOKENS` rather than by the window; a compression
+request that could never fit is skipped rather than sent and rejected.
+
+## Failure Recovery
+
+A failed generation rolls back only the assistant placeholder. The user's turn
+is canonical, already durable, and already sent, so it is kept: `send()` leaves
+it in place and `retryLastTurn()` re-streams that same turn through the ordinary
+pipeline. The chat page exposes this durably as a "Retry reply" action on a
+trailing unanswered user turn, so recovery survives an expired toast and a
+reload. A new turn supersedes any turn still in flight, so two generations never
+run concurrently.
 
 ## Key Directories
 
@@ -229,7 +246,7 @@ bun test test/
 
 ### Stats
 
-390 tests, 8674 expect() calls, 28 files (measured with `bun test test/`).
+476 tests, 8893 expect() calls, 31 files (measured with `bun test test/`).
 
 ### Existing Test Files
 
@@ -257,6 +274,9 @@ bun test test/
 - `test/responsive_layout.test.ts`: phone-width CSS guards (library filter bar stays inline, preset-row badge atomicity, message speaker truncation)
 - `test/settings_unification.test.ts`: one settings surface for both pages (shared modal import, cache-key read/write, session-import gating, no chat-only panel or markup)
 - `test/unified_modules.test.ts`: single escapeHtml/toast/theme implementations, sw.js shell hygiene
+- `test/choice_format.test.ts`: the Choice Mode parser (malformed/aliased/line-list output, sanitation, dedupe, clamping) and the auxiliary choice request planner
+- `test/choice_mode.test.ts`: the choice state machine (double-click, staleness, scene-awaiting-player guard, failure recovery, persistence without a refetch)
+- `test/choice_ui.test.ts`: presentation guards (real buttons, text-not-markup, durable retry affordance, the engine choice seam stays non-streaming and transcript-free)
 
 ### When to Add Tests
 

@@ -10,8 +10,10 @@ import { describe, test, expect, afterEach } from "bun:test";
 import {
   BrowserChatEngine,
   resolveSummaryBudget,
+  fitFoldLedgerTokens,
   countMessages,
   estimateTokens,
+  TOKEN_SAFETY_MARGIN,
   SUMMARY_MIN_TOKENS,
   SUMMARY_DEFAULT_TOKENS,
   SUMMARY_MAX_TOKENS,
@@ -401,5 +403,123 @@ describe("Adaptive summary budget - cancellation and generation budget", () => {
     });
     expect(transcriptTokens + 400 + budget).toBeLessThanOrEqual(8192);
     expect(countMessages([{ role: "user", content: transcript }])).toBeGreaterThan(0);
+  });
+});
+
+describe("Fold input fits the window - a large stored ledger cannot kill the summarizer", () => {
+  // The stored ledger is bounded by LEDGER_HARD_MAX_TOKENS, not by the window,
+  // so on a small window it can legitimately be larger than the whole request.
+  // Passing it to the fold whole made the fold itself over-window, and the
+  // provider's rejection silently degraded the fold to the extractive digest —
+  // the summarizer became unreachable exactly when continuity mattered most.
+
+  test("fitFoldLedgerTokens clips the prior ledger to what fits beside the transcript", () => {
+    const fitted = fitFoldLedgerTokens({
+      contextWindow: 8192,
+      promptTokens: 400,
+      transcriptTokens: 4000,
+      ledgerTokens: 16000,
+    });
+    // Everything the fold sends, plus the floor it needs for output, fits.
+    expect(fitted).toBeLessThan(16000);
+    expect(400 + 4000 + fitted + SUMMARY_FLOOR_TOKENS + TOKEN_SAFETY_MARGIN).toBeLessThanOrEqual(8192);
+  });
+
+  test("a ledger that already fits is left untouched", () => {
+    expect(fitFoldLedgerTokens({ contextWindow: 65536, promptTokens: 400, transcriptTokens: 2000, ledgerTokens: 3000 })).toBe(3000);
+  });
+
+  test("a huge ledger on a small window still folds via the summarizer", async () => {
+    const window = 8192;
+    const seen = { fold: 0, foldOver: 0, foldOk: 0 };
+    const notices = [];
+    // A stored ledger far larger than the window (bounded by the hard ceiling).
+    const session = {
+      messages: [
+        { id: "m0", role: "assistant", content: "The lantern gutters." },
+        ...Array.from({ length: 30 }, (_, i) => ({
+          id: `m${i + 1}`,
+          role: i % 2 ? "assistant" : "user",
+          content: `Turn ${i}. `.repeat(60),
+        })),
+      ],
+      ledger: "- Cast: Elena, the archivist with a lantern.\n".repeat(1200),
+      consumed: 1,
+    };
+    const card = { id: "c", data: { name: "Elena", first_mes: "Hi." } };
+    const localSettings = { ...settings, maxContextTokens: window };
+    globalThis.fetch = async (url, init) => {
+      const body = JSON.parse(init.body);
+      const input = countMessages(body.messages);
+      if (body.stream) return new Response(SSE_OK, { status: 200, headers: { "content-type": "text/event-stream" } });
+      seen.fold += 1;
+      // A real provider rejects input + max_tokens over its window.
+      if (input + (body.max_tokens || 0) > window) {
+        seen.foldOver += 1;
+        return new Response(JSON.stringify({ error: { message: `maximum context length is ${window} tokens` } }), { status: 400 });
+      }
+      seen.foldOk += 1;
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: "- Cast: Elena.\n- Timeline: recently, the lantern." }, finish_reason: "stop" }] }),
+        { status: 200 }
+      );
+    };
+    await BrowserChatEngine.streamTurn({
+      card,
+      session,
+      settings: localSettings,
+      persona: { name: "You" },
+      onChunk: () => {},
+      onNotice: (n) => notices.push(n),
+    });
+    // The fold reached the summarizer instead of being rejected for size.
+    expect(seen.fold).toBeGreaterThan(0);
+    expect(seen.foldOver).toBe(0);
+    expect(seen.foldOk).toBeGreaterThan(0);
+    expect(notices.some((n) => /condensed without summarizer/i.test(n))).toBe(false);
+    expect(session.ledger).toContain("Elena");
+  });
+});
+
+describe("Ledger compression never spends a request it knows will be rejected", () => {
+  test("an oversized ledger on a small window is clipped without a doomed compression call", async () => {
+    // A ledger above LEDGER_HARD_MAX_TOKENS on a window smaller than that is
+    // unsendable whole: the compression request would always be rejected, and
+    // clipping its input would let the summarizer silently drop unseen canon.
+    // The deterministic clip is the correct outcome, so no request is made.
+    const window = 8192;
+    const settings = { apiEndpoint: "https://x.test/v1", model: "m", maxContextTokens: window, maxTokens: 1200 };
+    const session = {
+      messages: [
+        { id: "m0", role: "assistant", content: "The lantern gutters." },
+        ...Array.from({ length: 60 }, (_, i) => ({ id: `m${i + 1}`, role: i % 2 ? "assistant" : "user", content: `Turn ${i}. `.repeat(120) })),
+      ],
+      ledger: "",
+      consumed: 1,
+    };
+    const card = { id: "c", data: { name: "Elena", first_mes: "Hi." } };
+    // A fold output far above the hard ceiling, so the bound step runs.
+    const oversized = "- Cast: Elena, the archivist with a lantern.\n".repeat(1500);
+    let compressionCalls = 0;
+    let foldCalls = 0;
+    globalThis.fetch = async (url, init) => {
+      const body = JSON.parse(init.body);
+      if (body.stream) return new Response(SSE_OK, { status: 200, headers: { "content-type": "text/event-stream" } });
+      const isCompression = body.messages.some((m) => typeof m.content === "string" && m.content.includes("grown too large"));
+      if (isCompression) {
+        compressionCalls += 1;
+        const input = countMessages(body.messages);
+        if (input + (body.max_tokens || 0) > window) return new Response(JSON.stringify({ error: { message: "maximum context length" } }), { status: 400 });
+        return new Response(JSON.stringify({ choices: [{ message: { content: "- Cast: Elena." }, finish_reason: "stop" }] }), { status: 200 });
+      }
+      foldCalls += 1;
+      // The fold returns a ledger larger than the hard ceiling.
+      return new Response(JSON.stringify({ choices: [{ message: { content: oversized }, finish_reason: "stop" }] }), { status: 200 });
+    };
+    await BrowserChatEngine.streamTurn({ card, session, settings, persona: { name: "You" }, onChunk: () => {}, onNotice: () => {} });
+    expect(foldCalls).toBeGreaterThan(0);
+    // No compression request was attempted at a size that cannot fit.
+    expect(compressionCalls).toBe(0);
+    expect(estimateTokens(session.ledger)).toBeLessThanOrEqual(LEDGER_HARD_MAX_TOKENS);
   });
 });

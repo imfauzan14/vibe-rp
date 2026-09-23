@@ -1,5 +1,5 @@
     import { BrowserChatEngine, estimateTokens as estimateTokensModule } from "../../browser_engine.js";
-    import { SessionController } from "../../session_controller.js";
+    import { SessionController, CHOICE_STATUS } from "../../session_controller.js";
     import { formatProse, substitutePlaceholders } from "../../message_format.js";
     import { escapeHtml, escapeAttr } from "../../safe_html.js";
     import { LocalDbQuotaError, LocalDbBlockedError } from "../../local_db.js";
@@ -10,6 +10,7 @@
     import { confirmAction, runWithUndo } from "./confirm.js";
     import { createMessageFeed } from "./message_feed.js";
     import { createComposer } from "./composer.js";
+    import { createChoicePanel } from "./choice_panel.js";
     import { createSearch } from "./search.js";
     import { downloadExport, buildPlainText, readImportFile } from "./export.js";
     import { compressImage } from "../image.js";
@@ -121,6 +122,7 @@
         controller.deleteMessage(msgId);
         await persistOrReport();
         renderFeed();
+        renderChoices();
         runWithUndo({
           notifier,
           message: "Message deleted.",
@@ -128,6 +130,7 @@
             controller.activeSession.messages.splice(index, 0, msg);
             await persistOrReport();
             renderFeed();
+            renderChoices();
           },
         });
         return;
@@ -135,6 +138,11 @@
 
       if (action === "reroll") {
         await rerollLastTurn();
+        return;
+      }
+
+      if (action === "retry") {
+        await retryUnansweredTurn();
         return;
       }
 
@@ -174,6 +182,7 @@
       controller.sessions.push(forked);
       controller.switchSession(forked);
       renderFeed();
+      renderChoices();
       showToast("Forked into a new chat. The original is unchanged.", "success");
       updateContextStats();
     }
@@ -240,6 +249,7 @@
         await persistOrReport();
         close();
         if (revision) feed.updateMessage(revision);
+        renderChoices();
         showToast("Saved as a new draft. The earlier text is kept.", "success");
       };
 
@@ -263,6 +273,120 @@
       onSend: (text) => submitTurn(text),
       onStop: () => stopTurn(),
     });
+
+    // ---------------------------------------------------------------- Choice Mode
+    //
+    // Choice Mode changes how the reader picks the next turn, never how the
+    // conversation is stored or generated. A selected choice is appended as an
+    // ordinary user message through the same submit path a typed line uses.
+    const choicePanelEl = $("choice-panel");
+    const modeSwitchEl = $("mode-switch");
+    let mode = "normal";
+
+    const choicePanel = createChoicePanel({
+      mount: choicePanelEl,
+      onSelect: (id) => selectChoice(id),
+      onRegenerate: () => requestChoices(),
+      onManual: () => revealManualInput(),
+      onRetry: () => requestChoices(),
+      // Never steal focus from a reader who is typing in the composer.
+      autoFocus: () => document.activeElement !== authorInput,
+    });
+
+    /** Applies the mode to the chrome. Never touches the transcript. */
+    function setMode(next, { persist = true } = {}) {
+      mode = next === "choice" ? "choice" : "normal";
+      for (const btn of modeSwitchEl.querySelectorAll("[data-mode]")) {
+        btn.setAttribute("aria-pressed", btn.dataset.mode === mode ? "true" : "false");
+      }
+      if (persist) {
+        try {
+          const settings = controller.db.getSettings();
+          controller.db.saveSettings({ ...settings, choiceMode: mode });
+          controller.settings = controller.db.getSettings();
+        } catch (err) {
+          console.warn("Could not persist the mode", err);
+        }
+      }
+      if (mode === "choice") {
+        restoreChoicesForScene();
+      } else {
+        // Leaving Choice Mode discards the pending set: the panel is hidden and
+        // a stale menu must not survive behind it.
+        controller.invalidateChoices();
+        renderChoices();
+      }
+    }
+
+    modeSwitchEl.addEventListener("click", (event) => {
+      const btn = event.target.closest("[data-mode]");
+      if (btn) setMode(btn.dataset.mode);
+    });
+
+    /** Paints the panel from the controller's machine state. */
+    function renderChoices() {
+      const st = controller.choiceState;
+      const { focusTarget } = choicePanel.render({
+        mode,
+        status: st.status,
+        choices: st.choices,
+        error: st.error,
+        selectedId: st.selectedId || null,
+      });
+      // Focus only when the panel itself changed state (choices arrived, a turn
+      // started) and the reader was not typing.
+      if (focusTarget && document.activeElement !== authorInput && !composer.busy) {
+        focusTarget.focus?.();
+      }
+    }
+
+    /**
+     * Re-syncs the panel to a scene that just changed (session switch, new
+     * chat, restore). A valid persisted set is shown without a request; an
+     * empty scene (no assistant turn yet) asks for one; a stale set is dropped.
+     */
+    function restoreChoicesForScene() {
+      if (mode !== "choice") {
+        controller.invalidateChoices();
+        renderChoices();
+        return;
+      }
+      const restored = controller.restoreChoices();
+      renderChoices();
+      // No assistant turn awaiting the player means nothing to base choices on:
+      // the panel shows its idle state and the reader can still type. Otherwise,
+      // a scene with no restored set earns exactly one request.
+      if (restored.status === CHOICE_STATUS.IDLE && controller.choiceScene()) {
+        requestChoices();
+      }
+    }
+
+    /** Asks the controller for a fresh set. Auxiliary: never fails the RP turn. */
+    async function requestChoices() {
+      if (mode !== "choice") return;
+      renderChoices(); // paints `generating` immediately
+      await controller.requestChoices({ onState: () => renderChoices() });
+      renderChoices();
+    }
+
+    /** Selection: claim once, append one user turn, run one generation. */
+    async function selectChoice(id) {
+      const choice = controller.selectChoice(id);
+      if (!choice) return; // not ready, or the set went stale between render and click
+      // Paint the acknowledged, disabled state immediately, from the controller,
+      // so the click is visibly registered before the reply starts.
+      renderChoices();
+      await submitTurn(choice.text);
+    }
+
+    /** The escape hatch: reveals the normal composer and focuses it. */
+    function revealManualInput() {
+      // Drop the menu so the composer is the only next-turn input in view. The
+      // typed message goes through the identical pipeline a choice does.
+      controller.invalidateChoices();
+      renderChoices();
+      composer.focus();
+    }
 
     $("composer").addEventListener("submit", (e) => {
       e.preventDefault();
@@ -306,6 +430,7 @@
     async function streamTurn(promptHint, { persistPending = true } = {}) {
       setBusy(true);
       stickToBottom = isNearBottom();
+      let settledOk = false;
       const streamId = `msg_${Date.now() + 1}`;
       const stream = feed.beginStream(streamId, { autoFollow: stickToBottom });
       const partial = { id: streamId, role: "assistant", content: "", timestamp: Date.now() };
@@ -340,6 +465,11 @@
         // A Stop mid-stream may leave the engine having persisted the partial
         // reply; keep it as a real turn rather than throwing the text away.
         feed.settleStream(stream, partial);
+        // Reconcile once so tray actions that depend on being the newest turn
+        // (the "Retry reply" action on a previously unanswered user turn) are
+        // recomputed now that a reply exists.
+        renderFeed();
+        settledOk = true;
       } catch (err) {
         feed.failStream(stream);
         if (turn.stopped) {
@@ -355,11 +485,25 @@
             });
           }
         }
+        // The controller drops a pending selection when its turn fails, so the
+        // panel must be repainted or it would sit in the disabled `submitting`
+        // state with no way forward.
+        if (mode === "choice") renderChoices();
       } finally {
         activeStream = null;
         setBusy(false);
         updateContextStats();
-        if (window.matchMedia("(pointer: fine)").matches) composer.focus();
+        // In Choice Mode the panel owns focus after a turn; only the normal
+        // composer is refocused, and only on a fine pointer.
+        if (mode !== "choice" && window.matchMedia("(pointer: fine)").matches) composer.focus();
+      }
+
+      // Choice Mode: a successful turn is exactly when a fresh menu is wanted.
+      // This is auxiliary and awaited only for ordering, never for success: a
+      // choice failure cannot turn the settled reply into a failed turn.
+      if (settledOk && mode === "choice") {
+        renderChoices();
+        await requestChoices();
       }
     }
 
@@ -376,6 +520,19 @@
       const lastUserPrompt = controller.reroll();
       renderFeed();
       await streamTurn(lastUserPrompt || "[Reroll the scene]");
+    }
+
+    /**
+     * Re-streams a trailing user turn that never got a reply — its generation
+     * failed, or the page closed mid-turn. The turn is already canonical, so
+     * nothing is appended: the same text goes back through the ordinary
+     * pipeline, which is why the reader never has to retype it.
+     */
+    async function retryUnansweredTurn() {
+      if (composer.busy) return;
+      const pending = controller.pendingUserTurn();
+      if (!pending) return;
+      await streamTurn(pending.content);
     }
 
     // Context stats and ledger calculation.
@@ -549,6 +706,7 @@
           controller.switchSession(sess);
           renderFeed();
           closeDialog();
+          restoreChoicesForScene();
           showToast(`Switched to ${sess.title}.`, "info");
         });
         row.querySelector("[data-rename]")?.addEventListener("click", () => enterThreadRename(sess, row));
@@ -610,6 +768,7 @@
       await controller.createSession({ title: `Chat ${controller.sessions.length + 1}` });
       renderFeed();
       closeDialog();
+      restoreChoicesForScene();
       showToast("New chat started.", "success");
     });
 
@@ -657,6 +816,7 @@
         await persistOrReport();
         renderFeed();
         closeDialog();
+        restoreChoicesForScene();
         showToast(`Restored ${parsed.messages.length} messages.`, "success");
       } catch (err) {
         showToast(err.message, "error");
@@ -805,6 +965,12 @@
       await refreshPresets();
       renderFeed();
 
+      // Choice Mode is a persisted preference, restored before the first paint
+      // of the panel. `persist: false` because it is already in storage;
+      // `setMode` restores any valid pending set without a request.
+      const storedMode = controller.settings?.choiceMode === "choice" ? "choice" : "normal";
+      setMode(storedMode, { persist: false });
+
       if (window.visualViewport) {
         let scheduled = false;
         const syncHeight = () => {
@@ -843,6 +1009,12 @@
         get session() { return controller.activeSession; },
         get busy() { return composer.busy; },
         get theme() { return getTheme(); },
+        get mode() { return mode; },
+        get choices() { return controller.choiceState.choices.map((c) => ({ ...c })); },
+        get choiceStatus() { return controller.choiceState.status; },
+        selectChoice: (id) => selectChoice(id),
+        regenerateChoices: () => requestChoices(),
+        setMode: (m) => setMode(m),
         toggleTheme,
         stop: () => stopTurn(),
       };

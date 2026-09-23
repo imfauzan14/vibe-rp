@@ -17,6 +17,7 @@ Vibe RP is a browser-first roleplay client for importing character cards, managi
 - Conversation export to JSON or plain text, and restore that appends to the current chat
 - Undoable destructive actions in place of blocking `confirm()` dialogs
 - Pure formatting pipeline for model output (markdown subset, code-block protection, em-dash suppression)
+- **Choice Mode**: the model proposes 3-5 player choices after each reply; picking one becomes an ordinary user turn, and the normal pipeline runs unchanged. Switch with the chip in the composer; the preference persists per browser.
 
 ## Themes
 
@@ -39,7 +40,7 @@ bun start        # serve.js, http://localhost:3000
 Run the tests:
 
 ```bash
-bun test test/   # 390 tests across 28 files
+bun test test/   # 476 tests across 31 files
 ```
 
 `bun run build` is a no-op; the client ships as static files.
@@ -89,6 +90,28 @@ The engine does not think in terms of "how much history fits in an internal prom
 
 A large preset consumes real context and reduces history; it is a budgeting condition, not a failure. A small preset leaves room for more history. A larger configured window buys more usable content. There is no hardcoded "64K mode".
 
+## Choice Mode
+
+Choice Mode changes *how the reader picks the next turn*, never how the conversation is stored or generated. It is a mode, not a second engine.
+
+```text
+assistant reply
+  → 3-5 generated choices
+  → the reader picks one (or types their own)
+  → that text becomes an ordinary user turn
+  → the existing pipeline runs unchanged
+  → a fresh reply, then fresh choices
+```
+
+- **One transcript.** A selected choice is appended as a normal `user` message. History, compaction, export, search, fork and the context allocator treat it exactly like typed text. Choices are never stored as messages and never enter the RP prompt.
+- **Auxiliary generation.** Choices come from a separate, non-streaming request (`BrowserChatEngine.generateChoices`) that uses the smallest sufficient context: the choice instruction, a clipped ledger hint, and the recent tail of the transcript. It never sends the full preset or the whole history, so a large preset cannot make it fragile. A choice failure leaves the RP reply intact and offers Retry.
+- **One allocator, unchanged.** The choice request is planned by `planChoiceRequest` against the same effective window the RP turn uses; the RP prompt is byte-identical whether Choice Mode is on or off.
+- **A state machine, not booleans.** `session_controller.js` models `idle → generating → ready → submitting`, with `error` and cancellation paths. A set is tied to its source assistant message (id plus revision) and is discarded when that scene changes: a new turn, reroll, edit, delete, fork, session switch, or restore. A double click can only ever append one turn and start one generation.
+- **Persisted, not re-fetched.** The minimum needed to restore a set (`sourceId`, `sourceSig`, `choices`) is stored on the session as derived metadata. Reopening a chat restores valid pending choices with no extra API call.
+- **The escape hatch.** **Other…** reveals and focuses the normal composer; a typed message goes through the identical pipeline.
+- **Presentation.** The panel is a VN-style interaction layer: real `<button>` options (mouse, touch, keyboard, Enter/Space, `1`-`5` shortcuts, visible focus, disabled and acknowledged-selected states), rendered as text nodes so model output can never become markup. It rides the sticky dock so it never covers the reading area, stacks full-width above the composer on phones, and announces state changes through a polite live region.
+
+
 ## Routes
 
 - `/` — character library and settings modal
@@ -123,7 +146,7 @@ public/
   manifest.webmanifest  PWA manifest
 serve.js                Bun static server: SPA routing plus the security-header layer
 vercel.json             Deployment config mirroring serve.js routing, rewrites, and headers
-test/                   Bun test suite (28 files)
+test/                   Bun test suite (31 files)
 package.json            Scripts and metadata
 ```
 
@@ -135,7 +158,7 @@ Card URLs are accepted directly too: open **Import Card** and paste a JSON/JSONC
 
 ## Testing
 
-Bun's native test runner, 390 tests across 28 files under `test/`: engine interface contract, compaction seam edges (fold headroom, boundary alignment, shake bounds, adaptive summary budget and its bounded retry), long-run compaction stress (100-fold drift, ledger hard bound, canonical-transcript preservation), large-static-preset request accounting (the full-context invariant through the real `streamTurn` seam), the universal context allocator (no false overflow for a request that fits, static-section degradation, final-request measurement, provider context-overflow adaptation, randomized allocation properties, 500/1000-turn long runs), the context inspector (its breakdown sums to and matches the payload `streamTurn` sends), responsive layout guards (phone-width filter bar, preset-row badge, message speaker truncation, long-name clamping, the touch artwork chip), settings-surface unification (both pages mount one modal; shared CSS home; cache key and session-import gating; the gold character name), core hardening (null-chunk suppression, degraded-fold notices, provider errors inside a 200 SSE body), session controller behavior against injected fakes (no DOM, cancellation, rollback, message forking), local-database hardening (the v1 to v2 in-place upgrade, single-transaction card deletion, typed quota and blocked errors), preset stores, preset resolution and defaults, message formatting, universal macro substitution, adaptive context limits, the HTML-to-markup converter for imported character cards (entity decoding, attribute stripping, idempotence), remote/direct-URL card import (URL validation, API mapping, content sniffing, stripped-definition fallbacks, session token exchange and proactive refresh), module seams, and unified singleton contracts.
+Bun's native test runner, 476 tests across 31 files under `test/`: engine interface contract, compaction seam edges (fold headroom, boundary alignment, shake bounds, adaptive summary budget and its bounded retry), long-run compaction stress (100-fold drift, ledger hard bound, canonical-transcript preservation), large-static-preset request accounting (the full-context invariant through the real `streamTurn` seam), the universal context allocator (no false overflow for a request that fits, static-section degradation, final-request measurement, provider context-overflow adaptation, randomized allocation properties, 500/1000-turn long runs), the context inspector (its breakdown sums to and matches the payload `streamTurn` sends), responsive layout guards (phone-width filter bar, preset-row badge, message speaker truncation, long-name clamping, the touch artwork chip), settings-surface unification (both pages mount one modal; shared CSS home; cache key and session-import gating; the gold character name), core hardening (null-chunk suppression, degraded-fold notices, provider errors inside a 200 SSE body), session controller behavior against injected fakes (no DOM, cancellation, rollback, message forking), local-database hardening (the v1 to v2 in-place upgrade, single-transaction card deletion, typed quota and blocked errors), preset stores, preset resolution and defaults, message formatting, universal macro substitution, adaptive context limits, the HTML-to-markup converter for imported character cards (entity decoding, attribute stripping, idempotence), remote/direct-URL card import (URL validation, API mapping, content sniffing, stripped-definition fallbacks, session token exchange and proactive refresh), module seams, and unified singleton contracts.
 
 ```bash
 bun test test/

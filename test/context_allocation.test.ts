@@ -169,6 +169,32 @@ describe("Context allocation - final request is measured", () => {
     const r = await turn({ window: 65536, maxTokens: 1200, desc: 70000, historyTurns: 10 });
     expect(r.notice).toMatch(OVERFLOW_NOTICE);
   });
+
+  test("an impossible request the provider REJECTS still explains itself", async () => {
+    // The realistic shape of the impossible case: the request is over-window,
+    // so the provider answers 400 and the engine throws. The measured breakdown
+    // is the only actionable diagnosis, and it used to be discarded because the
+    // report was emitted after the send, on the success path only.
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ error: { message: "This model's maximum context length is 65536 tokens" } }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    const notices = [];
+    const settings = { apiEndpoint: "https://x.test/v1", model: "m", maxContextTokens: 65536, maxTokens: 1200 };
+    const session = { messages: [{ role: "assistant", content: "greeting" }, { role: "user", content: words(150) }], ledger: "", consumed: 1 };
+    const card = { data: { name: "Elena", description: presetOfTokens(70000) } };
+    let threw = null;
+    try {
+      await BrowserChatEngine.streamTurn({ card, session, settings, persona: null, agentsContract: "", onNotice: (n) => notices.push(n) });
+    } catch (e) {
+      threw = e.message;
+    }
+    expect(threw).toBeTruthy();
+    expect(notices.join(" | ")).toMatch(OVERFLOW_NOTICE);
+    // The report names the largest contributor so the reader knows what to fix.
+    expect(notices.join(" | ")).toMatch(/static preset/i);
+  });
 });
 
 describe("Context allocation - static degradation", () => {
