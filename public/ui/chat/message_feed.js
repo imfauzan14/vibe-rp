@@ -153,6 +153,7 @@ export function createMessageFeed({
             <span class="rp-message__speaker">${escapeHtml(speakerName(isUser))}</span>
           </button>
           <span class="rp-message__meta"><span class="rp-message__time rp-tnum">${escapeHtml(timeText(msg.timestamp))}</span>${pill}${tokenMetaHtml(estimateTokens(msg.content || ""))}</span>
+          <button type="button" class="rp-message__more-btn" aria-expanded="false" aria-controls="tray-${id}" title="Message actions">⋯</button>
         </div>
         ${drawer}
         <div class="rp-message__prose" id="prose-${id}">${formatProse(prose)}</div>
@@ -462,21 +463,40 @@ export function createMessageFeed({
       return;
     }
 
-    const head = e.target.closest(".rp-message__head");
-    if (head) {
-      const card = head.closest(".rp-message");
-      const tray = card?.querySelector(".rp-message__tray");
-      const open = tray?.getAttribute("data-open") !== "true";
-      tray?.setAttribute("data-open", open ? "true" : "false");
-      head.querySelector(".rp-message__title")?.setAttribute("aria-expanded", open ? "true" : "false");
+    const btn = e.target.closest("[data-action]");
+    if (btn) {
+      const action = btn.dataset.action;
+      const msgId = btn.dataset.msgId;
+      const el = btn.closest(".rp-message");
+      onAction(action, msgId, { button: btn, element: el });
       return;
     }
-    const btn = e.target.closest("[data-action]");
-    if (!btn) return;
-    const action = btn.dataset.action;
-    const msgId = btn.dataset.msgId;
-    const el = btn.closest(".rp-message");
-    onAction(action, msgId, { button: btn, element: el });
+
+    // Do not toggle if clicking an interactive control or selecting text
+    if (e.target.closest("button, a, input, textarea, select")) return;
+    const sel = typeof window.getSelection === "function" ? window.getSelection()?.toString() : "";
+    if (sel && sel.trim().length > 0) return;
+
+    const card = e.target.closest(".rp-message");
+    if (card) {
+      const tray = card.querySelector(".rp-message__tray");
+      if (tray) {
+        const open = tray.getAttribute("data-open") !== "true";
+        tray.setAttribute("data-open", open ? "true" : "false");
+        card.querySelector(".rp-message__title")?.setAttribute("aria-expanded", open ? "true" : "false");
+        card.querySelector(".rp-message__more-btn")?.setAttribute("aria-expanded", open ? "true" : "false");
+        if (open) {
+          mount.querySelectorAll('.rp-message__tray[data-open="true"]').forEach((other) => {
+            if (other !== tray) {
+              other.setAttribute("data-open", "false");
+              const otherCard = other.closest(".rp-message");
+              otherCard?.querySelector(".rp-message__title")?.setAttribute("aria-expanded", "false");
+              otherCard?.querySelector(".rp-message__more-btn")?.setAttribute("aria-expanded", "false");
+            }
+          });
+        }
+      }
+    }
   });
 
   return {

@@ -611,6 +611,7 @@ export class SessionController {
   async requestChoices({ count, onState } = {}) {
     const run = this.#beginChoiceGeneration();
     if (!run) return this.choiceState;
+    onState?.(this.choiceState);
     const { token } = run;
     const abort = new AbortController();
     this.#choiceAbort = abort;

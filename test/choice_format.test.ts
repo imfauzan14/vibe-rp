@@ -38,6 +38,21 @@ describe("choice parser - the instructed shape", () => {
     expect(parseChoices('{"choices":[{"label":"Ask."},{"choice":"Leave."}]}').choices.map((c) => c.text)).toEqual(["Ask.", "Leave."]);
   });
 
+  test("parses label for menu display alongside full roleplay text", () => {
+    const raw = JSON.stringify({
+      choices: [
+        { label: "Refuse demand", text: "Menahan beban gravitasi sambil menatap lurus matanya, menolak permintaannya." },
+        { label: "Step back", text: "Melangkah mundur tanpa sepatah kata pun menuju loker." },
+      ],
+    });
+    const { choices } = parseChoices(raw);
+    expect(choices.length).toBe(2);
+    expect(choices[0].label).toBe("Refuse demand");
+    expect(choices[0].text).toBe("Menahan beban gravitasi sambil menatap lurus matanya, menolak permintaannya.");
+    expect(choices[1].label).toBe("Step back");
+    expect(choices[1].text).toBe("Melangkah mundur tanpa sepatah kata pun menuju loker.");
+  });
+
   test("a brace inside a quoted choice does not close the object early", () => {
     const { choices } = parseChoices('{"choices":[{"text":"Say \\"a { brace } thing\\"."},{"text":"Leave."}]}');
     expect(choices.map((c) => c.text)).toEqual(['Say "a { brace } thing".', "Leave."]);

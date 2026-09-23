@@ -139,4 +139,17 @@ describe("Browser-First Chat Engine & In-UI Config", () => {
     expect(oldAssistant.content).toBe("We head north.");
     expect(oldAssistant.content).not.toContain("<think>");
   });
+
+  test("10. planRequest injects thought guidance into post-history when enableSubagentThoughts is true", () => {
+    const card = { data: { name: "Elena", description: "Knight", first_mes: "Halt." } };
+    const session = { messages: [{ role: "assistant", content: "Halt." }, { role: "user", content: "State your business." }], ledger: "", consumed: 1 };
+    const reqWithout = BrowserChatEngine.planRequest({ card, session, settings: { enableSubagentThoughts: false } });
+    const lastWithout = reqWithout.payload[reqWithout.payload.length - 1];
+    expect(lastWithout.content).not.toContain("Begin your reply with <thought");
+
+    const reqWith = BrowserChatEngine.planRequest({ card, session, settings: { enableSubagentThoughts: true } });
+    const postWith = reqWith.payload.find(m => m.role === "user" && m.content.includes("Begin your reply with <thought"));
+    expect(postWith).toBeDefined();
+    expect(postWith?.content).toContain('<thought character="Elena">');
+  });
 });

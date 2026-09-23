@@ -11,6 +11,7 @@
 // A choice is one line the reader can scan. Beyond this it stops being a menu
 // item and becomes a paragraph, so the parser rejects rather than truncates.
 export const CHOICE_TEXT_MAX_CHARS = 160;
+export const CHOICE_LABEL_MAX_CHARS = 60;
 export const CHOICE_TEXT_MIN_CHARS = 2;
 export const CHOICE_COUNT_MIN = 3;
 export const CHOICE_COUNT_MAX = 5;
@@ -57,9 +58,11 @@ export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the cha
   return (
     `Propose the next moves for ${playerName} in the scene above, opposite ${charName}.\n\n` +
     "Return exactly one JSON object and nothing else, in this shape:\n" +
-    '{"choices":[{"text":"..."},{"text":"..."}]}\n\n' +
-    `Provide ${target} choices. Each "text" is a single short line under ` +
-    `${CHOICE_TEXT_MAX_CHARS} characters, phrased as ${playerName}'s own action or line of dialogue.`
+    '{"choices":[{"label":"Short main point","text":"Full roleplay dialogue or action."}]}\n\n' +
+    `Provide ${target} choices. For each choice:\n` +
+    `- "label": A brief, punchy summary of the intent or main point (3 to 8 words, under ${CHOICE_LABEL_MAX_CHARS} characters) displayed in the menu.\n` +
+    `- "text": The complete, immersive roleplay action or spoken dialogue to send when chosen (under ${CHOICE_TEXT_MAX_CHARS} characters).\n` +
+    `Phrased from ${playerName}'s perspective.`
   );
 }
 
@@ -126,15 +129,22 @@ function firstJsonSlice(text) {
   return null;
 }
 
-/** Pulls the text of one parsed entry, whatever shape the model chose. */
-function entryText(entry) {
-  if (typeof entry === "string") return entry;
-  if (!entry || typeof entry !== "object") return "";
-  return entry.text ?? entry.label ?? entry.choice ?? entry.action ?? entry.value ?? "";
+function entryItem(entry) {
+  if (typeof entry === "string") return { text: entry };
+  if (!entry || typeof entry !== "object") return null;
+  const hasText = entry.text !== undefined || entry.action !== undefined || entry.detail !== undefined || entry.value !== undefined || entry.choice !== undefined;
+  const rawText = hasText
+    ? (entry.text ?? entry.action ?? entry.detail ?? entry.value ?? entry.choice ?? "")
+    : (entry.label ?? entry.title ?? entry.summary ?? entry.tldr ?? "");
+  const rawLabel = hasText ? (entry.label ?? entry.title ?? entry.summary ?? entry.tldr ?? "") : "";
+  const text = typeof rawText === "string" ? rawText : String(rawText || "");
+  const label = typeof rawLabel === "string" ? rawLabel : String(rawLabel || "");
+  if (!text && !label) return null;
+  return { label, text: text || label };
 }
 
 /**
- * Candidate choice strings from a raw model reply. Tries JSON first (the
+ * Candidate choice items from a raw model reply. Tries JSON first (the
  * instructed shape), then falls back to a line list, because a model that
  * ignores the JSON instruction still usually returns a usable menu.
  */
@@ -149,7 +159,7 @@ function extractItems(raw) {
     }
     if (parsed) {
       const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed.choices) ? parsed.choices : null;
-      if (list) return list.map(entryText);
+      if (list) return list.map(entryItem).filter(Boolean);
     }
   }
   // Fallback: one candidate per non-empty line, fences and headings skipped.
@@ -162,42 +172,53 @@ function extractItems(raw) {
     .filter((line) => line && !/^```/.test(line) && !/^[a-zA-Z ]{0,20}:$/.test(line))
     .map((line) => line.replace(LEADING_MARKER_RE, "").trim())
     .filter(Boolean);
-  return lines.length >= 2 ? lines : [];
+  return lines.length >= 2 ? lines.map((l) => ({ text: l })) : [];
 }
 
 /**
  * Validates and normalises a raw model reply into the choice list.
  *
- * Returns `{ choices: [{ id, text }] }`. The list may be empty: a reply with no
+ * Returns `{ choices: [{ id, text, label? }] }`. The list may be empty: a reply with no
  * usable choice is a normal outcome the caller reports, never a crash. Every
- * `text` is a plain string that the UI renders as a text node, so nothing here
+ * `text` and `label` is a plain string that the UI renders as a text node, so nothing here
  * can become markup.
  */
 export function parseChoices(raw, { max = CHOICE_COUNT_MAX, maxChars = CHOICE_TEXT_MAX_CHARS } = {}) {
   const seen = new Set();
   const unique = [];
   for (const item of extractItems(typeof raw === "string" ? raw : String(raw ?? ""))) {
-    const text = normalizeChoiceText(item);
+    const text = normalizeChoiceText(item?.text);
     if (text.length < CHOICE_TEXT_MIN_CHARS) continue;
+    const rawLabel = item?.label ? normalizeChoiceText(item.label) : "";
     const key = dedupeKey(text);
     if (!key || seen.has(key)) continue;
     seen.add(key);
-    unique.push(text);
+    unique.push({ label: rawLabel, text });
   }
 
   // Prefer choices that already fit. Only when that would leave a useless menu
   // (fewer than two) do we clamp, so a verbose model degrades instead of failing.
-  const withinLimit = unique.filter((text) => text.length <= maxChars);
-  let chosen = withinLimit.length >= 2 ? withinLimit : unique.map((text) => clampText(text, maxChars));
+  const withinLimit = unique.filter((c) => c.text.length <= maxChars);
+  let chosen = withinLimit.length >= 2
+    ? withinLimit
+    : unique.map((c) => ({ label: c.label, text: clampText(c.text, maxChars) }));
 
   // Clamping can collapse two entries onto the same string; dedupe once more.
   const finalSeen = new Set();
-  chosen = chosen.filter((text) => {
-    const key = dedupeKey(text);
+  chosen = chosen.filter((c) => {
+    const key = dedupeKey(c.text);
     if (!key || finalSeen.has(key)) return false;
     finalSeen.add(key);
     return true;
   });
 
-  return { choices: chosen.slice(0, max).map((text, index) => ({ id: `c${index + 1}`, text })) };
+  return {
+    choices: chosen.slice(0, max).map((c, index) => {
+      const res = { id: `c${index + 1}`, text: c.text };
+      if (c.label && c.label !== c.text) {
+        res.label = c.label.length > CHOICE_LABEL_MAX_CHARS ? clampText(c.label, CHOICE_LABEL_MAX_CHARS) : c.label;
+      }
+      return res;
+    }),
+  };
 }

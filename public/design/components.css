@@ -1431,6 +1431,29 @@ dialog.rp-dialog:not([open]) {
   font-variant-numeric: tabular-nums;
 }
 
+.rp-message__more-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--space-1);
+  border: 0;
+  background: none;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.rp-message__more-btn:hover,
+.rp-message__more-btn[aria-expanded="true"] {
+  color: var(--ink-primary);
+  opacity: 1;
+  background-color: var(--surface-hover);
+}
+
 /* Prose: the point of the product. Serif, generous leading, 65-75ch. */
 .rp-message__prose {
   max-width: var(--measure);

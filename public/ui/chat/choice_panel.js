@@ -139,7 +139,7 @@ export function createChoicePanel({
     btn.append(
       el("span", { class: "rp-choices__key rp-tnum", attrs: { "aria-hidden": "true" }, text: CHOICE_LABELS[index] ?? "" }),
       // Model text as a text node: it can never become markup.
-      el("span", { class: "rp-choices__text", text: choice.text })
+      el("span", { class: "rp-choices__text", text: choice.text && choice.label ? choice.label : choice.text })
     );
     if (disabled) btn.disabled = true;
     if (selected) btn.classList.add("is-selected");
@@ -147,6 +147,13 @@ export function createChoicePanel({
   }
 
   function renderList() {
+    if (state.status === "generating") {
+      const skeletons = [1, 2, 3].map(() =>
+        el("div", { class: "rp-choice-skeleton", attrs: { "aria-hidden": "true" } })
+      );
+      list.replaceChildren(...skeletons);
+      return;
+    }
     // Disabled in every state but `ready`: a choice is clickable only while the
     // menu is live, so a stale or in-flight set can never be submitted.
     const disabled = state.status !== "ready";
@@ -199,6 +206,8 @@ export function createChoicePanel({
 
     if (arrived) {
       setCollapsed(false);
+    } else if (submitting) {
+      setCollapsed(true);
     } else {
       setCollapsed(isCollapsed);
     }

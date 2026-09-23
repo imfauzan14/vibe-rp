@@ -1520,6 +1520,11 @@ export class BrowserChatEngine {
         .join("\n");
       fullPostHistory = fullPostHistory ? `${loreText}\n\n${fullPostHistory}` : loreText;
     }
+    if (activeSettings && activeSettings.enableSubagentThoughts === true) {
+      const cName = (card && (card.data?.name || card.name)) || "Character";
+      const thoughtReminder = `[Guidance: Begin your reply with <thought character="${cName}">...</thought> exploring internal consciousness, doubts, or tactical steering, then output the public response.]`;
+      fullPostHistory = fullPostHistory ? `${fullPostHistory}\n\n${thoughtReminder}` : thoughtReminder;
+    }
     const guidanceTokens = fullPostHistory.trim() ? estimateTokens(fullPostHistory) + 4 : 0;
 
     // Required dynamic content: the pinned opening and the current turn. Both
