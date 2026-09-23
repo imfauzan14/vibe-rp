@@ -109,10 +109,6 @@ export function openSettingsModal(options = {}) {
           el("span", { class: "rp-help", text: "Characters produce private monologue before speaking in scene." }),
         ]),
       ]),
-      el("div", { id: "popup-thought-model-wrap", class: "rp-field" }, [
-        el("label", { class: "rp-label", for: "popup-subagent-model-select", text: "Thought reasoning model" }),
-        el("select", { id: "popup-subagent-model-select", class: "rp-select" }),
-      ]),
     ]),
     // The session-import control is a library-only concern (it unlocks full
     // card definitions during import). Only render it when the caller supplies

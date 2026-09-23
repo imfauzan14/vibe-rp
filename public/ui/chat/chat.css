@@ -240,8 +240,7 @@
 .rp-feed-more {
   display: flex;
   justify-content: center;
-  padding-block: var(--space-4);
-  border-bottom: var(--border-width) solid var(--border-hairline);
+  padding-block: var(--space-3);
 }
 
 /* ------------------------------------------------------------- search --- */
@@ -578,12 +577,6 @@ dialog.rp-dialog[open] {
 
 dialog.rp-dialog[open] ~ dialog.rp-dialog[open] {
   z-index: calc(var(--z-dialog) + 1);
-}
-
-/* The rendered-window cap is a quiet control, not a banner. */
-.rp-feed-more {
-  border-bottom: 0;
-  padding-block: var(--space-3);
 }
 
 /* Inline editor keeps the reading column. */

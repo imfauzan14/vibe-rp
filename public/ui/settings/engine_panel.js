@@ -21,27 +21,21 @@
 import { qs } from "../dom.js";
 
 const MODEL_PLACEHOLDER = "Select a model after fetching models";
-const SAME_AS_MAIN = "Same as main model";
 
 /** Rebuilds a `<select>` from a model list, keeping `selected` if present. */
 function fillModels(select, models, selected, { placeholder = MODEL_PLACEHOLDER } = {}) {
   if (!select) return;
-  const set = new Set((models || []).filter(Boolean));
+  select.innerHTML = "";
+  const set = new Set();
   if (selected) set.add(selected);
-  select.replaceChildren();
-  if (placeholder) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = placeholder;
-    option.selected = !selected;
-    select.appendChild(option);
-  } else if (set.size === 0) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = MODEL_PLACEHOLDER;
-    select.appendChild(option);
-    return;
+  for (const m of models || []) {
+    const id = typeof m === "string" ? m : m?.id;
+    if (id) set.add(id);
   }
+  const placeholderOption = document.createElement("option");
+  placeholderOption.value = "";
+  placeholderOption.textContent = placeholder;
+  select.appendChild(placeholderOption);
   for (const model of set) {
     const option = document.createElement("option");
     option.value = model;
@@ -58,9 +52,7 @@ export function mountEnginePanel(root, options = {}) {
   const endpoint = qs(root, "#popup-api-endpoint");
   const apiKey = qs(root, "#popup-api-key");
   const modelSelect = qs(root, "#popup-model-select");
-  const subagentSelect = qs(root, "#popup-subagent-model-select");
   const thoughts = qs(root, "#popup-enable-thoughts");
-  const thoughtWrap = qs(root, "#popup-thought-model-wrap");
   const fetchBtn = qs(root, "#popup-fetch-models-btn");
   const saveBtn = qs(root, "#popup-save-engine-btn");
   const sessionWrap = qs(root, "#popup-import-session-wrap");
@@ -81,27 +73,13 @@ export function mountEnginePanel(root, options = {}) {
     if (tone === "danger") host?.toast?.(message, { tone: "danger" });
   }
 
-  function syncThoughtVisibility() {
-    if (thoughtWrap && thoughts) thoughtWrap.hidden = !thoughts.checked;
-  }
-
   function refresh() {
     const settings = getSettings?.() || {};
     if (endpoint) endpoint.value = settings.apiEndpoint || "";
     if (apiKey) apiKey.value = settings.apiKey || "";
-    const thoughtsOn = Boolean(settings.enableSubagentThoughts);
-    if (thoughts) thoughts.checked = thoughtsOn;
-    syncThoughtVisibility();
+    if (thoughts) thoughts.checked = Boolean(settings.enableSubagentThoughts);
     fillModels(modelSelect, settings.availableModels || [], settings.model || "");
-    fillModels(
-      subagentSelect,
-      settings.availableModels || [],
-      settings.thoughtModel || settings.subagentModel || "",
-      { placeholder: SAME_AS_MAIN }
-    );
   }
-
-  on(thoughts, "change", syncThoughtVisibility);
 
   on(fetchBtn, "click", async () => {
     if (!fetchBtn) return;
@@ -118,9 +96,6 @@ export function mountEnginePanel(root, options = {}) {
       saveSettings?.({ availableModels: list });
       const settings = getSettings?.() || {};
       fillModels(modelSelect, list, settings.model || "");
-      fillModels(subagentSelect, list, settings.thoughtModel || settings.subagentModel || "", {
-        placeholder: SAME_AS_MAIN,
-      });
       announce(`Fetched ${list.length} ${list.length === 1 ? "model" : "models"}.`);
     } catch (error) {
       announce(`Could not fetch models: ${error.message}`, "danger");
@@ -132,15 +107,11 @@ export function mountEnginePanel(root, options = {}) {
   });
 
   on(saveBtn, "click", () => {
-    const chosen = subagentSelect?.value || "";
     saveSettings?.({
       apiEndpoint: endpoint?.value.trim() ?? "",
       apiKey: apiKey?.value.trim() ?? "",
       model: modelSelect?.value ?? "",
       enableSubagentThoughts: Boolean(thoughts?.checked),
-      thoughtModel: chosen,
-      subagentModel: chosen,
-      useSeparateSubagentModel: Boolean(chosen),
     });
     announce("Engine settings saved.");
   });

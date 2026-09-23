@@ -92,6 +92,7 @@ describe("Default Generation Parameters", () => {
     expect(DEFAULT_SETTINGS.maxTokens).toBe(1200);
     expect(DEFAULT_SETTINGS.maxContextTokens).toBe(65536);
     expect(DEFAULT_SETTINGS.enableSubagentThoughts).toBe(false);
+    expect(DEFAULT_SETTINGS.choiceMode).toBe("normal");
     expect(DEFAULT_SETTINGS).not.toHaveProperty("cacheKey");
   });
 

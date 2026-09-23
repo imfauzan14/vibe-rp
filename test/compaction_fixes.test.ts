@@ -305,7 +305,6 @@ describe("Fixes 4 & 5 - fold prompt hardening and no cache-write", () => {
     const settings = {
       apiEndpoint: "https://x.test/v1",
       model: "m",
-      cacheKey: "routing-key-123",
       maxContextTokens: 2048,
       maxTokens: 256,
     };
@@ -324,8 +323,7 @@ describe("Fixes 4 & 5 - fold prompt hardening and no cache-write", () => {
     expect(JSON.stringify(summaryBody)).not.toContain("cache_control");
     // Folding must be repeatable and cheap: temperature pinned near zero.
     expect(summaryBody.temperature).toBe(0.1);
-    // prompt_cache_key is dropped from fold requests entirely (pi rule:
-    // never route a one-off request into a cache bucket it cannot reuse).
+    // No cache key on fold requests.
     expect(summaryBody.prompt_cache_key).toBeUndefined();
   });
 });

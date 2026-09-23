@@ -59,13 +59,17 @@ describe("Unified settings surface", () => {
     expect(html).toContain('id="history-modal"');
   });
 
-  test("prompt cache key is not present in settings or emitted by the engine", () => {
+  test("prompt cache key and dead subagent model controls are not present in settings", () => {
     const modal = read("ui/settings/settings_modal.js");
     const panel = read("ui/settings/engine_panel.js");
     const engine = read("browser_engine.js");
     expect(modal).not.toContain("popup-cache-key");
+    expect(modal).not.toContain("popup-subagent-model-select");
     expect(panel).not.toContain("popup-cache-key");
+    expect(panel).not.toContain("popup-subagent-model-select");
     expect(panel).not.toContain("cacheKey");
+    expect(panel).not.toContain("thoughtModel");
+    expect(panel).not.toContain("subagentModel");
     expect(engine).not.toContain("prompt_cache_key");
   });
 
