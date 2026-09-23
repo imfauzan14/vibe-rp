@@ -112,11 +112,13 @@
   }
 
   .rp-composer__actions {
-    gap: var(--space-1);
+    gap: var(--space-2);
   }
 
   .rp-composer__identity {
-    gap: var(--space-1);
+    gap: var(--space-2);
+    margin-left: var(--space-1);
+    padding-left: var(--space-2);
   }
 
 
@@ -296,14 +298,14 @@ mark.rp-search-hit.is-current {
   margin-inline: auto;
   box-sizing: border-box;
   margin-bottom: var(--space-2);
-  padding: var(--space-3);
+  padding: var(--space-4);
   background-color: var(--surface);
   border: var(--border-width) solid var(--border-hairline);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
   display: flex;
   flex-direction: column;
-  gap: var(--space-2-5);
+  gap: var(--space-3);
   transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
 }
 
@@ -434,12 +436,12 @@ mark.rp-search-hit.is-current {
 .rp-choices__list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-3);
   max-height: min(44dvh, 320px);
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  padding-right: var(--space-0-5);
+  padding: 1px var(--space-0-5) 1px 1px;
 }
 
 /* A real button, styled as a menu line. Full width, left aligned, text wraps
@@ -450,11 +452,11 @@ mark.rp-search-hit.is-current {
   gap: var(--space-3);
   width: 100%;
   box-sizing: border-box;
-  padding: var(--space-2-5) var(--space-3);
+  padding: var(--space-3) var(--space-4);
   text-align: left;
   font-family: var(--font-prose);
   font-size: var(--text-base);
-  line-height: var(--leading-ui);
+  line-height: var(--leading-prose);
   color: var(--ink);
   background-color: var(--surface-raised);
   border: var(--border-width) solid var(--border-control);
@@ -559,18 +561,18 @@ mark.rp-search-hit.is-current {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
-    padding: var(--space-2) var(--space-2-5);
+    padding: var(--space-3);
     border-radius: var(--radius-md);
     margin-bottom: var(--space-1);
     box-shadow: var(--shadow-sm);
-    gap: var(--space-2);
+    gap: var(--space-2-5);
   }
 
   .rp-choices[data-collapsed="true"] {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
-    padding: var(--space-1-5) var(--space-2-5);
+    padding: var(--space-2) var(--space-3);
   }
 
   .rp-choices__header {
@@ -582,21 +584,21 @@ mark.rp-search-hit.is-current {
   }
 
   .rp-choices__list {
-    max-height: min(45dvh, 280px);
-    gap: var(--space-2);
-    padding-right: var(--space-0-5);
+    max-height: min(48dvh, 300px);
+    gap: var(--space-2-5);
+    padding: 1px;
   }
 
   .rp-choices__option {
-    padding: var(--space-2) var(--space-2-5);
+    padding: var(--space-2-5) var(--space-3);
     font-size: var(--text-sm);
-    line-height: var(--leading-ui);
-    min-height: 2.25rem;
+    line-height: var(--leading-prose);
+    min-height: 2.75rem;
   }
 
   .rp-choices__actions {
     justify-content: flex-end;
-    padding-top: var(--space-0-5);
+    padding-top: var(--space-1);
   }
 
   /* In normal mode, actions align cleanly below the textarea */
@@ -615,16 +617,17 @@ mark.rp-search-hit.is-current {
 }
 
 /* When Choice Mode has active choices, the composer's textarea and send button
-   yield to the choices menu. The composer box loses its border so there is no
-   awkward empty container around the identity bar. */
+   yield to the choices menu. The composer box keeps identical horizontal padding
+   and border width so the mode buttons stay in the EXACT same position without jumping. */
 .rp-composer[data-mode="choice"][data-has-choices="true"] .rp-composer__input,
 .rp-composer[data-mode="choice"][data-has-choices="true"] #send-btn {
   display: none;
 }
 
 .rp-composer[data-mode="choice"][data-has-choices="true"] .rp-composer__box {
-  padding: var(--space-1) 0 0 0;
-  border: none;
+  padding-block: var(--space-1) 0;
+  padding-inline: var(--space-2);
+  border: var(--border-width) solid transparent;
   background-color: transparent;
   box-shadow: none;
 }
@@ -699,13 +702,23 @@ mark.rp-search-hit.is-current {
 .rp-composer__identity {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1-5);
+  gap: var(--space-2-5);
   flex: 0 1 auto;
   min-width: 0;
-  margin-left: var(--space-1);
-  padding-left: var(--space-2);
+  margin-left: var(--space-2);
+  padding-left: var(--space-2-5);
   border-left: var(--border-width) solid var(--border-hairline);
   align-self: center;
+}
+
+.rp-composer__identity .rp-chat__persona {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.rp-composer__identity .rp-composer__figures {
+  padding-left: var(--space-2);
+  border-left: var(--border-width) solid var(--border-hairline);
 }
 
 

@@ -143,12 +143,12 @@ describe("chat surface wiring", () => {
   });
 
   test("mobile choices provide generous breathing room and distinct button height", () => {
-    expect(css).toMatch(/@media\s*\(max-width:\s*720px\)[\s\S]*?\.rp-choices__list\s*\{[\s\S]*?gap:\s*var\(--space-2\)/);
-    expect(css).toMatch(/@media\s*\(max-width:\s*720px\)[\s\S]*?\.rp-choices__option\s*\{[\s\S]*?min-height:\s*2\.25rem/);
+    expect(css).toMatch(/@media\s*\(max-width:\s*720px\)[\s\S]*?\.rp-choices__list\s*\{[\s\S]*?gap:\s*var\(--space-2-5\)/);
+    expect(css).toMatch(/@media\s*\(max-width:\s*720px\)[\s\S]*?\.rp-choices__option\s*\{[\s\S]*?min-height:\s*2\.75rem/);
   });
 
-  test("composer dock drops border when choice mode has active choices", () => {
-    expect(css).toMatch(/\.rp-composer\[data-mode="choice"\]\[data-has-choices="true"\]\s+\.rp-composer__box\s*\{[\s\S]*?border:\s*none/);
+  test("composer dock drops visible border while preserving layout bounds", () => {
+    expect(css).toMatch(/\.rp-composer\[data-mode="choice"\]\[data-has-choices="true"\]\s+\.rp-composer__box\s*\{[\s\S]*?border:\s*var\(--border-width\)\s+solid\s+transparent/);
   });
 });
 
