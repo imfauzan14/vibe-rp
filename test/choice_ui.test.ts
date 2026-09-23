@@ -134,6 +134,22 @@ describe("chat surface wiring", () => {
     expect(panelIndex).toBeGreaterThan(composerStart);
     expect(css).toMatch(/\.rp-choices\s*\{[\s\S]*?max-width:\s*var\(--measure-wide\)/);
   });
+
+  test("choice panel maintains consistent width and box-sizing across states", () => {
+    expect(css).toMatch(/\.rp-choices\s*\{[\s\S]*?width:\s*100%/);
+    expect(css).toMatch(/\.rp-choices\s*\{[\s\S]*?box-sizing:\s*border-box/);
+    expect(css).toMatch(/\.rp-choices\[data-collapsed="true"\]\s*\{[\s\S]*?width:\s*100%/);
+    expect(css).toMatch(/\.rp-choices\[data-collapsed="true"\]\s*\{[\s\S]*?box-sizing:\s*border-box/);
+  });
+
+  test("mobile choices provide generous breathing room and distinct button height", () => {
+    expect(css).toMatch(/@media\s*\(max-width:\s*720px\)[\s\S]*?\.rp-choices__list\s*\{[\s\S]*?gap:\s*var\(--space-2-5\)/);
+    expect(css).toMatch(/@media\s*\(max-width:\s*720px\)[\s\S]*?\.rp-choices__option\s*\{[\s\S]*?min-height:\s*2\.5rem/);
+  });
+
+  test("composer dock maintains stable horizontal padding across mode switches", () => {
+    expect(css).toMatch(/\.rp-composer\[data-mode="choice"\]\[data-has-choices="true"\]\s+\.rp-composer__box\s*\{[\s\S]*?padding:\s*var\(--space-2\)/);
+  });
 });
 
 describe("failed-generation recovery affordance", () => {
