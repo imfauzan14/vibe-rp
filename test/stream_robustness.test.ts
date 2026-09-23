@@ -58,6 +58,15 @@ describe("Streaming contract - visible content", () => {
     expect(await run()).toBe("Hello world");
   });
 
+  test("preserves em-dashes and formatting without programmatic string mutation", async () => {
+    globalThis.fetch = async () =>
+      sse(
+        'data: {"choices":[{"delta":{"content":"She paused — then turned -- slowly."}}]}\n\n' +
+          "data: [DONE]\n\n"
+      );
+    expect(await run()).toBe("She paused — then turned -- slowly.");
+  });
+
   test("reasoning before visible content keeps only the visible text", async () => {
     globalThis.fetch = async () =>
       sse(

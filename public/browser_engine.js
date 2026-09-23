@@ -54,6 +54,31 @@ export function countMessages(messages) {
 }
 
 /**
+ * Strips internal `<thought>` and `<think>` scratchpad blocks from text.
+ * Reasoning models (DeepSeek R1, Qwen 2.5 Max, OpenAI o1/o3) emit large
+ * reasoning traces that are irrelevant to auxiliary tasks like Choice Mode.
+ */
+export function stripThoughtBlocks(text) {
+  if (typeof text !== "string") return "";
+  let clean = text.replace(/<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi, "");
+  clean = clean.replace(/<(thought|think)[^>]*>[\s\S]*$/gi, "");
+  return clean.trim();
+}
+
+/**
+ * Trims zero-width characters, excessive blank lines, and invisible tokens (RTK).
+ */
+export function cleanPromptText(text) {
+  if (typeof text !== "string") return "";
+  return text
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g, "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
  * Ledger format. A continuity ledger rather than a task handoff: it must survive
  * being folded into itself indefinitely without shedding canon.
  */
@@ -165,7 +190,7 @@ Rules:
 - Keep every fact: names, roles, relationships, places, objects, numbers, dates, promises, unresolved threads, and current conditions.
 - Cut wording, repetition, and atmospheric commentary. Never cut a fact.
 - Use the same sections as the input (Cast, Timeline, World, Threads, Voice).
-- Preserve every proper noun exactly as written. Never invent, infer, or continue the story.
+- Preserve every proper noun, term, and dialogue in its original language exactly as written. Never invent, infer, or continue the story.
 - Anything you do not carry forward is lost forever.
 - Keep it under ${SUMMARY_TARGET_WORDS} words.`;
 
@@ -293,13 +318,14 @@ Use exactly these sections, omitting any that would be empty:
 - [Places, factions, objects, rules, and physical facts that are now true.]
 
 ## Threads
-- [Unresolved promises, plans, threats, and open questions.]
+- [Unresolved promises, plans, threads, and open questions.]
 
 ## Voice
-- [Register, tense, and stylistic commitments the prose must keep.]
+- [Active story language, dialect, narrative point of view (1st vs 3rd person), tense, and stylistic commitments the prose must keep.]
 
 Rules to guarantee factual canon and zero hallucination:
 - Preserve verbatim: proper nouns, numbers, dates and time anchors, promises, inventory items, wounds, unresolved threads, and any text the character spoke verbatim. Never rename, merge, or drop a character.
+- Record facts, dialogue, and character details strictly in the active language of the story; never translate established terms or dialogue into English.
 - Record settled facts and physical truths only. Never infer unmentioned background, fabricate motivation, or invent facts outside the transcript.
 - Fold dialogue into objective outcomes: record what became true, not banter.
 - Prefer concrete specifics over abstractions: "bronze key, bent at the bow" over "a key".
@@ -314,6 +340,8 @@ Rules:
 - Move resolved threads out of Threads; record how they resolved in Timeline.
 - Add new cast, places, and objects. Never drop or rename an existing one.
 - Preserve verbatim: proper nouns, numbers, dates and time anchors, promises, inventory items, wounds, unresolved threads, and any text the character spoke verbatim.
+- Record facts, dialogue, and character details strictly in the active language of the story; never translate established terms or dialogue into English.
+- Maintain the ## Voice section to anchor the story's active language, dialect, and narrative point of view.
 - Never invent facts. Never continue the story.
 - Keep it under ${SUMMARY_UPDATE_TARGET_WORDS} words. Compress wording, never drop a fact.
 - Anything you do not carry into the new ledger is lost forever; the conversation record wins any conflict with the prior ledger.
@@ -451,7 +479,7 @@ export function selectLorebookEntries(card, { budget = 1000, constantOnly = fals
  * which degradable ones survive.
  */
 export function buildSystemSections(card, persona, settings = {}) {
-  const sub = (t) => substituteCardPlaceholders(t, card, persona);
+  const sub = (t) => cleanPromptText(substituteCardPlaceholders(t, card, persona));
   const sections = [];
 
   const contract = settings && settings.agentsContract ? sub(String(settings.agentsContract).trim()) : "";
@@ -608,7 +636,15 @@ export function planChoiceRequest({
 
   const name = charName || card?.data?.name || card?.name || "the character";
   const who = playerName || persona?.name || "the player";
-  const system = `${CHOICE_SYSTEM_PROMPT}\n\nScene: ${name} opposite ${who}.`;
+  let scenarioHint = "";
+  const rawScenario = card?.data?.scenario || card?.scenario || "";
+  if (rawScenario) {
+    const cleanScenario = substituteCardPlaceholders(rawScenario, card, persona).replace(/\s+/g, " ").trim();
+    if (cleanScenario) {
+      scenarioHint = `\nScenario: ${cleanScenario.slice(0, 300)}`;
+    }
+  }
+  const system = `${CHOICE_SYSTEM_PROMPT}\n\nScene: ${name} opposite ${who}.${scenarioHint}`;
   const task = choicePrompt(count, { charName: name, playerName: who });
 
   // Everything that is not history or ledger: the fixed instruction overhead.
@@ -647,7 +683,12 @@ export function planChoiceRequest({
     const msg = all[i];
     if (!msg || !msg.content) continue;
     const role = msg.role === "user" ? "user" : "assistant";
-    const content = substituteCardPlaceholders(msg.content, card, persona);
+    let content = substituteCardPlaceholders(msg.content, card, persona);
+    // Thought-shaking: strip scratchpad thoughts so choices never pay for internal chain-of-thought
+    if (role === "assistant") {
+      content = stripThoughtBlocks(content);
+      if (!content) continue;
+    }
     let tokens = estimateTokens(content) + 4;
     let text = content;
     // The newest message is always kept, clipped if it alone exceeds what is
@@ -1257,9 +1298,7 @@ export class BrowserChatEngine {
       if (typeof reasoning === "string" && reasoning) sawReasoning = true;
       const text = choice?.delta?.content ?? choice?.message?.content;
       if (typeof text !== "string" || !text) return null;
-      // Anti-slop punctuation normalisation, applied identically to streamed and
-      // whole-body text.
-      return text.replace(/ — /g, ", ").replace(/—/g, ", ").replace(/ -- /g, ", ");
+      return text;
     };
 
     // A single SSE line → zero or one visible chunks. Accepts `data:` with or
@@ -1856,7 +1895,9 @@ export class BrowserChatEngine {
     if (typeof activeSettings.temperature === "number") {
       // Slightly cooler than the RP default: choices want variety, not the full
       // creative spread, and a stable set is easier to scan.
-      body.temperature = Math.min(activeSettings.temperature, 0.85);
+      body.temperature = Math.min(activeSettings.temperature, 0.7);
+    } else {
+      body.temperature = 0.7;
     }
 
     const res = await fetch(`${base}/chat/completions`, {

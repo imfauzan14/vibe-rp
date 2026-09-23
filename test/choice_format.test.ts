@@ -8,11 +8,18 @@ import {
   parseChoices,
   normalizeChoiceText,
   choicePrompt,
+  CHOICE_SYSTEM_PROMPT,
   CHOICE_TEXT_MAX_CHARS,
   CHOICE_COUNT_MIN,
   CHOICE_COUNT_MAX,
 } from "../public/choice_format.js";
-import { BrowserChatEngine, planChoiceRequest, estimateTokens } from "../public/browser_engine.js";
+import {
+  BrowserChatEngine,
+  planChoiceRequest,
+  estimateTokens,
+  stripThoughtBlocks,
+  cleanPromptText,
+} from "../public/browser_engine.js";
 
 const words = (n) => "word ".repeat(n).trim();
 
@@ -331,3 +338,77 @@ describe("generateChoices - auxiliary request behaviour", () => {
     expect(sent.model).toBe("main-model");
   });
 });
+
+describe("stripThoughtBlocks and cleanPromptText", () => {
+  test("stripThoughtBlocks removes closed thought and think tags", () => {
+    const raw = "<think>Internal reasoning trace</think>Visible character action.";
+    expect(stripThoughtBlocks(raw)).toBe("Visible character action.");
+
+    const rawThought = "<thought>Thinking...</thought>Spoken words.";
+    expect(stripThoughtBlocks(rawThought)).toBe("Spoken words.");
+  });
+
+  test("stripThoughtBlocks removes unclosed trailing thought tags", () => {
+    const unclosed = "Spoken text.<think>Cut off mid-reasoning...";
+    expect(stripThoughtBlocks(unclosed)).toBe("Spoken text.");
+  });
+
+  test("stripThoughtBlocks safely handles empty or non-string inputs", () => {
+    expect(stripThoughtBlocks("")).toBe("");
+    expect(stripThoughtBlocks(null)).toBe("");
+    expect(stripThoughtBlocks(undefined)).toBe("");
+  });
+
+  test("cleanPromptText strips invisible characters and collapses blank lines (RTK)", () => {
+    const dirty = "Line 1\u200B\n\n\n\nLine 2   \n\n\nLine 3";
+    const cleaned = cleanPromptText(dirty);
+    expect(cleaned).not.toContain("\u200B");
+    expect(cleaned).not.toMatch(/\n{3,}/);
+    expect(cleaned).toBe("Line 1\n\nLine 2\n\nLine 3");
+  });
+});
+
+describe("Universal & Adaptive Choice Mode Prompt Contract", () => {
+  test("CHOICE_SYSTEM_PROMPT contains Language Lock, Narrative Perspective, and 4 dramatic archetypes", () => {
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Language Lock");
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Narrative Perspective");
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Direct / Assertive");
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Inquisitive / Diplomatic");
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Cautious / Observant");
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Unconventional / Intuitive");
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Strict Agency");
+  });
+
+  test("planChoiceRequest shakes thought blocks from assistant turns in history", () => {
+    const session = {
+      messages: [
+        { id: "u1", role: "user", content: "What do you see?" },
+        {
+          id: "a1",
+          role: "assistant",
+          content: "<think>I should look at the horizon and see the storm approaching. This will heighten dramatic tension.</think>The horizon is dark with heavy clouds.",
+        },
+      ],
+      ledger: "",
+      consumed: 1,
+    };
+    const card = { data: { name: "Aria", scenario: "On the high ramparts at sunset." } };
+    const req = planChoiceRequest({
+      card,
+      session,
+      settings: { maxContextTokens: 4096, maxTokens: 1000 },
+      persona: { name: "Rowan" },
+      count: 4,
+    });
+
+    const assistantMsg = req.payload.find((m) => m.role === "assistant");
+    expect(assistantMsg).toBeDefined();
+    expect(assistantMsg.content).toBe("The horizon is dark with heavy clouds.");
+    expect(assistantMsg.content).not.toContain("<think>");
+    expect(assistantMsg.content).not.toContain("heighten dramatic tension");
+
+    // Also verify scenario hint is included in system prompt
+    expect(req.payload[0].content).toContain("Scenario: On the high ramparts at sunset.");
+  });
+});
+

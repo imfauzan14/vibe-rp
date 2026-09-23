@@ -37,11 +37,16 @@ export const CHOICE_SYSTEM_PROMPT =
   "You generate the next moves available to the player in an ongoing roleplay scene.\n\n" +
   "You write exclusively from the player's perspective, proposing a menu of distinct actions they may take next.\n\n" +
   "Requirements:\n" +
-  "- Express each choice strictly as what the player says or attempts in the immediate beat.\n" +
-  "- State only the immediate action or spoken dialogue, never character reactions or narrative outcomes.\n" +
-  "- Provide genuinely different approaches in tone, intent, or risk (e.g. diplomatic, bold, cautious, inquisitive).\n" +
-  "- Restrict choices to what the player already knows in the current scene; never invent off-screen facts.\n" +
-  "- Preserve the established scene register and situation.\n" +
+  "- Language Lock: Generate dialogue, choices, and roleplay prose strictly in the active language and dialect established in the scene (matching the character and player's dialogue). Never translate established names, cultural terms, or scene dialogue into English.\n" +
+  "- Narrative Perspective: Match the player's established narrative point of view (1st person 'I' vs 3rd person).\n" +
+  "- Dramatic Variety: Offer genuinely distinct dramatic archetypes across the choices:\n" +
+  "  1. Direct / Assertive (bold action, confrontation, or decisive advance)\n" +
+  "  2. Inquisitive / Diplomatic (probing questions, de-escalation, or uncovering intent)\n" +
+  "  3. Cautious / Observant (tactical awareness, examining details, or guarded defense)\n" +
+  "  4. Unconventional / Intuitive (creative alternative, emotional vulnerability, or unexpected pivot)\n" +
+  "- Strict Agency: Express each choice strictly as what the player says or attempts in the immediate beat. Never godmode character reactions, never dictate other characters' thoughts or answers, and never narrate future outcomes.\n" +
+  "- Information Boundary: Restrict choices to what the player already perceives in the current scene; never invent off-screen facts.\n" +
+  "- Register & Tone: Preserve the established atmospheric tone, genre boundaries, and scene tension.\n" +
   "- Return ONLY the JSON described below, with no commentary, no code fences, and no extra text.";
 
 /**
@@ -56,8 +61,8 @@ export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the cha
     "Return exactly one JSON object and nothing else, in this shape:\n" +
     '{"choices":[{"label":"Short main point","text":"Full roleplay dialogue or action."}]}\n\n' +
     `Provide ${target} choices. For each choice:\n` +
-    `- "label": A brief, punchy summary of the intent or main point (3 to 8 words, under ${CHOICE_LABEL_MAX_CHARS} characters) displayed in the menu.\n` +
-    `- "text": The complete, immersive roleplay action or spoken dialogue to send when chosen (under ${CHOICE_TEXT_MAX_CHARS} characters).\n` +
+    `- "label": A brief, punchy summary of the intent or main point (3 to 6 words, under ${CHOICE_LABEL_MAX_CHARS} characters, in the scene's active language) displayed in the menu.\n` +
+    `- "text": The complete, immersive roleplay action or spoken dialogue to send when chosen (under ${CHOICE_TEXT_MAX_CHARS} characters, in the scene's active language).\n` +
     `Phrased from ${playerName}'s perspective.`
   );
 }
