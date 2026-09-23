@@ -387,15 +387,6 @@
       await submitTurn(choice.text);
     }
 
-    /** The escape hatch: reveals the normal composer and focuses it. */
-    function revealManualInput() {
-      // Drop the menu so the composer is the only next-turn input in view. The
-      // typed message goes through the identical pipeline a choice does.
-      controller.invalidateChoices();
-      renderChoices();
-      composer.focus();
-    }
-
     $("composer").addEventListener("submit", (e) => {
       e.preventDefault();
       if (!composer.busy) submitTurn(authorInput.value.trim());

@@ -111,8 +111,9 @@ describe("chat surface wiring", () => {
     expect(boot).not.toMatch(/function renderChoices\(\)[\s\S]{0,400}?requestChoices\(\)/);
   });
 
-  test("leaving Choice Mode invalidates the pending set", () => {
-    expect(boot).toMatch(/controller\.invalidateChoices\(\)/);
+  test("leaving Choice Mode preserves the pending set for return without token waste", () => {
+    // Mode toggle hides the panel but does not invalidate the session's cached choices.
+    expect(boot).not.toMatch(/function setMode[\s\S]*?controller\.invalidateChoices/);
   });
 
   test("the mode is persisted through the existing settings store", () => {

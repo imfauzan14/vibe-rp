@@ -51,7 +51,15 @@ function makeEngine({ choices = ["Ask about the letter.", "Stay silent.", "Leave
       engine.choiceCalls += 1;
       engine.lastChoiceArgs = args;
       if (choiceError) throw choiceError;
-      return { choices: choices.map((text, i) => ({ id: `c${i + 1}`, text })), usage: null, request: {} };
+      return {
+        choices: choices.map((c, i) => (
+          typeof c === "string"
+            ? { id: `c${i + 1}`, text: c, label: `Label ${i + 1}` }
+            : { id: c.id || `c${i + 1}`, text: c.text, label: c.label || "" }
+        )),
+        usage: null,
+        request: {},
+      };
     },
   };
   return engine;
@@ -388,6 +396,7 @@ describe("Choice Mode - persistence and restoration", () => {
     const restored = reloaded.restoreChoices();
     expect(restored.status).toBe(CHOICE_STATUS.READY);
     expect(restored.choices.length).toBe(3);
+    expect(restored.choices[0].label).toBe("Label 1");
     // No new request was spent restoring it.
     expect(engine.choiceCalls).toBe(callsAfterGeneration);
   });

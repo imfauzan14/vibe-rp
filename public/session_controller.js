@@ -671,14 +671,14 @@ export class SessionController {
       this.choiceState = { ...this.choiceState, status: CHOICE_STATUS.ERROR, choices: [], error: "The model returned no usable choices." };
       return true;
     }
-    this.choiceState = { ...this.choiceState, status: CHOICE_STATUS.READY, choices: choices.map((c) => ({ id: c.id, text: c.text })), error: null };
+    this.choiceState = { ...this.choiceState, status: CHOICE_STATUS.READY, choices: choices.map((c) => ({ id: c.id, text: c.text, label: c.label || "" })), error: null };
     // Persist the minimum needed to restore this set without another request.
     if (this.activeSession) {
       this.activeSession.choiceSet = {
         id: `cs_${Date.now()}`,
         sourceId: this.choiceState.sourceId,
         sourceSig: this.choiceState.sourceSig,
-        choices: this.choiceState.choices.map((c) => ({ id: c.id, text: c.text })),
+        choices: this.choiceState.choices.map((c) => ({ id: c.id, text: c.text, label: c.label || "" })),
         generatedAt: Date.now(),
       };
     }
