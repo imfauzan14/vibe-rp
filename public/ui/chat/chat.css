@@ -446,7 +446,7 @@ mark.rp-search-hit.is-current {
    without truncation so a long action is never cut off. */
 .rp-choices__option {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: var(--space-3);
   width: 100%;
   box-sizing: border-box;
@@ -465,19 +465,11 @@ mark.rp-search-hit.is-current {
 }
 
 .rp-choices__key {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.5rem;
-  height: 1.5rem;
-  border-radius: var(--radius-sm);
-  background-color: var(--surface-subtle);
-  border: var(--border-width) solid var(--border-hairline);
+  color: var(--ink-faint);
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  color: var(--accent-annotation);
-  font-weight: 600;
+  font-size: var(--text-xs);
   flex: none;
+  min-width: 1.5ch;
 }
 
 .rp-choices__text {
@@ -547,57 +539,19 @@ mark.rp-search-hit.is-current {
 
 .rp-choices__actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-2);
-  padding-top: var(--space-2);
-  border-top: var(--border-width) solid var(--border-hairline);
-  margin-top: var(--space-1);
+  padding-top: var(--space-1);
 }
 
-/* The mode selector: a sleek segmented pill group in the composer's action row */
+/* The mode selector: stays inline and compact */
 .rp-mode-switch {
   display: inline-flex;
   align-items: center;
-  padding: 3px;
-  background-color: var(--surface-subtle);
-  border: var(--border-width) solid var(--border-hairline);
-  border-radius: var(--radius-full);
-  gap: 2px;
+  gap: var(--space-1);
   flex: none;
-}
-
-.rp-mode-switch .rp-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 var(--space-2-5);
-  font-family: var(--font-ui);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  height: 1.75rem;
-  min-height: unset;
-  border-radius: var(--radius-full);
-  border: var(--border-width) solid transparent;
-  background: transparent;
-  color: var(--ink-muted);
-  cursor: pointer;
-  transition: all var(--dur-fast) var(--ease-out);
-  user-select: none;
-  white-space: nowrap;
-}
-
-.rp-mode-switch .rp-chip:hover:not([aria-pressed="true"]) {
-  color: var(--ink);
-  background-color: var(--surface-hover);
-}
-
-.rp-mode-switch .rp-chip[aria-pressed="true"] {
-  background-color: var(--surface-raised);
-  color: var(--accent-annotation);
-  border-color: var(--border-hairline);
-  font-weight: 600;
-  box-shadow: var(--shadow-sm);
 }
 
 @media (max-width: 720px) {
@@ -605,9 +559,9 @@ mark.rp-search-hit.is-current {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
-    padding: var(--space-3);
+    padding: var(--space-2) var(--space-2-5);
     border-radius: var(--radius-md);
-    margin-bottom: var(--space-1-5);
+    margin-bottom: var(--space-1);
     box-shadow: var(--shadow-sm);
     gap: var(--space-2);
   }
@@ -616,11 +570,11 @@ mark.rp-search-hit.is-current {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
-    padding: var(--space-2) var(--space-3);
+    padding: var(--space-1-5) var(--space-2-5);
   }
 
   .rp-choices__header {
-    min-height: 1.75rem;
+    min-height: 1.5rem;
   }
 
   .rp-choices__title {
@@ -628,25 +582,21 @@ mark.rp-search-hit.is-current {
   }
 
   .rp-choices__list {
-    max-height: min(50dvh, 360px);
-    gap: var(--space-2-5);
-    padding-right: var(--space-1);
+    max-height: min(45dvh, 280px);
+    gap: var(--space-2);
+    padding-right: var(--space-0-5);
   }
 
   .rp-choices__option {
-    padding: var(--space-2-5) var(--space-3);
+    padding: var(--space-2) var(--space-2-5);
     font-size: var(--text-sm);
-    line-height: 1.45;
-    min-height: 2.5rem;
-    gap: var(--space-2-5);
-    border-radius: var(--radius-md);
+    line-height: var(--leading-ui);
+    min-height: 2.25rem;
   }
 
   .rp-choices__actions {
     justify-content: flex-end;
-    padding-top: var(--space-1-5);
-    border-top: var(--border-width) solid var(--border-hairline);
-    margin-top: var(--space-1);
+    padding-top: var(--space-0-5);
   }
 
   /* In normal mode, actions align cleanly below the textarea */
@@ -665,22 +615,17 @@ mark.rp-search-hit.is-current {
 }
 
 /* When Choice Mode has active choices, the composer's textarea and send button
-   yield to the choices menu. The composer box keeps identical padding and border width
-   so controls do not jump or shift horizontally on mode change. */
+   yield to the choices menu. The composer box loses its border so there is no
+   awkward empty container around the identity bar. */
 .rp-composer[data-mode="choice"][data-has-choices="true"] .rp-composer__input,
 .rp-composer[data-mode="choice"][data-has-choices="true"] #send-btn {
   display: none;
 }
 
 .rp-composer[data-mode="choice"][data-has-choices="true"] .rp-composer__box {
-  width: 100%;
-  max-width: var(--measure-wide);
-  margin-inline: auto;
-  box-sizing: border-box;
-  padding: var(--space-2);
-  border: var(--border-width) solid var(--border-hairline);
-  border-radius: var(--radius-lg);
-  background-color: var(--surface-subtle);
+  padding: var(--space-1) 0 0 0;
+  border: none;
+  background-color: transparent;
   box-shadow: none;
 }
 
@@ -757,6 +702,9 @@ mark.rp-search-hit.is-current {
   gap: var(--space-1-5);
   flex: 0 1 auto;
   min-width: 0;
+  margin-left: var(--space-1);
+  padding-left: var(--space-2);
+  border-left: var(--border-width) solid var(--border-hairline);
   align-self: center;
 }
 
