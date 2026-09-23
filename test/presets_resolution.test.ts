@@ -91,6 +91,8 @@ describe("Default Generation Parameters", () => {
     expect(DEFAULT_SETTINGS.presencePenalty).toBe(0); // not sent
     expect(DEFAULT_SETTINGS.maxTokens).toBe(1200);
     expect(DEFAULT_SETTINGS.maxContextTokens).toBe(65536);
+    expect(DEFAULT_SETTINGS.enableSubagentThoughts).toBe(false);
+    expect(DEFAULT_SETTINGS).not.toHaveProperty("cacheKey");
   });
 
   test("default buildRequestBody omits neutral samplers and sends only temperature + max_tokens", () => {

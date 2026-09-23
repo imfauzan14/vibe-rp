@@ -40,13 +40,8 @@ export const DEFAULT_SETTINGS = {
   // Directives & Block 0 contract
   agentsContract: DEFAULT_AGENTS_CONTRACT,
 
-  // Cognitive Layer
-  enableSubagentThoughts: true,
-
-  // Stable provider routing key for this conversation. Sent as
-  // `prompt_cache_key`; it is not part of the rendered prompt, so it cannot
-  // invalidate a cached prefix and only improves cache-hit routing.
-  cacheKey: "",
+  // Cognitive Layer (disabled by default)
+  enableSubagentThoughts: false,
 };
 
 const DB_NAME = "vibe_rp";

@@ -209,8 +209,8 @@ describe("Adaptive summary budget - through the fold seam", () => {
     // differs. In this window the headroom does not bind, so the update's
     // reasoning headroom survives into the final budget. (When headroom does
     // bind, the final budget can be smaller — see test 9.)
-    const noLedger = grownSession();
-    const withLedger = grownSession({ priorLedger: "L".repeat(1200) });
+    const noLedger = grownSession({ words: 150 });
+    const withLedger = grownSession({ words: 150, priorLedger: "L".repeat(600) });
 
     const initialFolds = captureFolds("ledger");
     await BrowserChatEngine.streamTurn({ card: null, session: noLedger, settings, persona: null, agentsContract: "" });

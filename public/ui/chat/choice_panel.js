@@ -44,8 +44,22 @@ export function createChoicePanel({
 
   let state = { mode: "normal", status: "idle", choices: [], error: null, selectedId: null };
   let lastStatus = "idle";
+  let isCollapsed = false;
 
+  const header = el("div", { class: "rp-choices__header" });
   const heading = el("h2", { class: "rp-choices__title", id: "choice-title", text: "What do you do?" });
+  const collapseBtn = el("button", {
+    type: "button",
+    class: "rp-btn rp-btn--ghost rp-btn--sm rp-choices__collapse-btn",
+    attrs: {
+      "aria-expanded": "true",
+      "aria-controls": "choice-body",
+      title: "Collapse choices to view story",
+    },
+    text: "Collapse",
+  });
+  header.append(heading, collapseBtn);
+
   // A quiet live region: the reader hears that choices arrived, and that a turn
   // started, without the panel taking over the reading flow.
   const status = el("p", {
@@ -60,7 +74,30 @@ export function createChoicePanel({
   const regenBtn = el("button", { type: "button", class: "rp-btn rp-btn--ghost rp-btn--sm", text: "Regenerate choices" });
   actions.append(retryBtn, otherBtn, regenBtn);
 
-  mount.append(heading, status, notice, list, actions);
+  const body = el("div", { class: "rp-choices__body", id: "choice-body" });
+  body.append(status, notice, list, actions);
+
+  mount.append(header, body);
+
+  function setCollapsed(next) {
+    isCollapsed = Boolean(next);
+    mount.dataset.collapsed = isCollapsed ? "true" : "false";
+    body.hidden = isCollapsed;
+    collapseBtn.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
+    collapseBtn.textContent = isCollapsed
+      ? (state.choices.length > 0 ? `Show choices (${state.choices.length})` : "Show choices")
+      : "Collapse";
+    collapseBtn.title = isCollapsed ? "Expand choices" : "Collapse choices to view story";
+  }
+
+  collapseBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setCollapsed(!isCollapsed);
+  });
+
+  header.addEventListener("click", () => {
+    if (isCollapsed) setCollapsed(false);
+  });
 
   retryBtn.addEventListener("click", () => onRetry());
   otherBtn.addEventListener("click", () => onManual());
@@ -78,6 +115,12 @@ export function createChoicePanel({
     if (state.mode !== "choice" || state.status !== "ready") return;
     if (event.ctrlKey || event.metaKey || event.altKey) return;
     if (isEditableTarget(event.target)) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setCollapsed(!isCollapsed);
+      return;
+    }
+    if (isCollapsed) return;
     const index = CHOICE_LABELS.indexOf(event.key);
     if (index === -1 || index >= state.choices.length) return;
     event.preventDefault();
@@ -130,6 +173,7 @@ export function createChoicePanel({
     if (!visible) {
       list.replaceChildren();
       lastStatus = state.status;
+      setCollapsed(false);
       return { focusTarget: null };
     }
 
@@ -153,6 +197,12 @@ export function createChoicePanel({
     const entering = submitting && lastStatus !== "submitting";
     lastStatus = state.status;
 
+    if (arrived) {
+      setCollapsed(false);
+    } else {
+      setCollapsed(isCollapsed);
+    }
+
     if (state.status === "generating") status.textContent = "Generating choices.";
     else if (ready) status.textContent = `${state.choices.length} choices available.`;
     else if (submitting) status.textContent = "Choice selected. Writing the next reply.";
@@ -160,7 +210,9 @@ export function createChoicePanel({
 
     // Focus only on a real transition, and only when the caller allows it, so a
     // reader typing in the composer is never interrupted.
-    if (arrived && autoFocus()) return { focusTarget: list.querySelector("button") || heading };
+    if (arrived && autoFocus()) {
+      return { focusTarget: isCollapsed ? collapseBtn : (list.querySelector("button") || heading) };
+    }
     if (entering) return { focusTarget: mount };
     return { focusTarget: null };
   }
@@ -169,7 +221,7 @@ export function createChoicePanel({
     render,
     /** Moves focus to the first choice when one exists, else the heading. */
     focus: () => {
-      const target = list.querySelector("button") || heading;
+      const target = isCollapsed ? collapseBtn : (list.querySelector("button") || heading);
       target?.focus?.();
     },
     get element() {
@@ -178,6 +230,10 @@ export function createChoicePanel({
     get status() {
       return state.status;
     },
+    get isCollapsed() {
+      return isCollapsed;
+    },
+    setCollapsed,
     destroy() {
       document.removeEventListener("keydown", onKeydown);
       mount.replaceChildren();

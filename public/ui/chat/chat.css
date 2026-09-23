@@ -303,10 +303,19 @@ mark.rp-search-hit.is-current {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  transition: padding var(--duration-fast) ease, margin var(--duration-fast) ease;
 }
 
 .rp-choices[hidden] {
   display: none;
+}
+
+.rp-choices__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 1.75rem;
 }
 
 /* A quiet heading, not a banner: the panel is a prompt, not a section of the
@@ -321,10 +330,47 @@ mark.rp-search-hit.is-current {
   margin: 0;
 }
 
+.rp-choices__collapse-btn {
+  font-size: var(--text-2xs);
+  padding: var(--space-0-5) var(--space-2);
+  height: auto;
+  min-height: 1.75rem;
+  color: var(--ink-secondary);
+}
+
+.rp-choices[data-collapsed="true"] {
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+  background-color: var(--surface-subtle);
+}
+
+.rp-choices[data-collapsed="true"]:hover {
+  background-color: var(--surface-hover);
+}
+
+.rp-choices[data-collapsed="true"] .rp-choices__title {
+  color: var(--ink-secondary);
+}
+
+.rp-choices__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.rp-choices__body[hidden] {
+  display: none;
+}
+
 .rp-choices__list {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  max-height: min(44dvh, 320px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-right: var(--space-0-5);
 }
 
 /* A real button, styled as a menu line. Full width, left aligned, text wraps
@@ -407,6 +453,14 @@ mark.rp-search-hit.is-current {
     padding: var(--space-2);
   }
 
+  .rp-choices[data-collapsed="true"] {
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .rp-choices__list {
+    max-height: min(40dvh, 260px);
+  }
+
   .rp-choices__option {
     /* Comfortable touch target; the dock already sits above the safe area. */
     min-height: var(--tap-min);
@@ -420,6 +474,20 @@ mark.rp-search-hit.is-current {
     order: -1;
     width: 100%;
   }
+}
+
+/* When Choice Mode has active choices, the composer's textarea and send button
+   yield to the choices menu. The reader selects a choice or uses "Other..."
+   to reveal manual typing. The mode switch and identity bar stay visible. */
+.rp-composer[data-mode="choice"][data-has-choices="true"] .rp-composer__input,
+.rp-composer[data-mode="choice"][data-has-choices="true"] #send-btn {
+  display: none;
+}
+
+.rp-composer[data-mode="choice"][data-has-choices="true"] .rp-composer__box {
+  padding: var(--space-1) var(--space-3);
+  border-color: var(--border-hairline);
+  background-color: transparent;
 }
 
 @media (hover: hover) and (pointer: fine) {

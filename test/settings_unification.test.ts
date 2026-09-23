@@ -59,12 +59,14 @@ describe("Unified settings surface", () => {
     expect(html).toContain('id="history-modal"');
   });
 
-  test("the engine panel reads and writes the cache key the engine sends", () => {
+  test("prompt cache key is not present in settings or emitted by the engine", () => {
+    const modal = read("ui/settings/settings_modal.js");
     const panel = read("ui/settings/engine_panel.js");
-    expect(panel).toContain('qs(root, "#popup-cache-key")');
-    expect(panel).toMatch(/cacheKey:\s*cacheKey\?\.value/);
-    // The engine really consumes it.
-    expect(read("browser_engine.js")).toContain("prompt_cache_key");
+    const engine = read("browser_engine.js");
+    expect(modal).not.toContain("popup-cache-key");
+    expect(panel).not.toContain("popup-cache-key");
+    expect(panel).not.toContain("cacheKey");
+    expect(engine).not.toContain("prompt_cache_key");
   });
 
   test("the session-import block is gated on a saveSession handler", () => {

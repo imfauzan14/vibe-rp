@@ -296,6 +296,7 @@
     /** Applies the mode to the chrome. Never touches the transcript. */
     function setMode(next, { persist = true } = {}) {
       mode = next === "choice" ? "choice" : "normal";
+      $("composer").dataset.mode = mode;
       for (const btn of modeSwitchEl.querySelectorAll("[data-mode]")) {
         btn.setAttribute("aria-pressed", btn.dataset.mode === mode ? "true" : "false");
       }
@@ -326,6 +327,8 @@
     /** Paints the panel from the controller's machine state. */
     function renderChoices() {
       const st = controller.choiceState;
+      const hasChoices = mode === "choice" && st.status !== "idle";
+      $("composer").dataset.hasChoices = hasChoices ? "true" : "false";
       const { focusTarget } = choicePanel.render({
         mode,
         status: st.status,

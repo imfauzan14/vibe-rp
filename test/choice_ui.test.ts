@@ -50,6 +50,18 @@ describe("choice panel structure", () => {
     expect(panel).toContain("onRegenerate");
     expect(panel).toMatch(/regenBtn\.addEventListener\("click",\s*\(\)\s*=>\s*onRegenerate\(\)\)/);
   });
+
+  test("the panel provides a collapse/expand affordance with accessible attributes", () => {
+    expect(panel).toContain("rp-choices__collapse-btn");
+    expect(panel).toContain('"aria-expanded"');
+    expect(panel).toContain('"aria-controls"');
+    expect(panel).toMatch(/collapseBtn\.addEventListener\("click"/);
+  });
+
+  test("shortcuts and escape handle collapse state cleanly", () => {
+    expect(panel).toMatch(/event\.key === "Escape"/);
+    expect(panel).toMatch(/if \(isCollapsed\) return/);
+  });
 });
 
 describe("chat surface wiring", () => {
@@ -63,6 +75,16 @@ describe("chat surface wiring", () => {
     // Both modes are visible buttons, not a settings-only control.
     expect(html).toContain('data-mode="normal"');
     expect(html).toContain('data-mode="choice"');
+  });
+
+  test("choice list has a bounded max-height so chat feed remains visible", () => {
+    expect(css).toMatch(/\.rp-choices__list\s*\{[\s\S]*?max-height:\s*min\(44dvh,\s*320px\)/);
+    expect(css).toContain("overscroll-behavior: contain");
+  });
+
+  test("composer input yields in choice mode when choices are active", () => {
+    expect(css).toMatch(/\.rp-composer\[data-mode="choice"\]\[data-has-choices="true"\]\s+\.rp-composer__input[\s\S]*?display:\s*none/);
+    expect(boot).toMatch(/\$\("composer"\)\.dataset\.hasChoices\s*=/);
   });
 
   test("a selected choice goes through the ordinary user-turn path", () => {

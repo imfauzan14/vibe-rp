@@ -484,7 +484,7 @@ export function buildSystemSections(card, persona, settings = {}) {
     sections.push({ id: "persona", text: `[User Persona: ${pName}]\n${pDesc}${template}`, required: true, priority: 950 });
   }
 
-  if (settings && settings.enableSubagentThoughts !== false) {
+  if (settings && settings.enableSubagentThoughts === true) {
     sections.push({
       id: "cognitive",
       required: true,
@@ -1035,8 +1035,7 @@ export class BrowserChatEngine {
    *
    * A fold is a one-off request over already-priced tokens: it must never pay
    * the cache-write premium. No `cache_control` is ever attached (Anthropic
-   * style), and `prompt_cache_key` stays unset unless the user opted into
-   * explicit routing. `stream` stays false — folding is not user-facing.
+   * style). `stream` stays false — folding is not user-facing.
    *
    * The output budget is adaptive (`resolveSummaryBudget`) rather than a fixed
    * ceiling, so a reasoning model has room to finish the extraction. The
@@ -1209,7 +1208,6 @@ export class BrowserChatEngine {
       const ceiling = typeof outputCeiling === "number" ? outputCeiling : reservedOutput;
       body.max_tokens = Math.max(MIN_OUTPUT_TOKENS, Math.min(ceiling, headroom));
     }
-    if (settings.cacheKey) body.prompt_cache_key = settings.cacheKey;
     return body;
   }
 
@@ -1850,8 +1848,7 @@ export class BrowserChatEngine {
     const request = planChoiceRequest({ card, session, settings: activeSettings, persona, count, charName, playerName });
     const { base, headers } = this.#resolveEndpoint(activeSettings);
 
-    // A choice request is a cheap, one-off extraction-like call: it must not pay
-    // the cache-write premium, so no cache key is attached and `stream` is false.
+    // A choice request is a cheap, one-off extraction-like call: `stream` is false.
     const body = {
       model: String(activeSettings.model || "").trim(),
       messages: request.payload,
