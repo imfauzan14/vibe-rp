@@ -17,6 +17,23 @@ import { escapeHtml, escapeAttr } from "../../safe_html.js";
 const MAX_RENDERED = 60;
 const RENDER_STEP = 40;
 
+export function extractThoughts(content, defaultCharName = "Character") {
+  if (!content) return { prose: "", thoughts: [] };
+  const blockRegex = /<(thought|think)([^>]*)>([\s\S]*?)<\/\1>/gi;
+  const thoughts = [];
+  let match;
+  while ((match = blockRegex.exec(content)) !== null) {
+    const attrs = match[2] || "";
+    const body = (match[3] || "").trim();
+    if (!body) continue;
+    const charMatch = attrs.match(/(?:character|name)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    const who = (charMatch && (charMatch[1] || charMatch[2] || charMatch[3])) || defaultCharName;
+    thoughts.push({ who: who.trim() || defaultCharName, body });
+  }
+  const prose = content.replace(/<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi, "").trim();
+  return { prose, thoughts };
+}
+
 export function createMessageFeed({
   mount,
   resolve = (t) => t,
@@ -84,20 +101,6 @@ export function createMessageFeed({
       <div class="rp-message__tray" id="tray-${id}" data-open="false" role="group" aria-label="Message actions">
         ${btns.join("")}
       </div>`;
-  }
-
-  function extractThoughts(content, defaultCharName = "Character") {
-    if (!content) return { prose: "", thoughts: [] };
-    const regex = /(?:<thought(?:\s+character="([^"]*)")?>([\s\S]*?)<\/thought>|<think>([\s\S]*?)<\/think>)/gi;
-    const thoughts = [];
-    let match;
-    while ((match = regex.exec(content)) !== null) {
-      const who = match[1] || defaultCharName;
-      const body = (match[2] !== undefined ? match[2] : match[3] || "").trim();
-      if (body) thoughts.push({ who, body });
-    }
-    const prose = content.replace(/(?:<thought[\s\S]*?<\/thought>|<think>[\s\S]*?<\/think>)/gi, "").trim();
-    return { prose, thoughts };
   }
 
   function thoughtDrawerHtml(thoughts, msgId) {
@@ -325,7 +328,7 @@ export function createMessageFeed({
     if (!stream || !chunk) return;
     stream.buffer += chunk;
 
-    const hasUnclosedThought = /(?:<thought[^>]*>|<think>)(?![\s\S]*?(?:<\/thought>|<\/think>))/i.test(stream.buffer);
+    const hasUnclosedThought = /<(thought|think)[^>]*>(?![\s\S]*?<\/\1>)/i.test(stream.buffer);
     const statusEl = stream.el.querySelector(".rp-stream-status");
     if (statusEl) {
       if (hasUnclosedThought) {
@@ -342,9 +345,8 @@ export function createMessageFeed({
     }
 
     const stripped = stream.buffer
-      .replace(/<thought[\s\S]*?<\/thought>/gi, "")
-      .replace(/<think>[\s\S]*?<\/think>/gi, "")
-      .replace(/(?:<thought[^>]*>|<think>)[\s\S]*$/i, "");
+      .replace(/<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi, "")
+      .replace(/<(thought|think)[^>]*>[\s\S]*$/i, "");
 
     const boundary = stripped.lastIndexOf("\n\n");
     if (boundary > stream.settledAt) {

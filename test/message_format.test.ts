@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { formatProse, formatMessages, substitutePlaceholders } from "../public/message_format.js";
+import { extractThoughts } from "../public/ui/chat/message_feed.js";
 import { escapeHtml } from "../public/safe_html.js";
 
 describe("formatProse", () => {
@@ -164,6 +165,32 @@ describe("formatMessages", () => {
     expect(vms[0].proseHtml).toBe("<p>Out loud.</p>");
   });
 
+  test("extracts thoughts with single-quoted or extra attributes, space before >, and think tags", () => {
+    const vms1 = formatMessages({
+      ...base,
+      messages: [{ id: "m1", role: "assistant", content: "<thought character='Elena' mood='nervous'>Quiet doubt</thought>Hello." }],
+    });
+    expect(vms1[0].thoughtHtml).toContain("Elena's Thought");
+    expect(vms1[0].thoughtHtml).toContain("Quiet doubt");
+    expect(vms1[0].proseHtml).toBe("<p>Hello.</p>");
+
+    const vms2 = formatMessages({
+      ...base,
+      messages: [{ id: "m2", role: "assistant", content: '<think class="reasoning">Deeper thinking</think>Spoken word.' }],
+    });
+    expect(vms2[0].thoughtHtml).toContain("Mira's Thought");
+    expect(vms2[0].thoughtHtml).toContain("Deeper thinking");
+    expect(vms2[0].proseHtml).toBe("<p>Spoken word.</p>");
+
+    const vms3 = formatMessages({
+      ...base,
+      messages: [{ id: "m3", role: "assistant", content: "<thought >Spaced thought</thought>Visible." }],
+    });
+    expect(vms3[0].thoughtHtml).toContain("Mira's Thought");
+    expect(vms3[0].thoughtHtml).toContain("Spaced thought");
+    expect(vms3[0].proseHtml).toBe("<p>Visible.</p>");
+  });
+
   test("copy source retains raw content including thoughts", () => {
     const raw = "<thought>x</thought>Reply.";
     const vms = formatMessages({
@@ -185,6 +212,34 @@ describe("formatMessages", () => {
     expect(formatMessages({ ...base, messages: null })).toEqual([]);
     const vms = formatMessages({ ...base, messages: [{ id: "m1", role: "user", content: "hi" }] });
     expect(vms[0].timestamp).toBeUndefined();
+  });
+});
+
+describe("extractThoughts", () => {
+  test("returns empty thoughts for plain prose", () => {
+    expect(extractThoughts("Hello world.")).toEqual({ prose: "Hello world.", thoughts: [] });
+    expect(extractThoughts("")).toEqual({ prose: "", thoughts: [] });
+    expect(extractThoughts(null as unknown as string)).toEqual({ prose: "", thoughts: [] });
+  });
+
+  test("extracts standard thought tags and strips from prose", () => {
+    const res = extractThoughts('<thought character="Elena">Her private motive.</thought>She nods slowly.', "Elena");
+    expect(res.prose).toBe("She nods slowly.");
+    expect(res.thoughts).toEqual([{ who: "Elena", body: "Her private motive." }]);
+  });
+
+  test("extracts thoughts with single-quoted or extra attributes, space before >, and think tags", () => {
+    const res1 = extractThoughts("<thought character='Mira' mood='tense'>Cautious.</thought>Greetings.", "Elena");
+    expect(res1.prose).toBe("Greetings.");
+    expect(res1.thoughts).toEqual([{ who: "Mira", body: "Cautious." }]);
+
+    const res2 = extractThoughts('<think class="reasoning">Deeper calculation.</think>I agree.', "Elena");
+    expect(res2.prose).toBe("I agree.");
+    expect(res2.thoughts).toEqual([{ who: "Elena", body: "Deeper calculation." }]);
+
+    const res3 = extractThoughts("<thought >Spaced tag.</thought>Done.", "Elena");
+    expect(res3.prose).toBe("Done.");
+    expect(res3.thoughts).toEqual([{ who: "Elena", body: "Spaced tag." }]);
   });
 });
 

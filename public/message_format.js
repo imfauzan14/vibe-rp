@@ -163,11 +163,13 @@ export function formatMessages({ messages, card, persona, charName, initialLette
     let content = substitutePlaceholders(msg.content, { user: userSpeaker, char: charName });
     let thoughtHtml = "";
 
-    const thoughtMatch = content.match(/<thought(?:\s+character="([^"]*)")?>([\s\S]*?)<\/thought>/i);
-    if (thoughtMatch) {
-      const thoughtChar = thoughtMatch[1] || charName;
-      const thoughtBody = escapeHtml(thoughtMatch[2].trim());
-      content = content.replace(/<thought[\s\S]*?<\/thought>/i, "").trim();
+    const blockMatch = /<(thought|think)([^>]*)>([\s\S]*?)<\/\1>/i.exec(content);
+    if (blockMatch) {
+      const attrs = blockMatch[2] || "";
+      const charMatch = attrs.match(/(?:character|name)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+      const thoughtChar = (charMatch && (charMatch[1] || charMatch[2] || charMatch[3])) || charName;
+      const thoughtBody = escapeHtml(blockMatch[3].trim());
+      content = content.replace(/<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi, "").trim();
       thoughtHtml = `
             <details class="msg-thought">
               <summary class="msg-thought-summary">

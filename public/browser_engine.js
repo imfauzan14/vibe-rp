@@ -752,7 +752,7 @@ export class BrowserChatEngine {
     }
     if (deepestCheap < 0) return messages;
 
-    const regex = /(?:<thought[\s\S]*?<\/thought>|<think>[\s\S]*?<\/think>)/gi;
+    const regex = /<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi;
     let result = null;
     for (let i = 0; i <= deepestCheap; i++) {
       const m = messages[i];
@@ -991,7 +991,7 @@ export class BrowserChatEngine {
     for (const m of messages || []) {
       if (!m || !m.content) continue;
       const raw = typeof m.content === "string" ? m.content : String(m.content);
-      const clean = raw.replace(/<thought[\s\S]*?<\/thought>/gi, "").trim();
+      const clean = raw.replace(/<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi, "").trim();
       if (!clean) continue;
       lines.push(`${m.role === "user" ? uName : cName}: ${clean}`);
     }
@@ -1958,7 +1958,7 @@ export class BrowserChatEngine {
     for (const m of messages || []) {
       if (!m || !m.content) continue;
       const raw = typeof m.content === "string" ? m.content : String(m.content);
-      const clean = raw.replace(/(?:<thought[\s\S]*?<\/thought>|<think>[\s\S]*?<\/think>)/gi, "").replace(/\s+/g, " ").trim();
+      const clean = raw.replace(/<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi, "").replace(/\s+/g, " ").trim();
       if (!clean) continue;
       const who = m.role === "user" ? (persona && persona.name) || "User" : (card && (card.data?.name || card.name)) || "Character";
       let clipped = clean;
