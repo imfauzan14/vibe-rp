@@ -19,7 +19,10 @@ const RENDER_STEP = 40;
 
 export function stripThoughts(content) {
   if (!content) return "";
-  return content.replace(/<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi, "").trim();
+  return content
+    .replace(/<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi, "")
+    .replace(/<(thought|think)[^>]*>[\s\S]*$/gi, "")
+    .trim();
 }
 
 export function createMessageFeed({

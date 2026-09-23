@@ -349,6 +349,38 @@ describe("generateChoices - auxiliary request behaviour", () => {
       persona: null,
     });
     expect(sent.model).toBe("main-model");
+
+    // When choiceModel is OpenAI reasoning model (o3-mini)
+    await BrowserChatEngine.generateChoices({
+      card: null,
+      session,
+      settings: { ...settings, choiceModel: "o3-mini" },
+      persona: null,
+    });
+    expect(sent.model).toBe("o3-mini");
+    expect(sent.max_completion_tokens).toBeGreaterThan(0);
+    expect(sent.max_tokens).toBeUndefined();
+    expect(sent.temperature).toBeUndefined();
+  });
+
+  test("parseChoices ignores draft JSON inside reasoning <think> blocks and parses final JSON", () => {
+    const raw = `<think>
+I should generate 2 choices:
+{"choices": [{"text": "Draft option from scratchpad"}]}
+Let me think more, actually let's provide real actions.
+</think>
+{
+  "choices": [
+    {"label": "Direct", "text": "I step forward boldly."},
+    {"label": "Cautious", "text": "I hold my ground quietly."}
+  ]
+}`;
+    const result = parseChoices(raw);
+    expect(result.choices.length).toBe(2);
+    expect(result.choices[0].text).toBe("I step forward boldly.");
+    expect(result.choices[0].label).toBe("Direct");
+    expect(result.choices[1].text).toBe("I hold my ground quietly.");
+    expect(result.choices.some((c) => c.text.includes("Draft"))).toBe(false);
   });
 });
 

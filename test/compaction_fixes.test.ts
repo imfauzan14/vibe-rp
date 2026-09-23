@@ -278,6 +278,32 @@ describe("Fix 3 - thought shake bound", () => {
     });
     expect(plan.history.some((m) => (m.content || "").includes("secret"))).toBe(true);
   });
+
+  test("shake preserves deep history thought tags to protect prompt cache while stripping near-tail thoughts", () => {
+    const E = BrowserChatEngine;
+    const msgs = [
+      { role: "assistant", content: "greeting" },
+      { role: "user", content: "early user" },
+      { role: "assistant", content: "<thought>deep secret</thought>early assistant" },
+      { role: "user", content: "word ".repeat(9000) }, // suffix of early assistant is ~9000 tokens (> 8000 limit)
+      { role: "assistant", content: "<thought>recent secret</thought>near-tail assistant" },
+      { role: "user", content: "tail question" },
+      { role: "assistant", content: "latest assistant" },
+    ];
+    const plan = E.planContext({
+      systemPrompt: "sys",
+      messages: msgs,
+      ledger: "",
+      consumed: 1,
+      settings: { maxContextTokens: 65536, maxTokens: 1500 },
+    });
+    const contents = plan.history.map((m) => m.content || "");
+    // Deep message is untouched to preserve cache prefix:
+    expect(contents.some((c) => c.includes("deep secret"))).toBe(true);
+    // Near-tail message whose suffix is small is stripped:
+    expect(contents.some((c) => c.includes("recent secret"))).toBe(false);
+    expect(contents.some((c) => c.includes("near-tail assistant"))).toBe(true);
+  });
 });
 
 describe("Fixes 4 & 5 - fold prompt hardening and no cache-write", () => {

@@ -196,6 +196,22 @@ describe("Streaming contract - max_tokens forwarding", () => {
     });
     expect("max_tokens" in body).toBe(false);
   });
+
+  test("11. OpenAI reasoning models (o1, o3-mini) send max_completion_tokens and omit unsupported samplers", () => {
+    const o1Settings = {
+      model: "o3-mini",
+      maxTokens: 1000,
+      temperature: 0.9,
+      frequencyPenalty: 0.2,
+      presencePenalty: 0.2,
+    };
+    const body = BrowserChatEngine.buildRequestBody(o1Settings, [{ role: "user", content: "hello" }]);
+    expect(body.max_completion_tokens).toBe(1000);
+    expect(body.max_tokens).toBeUndefined();
+    expect(body.temperature).toBeUndefined();
+    expect(body.frequency_penalty).toBeUndefined();
+    expect(body.presence_penalty).toBeUndefined();
+  });
 });
 
 describe("Controller - engine return value is never dropped", () => {

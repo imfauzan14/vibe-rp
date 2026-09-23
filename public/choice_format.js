@@ -150,7 +150,11 @@ function entryItem(entry) {
  * ignores the JSON instruction still usually returns a usable menu.
  */
 function extractItems(raw) {
-  const slice = firstJsonSlice(raw);
+  // Strip internal <thought> and <think> scratchpad blocks before extracting choices
+  const clean = typeof raw === "string"
+    ? raw.replace(/<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi, "").replace(/<(thought|think)[^>]*>[\s\S]*$/gi, "").trim()
+    : "";
+  const slice = firstJsonSlice(clean);
   if (slice) {
     let parsed = null;
     try {
@@ -167,7 +171,7 @@ function extractItems(raw) {
   // Only used when it yields an actual list: a single line is far more likely
   // to be prose or an error message than a menu of one, and a one-item menu is
   // not a choice anyway.
-  const lines = raw
+  const lines = clean
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line && !/^```/.test(line) && !/^[a-zA-Z ]{0,20}:$/.test(line))

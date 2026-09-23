@@ -793,7 +793,8 @@ export class BrowserChatEngine {
 
     const regex = /<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi;
     let result = null;
-    for (let i = 0; i <= deepestCheap; i++) {
+    for (let i = 0; i < threshold; i++) {
+      if (suffixTokens[i] > suffixLimitTokens) continue;
       const m = messages[i];
       if (!m || m.role !== "assistant") continue;
       const c = m.content;
@@ -1214,20 +1215,23 @@ export class BrowserChatEngine {
    */
   static buildRequestBody(settings, messages, outputCeiling = null) {
     const model = String(settings?.model || "").trim();
+    const isOpenAiReasoning = /(?:^|\/)(?:o1|o3|o4)(?:-|$)/i.test(model);
     const body = {
       model,
       messages,
       stream: true,
       stream_options: { include_usage: true },
     };
-    if (typeof settings.temperature === "number") body.temperature = settings.temperature;
-    if (typeof settings.topP === "number" && settings.topP < 1) body.top_p = settings.topP;
-    if (typeof settings.minP === "number" && settings.minP > 0) body.min_p = settings.minP;
-    if (typeof settings.frequencyPenalty === "number" && settings.frequencyPenalty !== 0) {
-      body.frequency_penalty = settings.frequencyPenalty;
-    }
-    if (typeof settings.presencePenalty === "number" && settings.presencePenalty !== 0) {
-      body.presence_penalty = settings.presencePenalty;
+    if (!isOpenAiReasoning) {
+      if (typeof settings.temperature === "number") body.temperature = settings.temperature;
+      if (typeof settings.topP === "number" && settings.topP < 1) body.top_p = settings.topP;
+      if (typeof settings.minP === "number" && settings.minP > 0) body.min_p = settings.minP;
+      if (typeof settings.frequencyPenalty === "number" && settings.frequencyPenalty !== 0) {
+        body.frequency_penalty = settings.frequencyPenalty;
+      }
+      if (typeof settings.presencePenalty === "number" && settings.presencePenalty !== 0) {
+        body.presence_penalty = settings.presencePenalty;
+      }
     }
     // `maxTokens` is a ceiling the user asked for, not a promise the window can
     // keep. Two separate bounds apply:
@@ -1249,7 +1253,12 @@ export class BrowserChatEngine {
       const promptTokens = countMessages(messages);
       const headroom = Math.max(MIN_OUTPUT_TOKENS, contextWindow - promptTokens - safetyMargin);
       const ceiling = typeof outputCeiling === "number" ? outputCeiling : reservedOutput;
-      body.max_tokens = Math.max(MIN_OUTPUT_TOKENS, Math.min(ceiling, headroom));
+      const targetTokens = Math.max(MIN_OUTPUT_TOKENS, Math.min(ceiling, headroom));
+      if (isOpenAiReasoning) {
+        body.max_completion_tokens = targetTokens;
+      } else {
+        body.max_tokens = targetTokens;
+      }
     }
     return body;
   }
@@ -1890,22 +1899,27 @@ export class BrowserChatEngine {
     const { base, headers } = this.#resolveEndpoint(activeSettings);
 
     const choiceModel = String(activeSettings.choiceModel || activeSettings.model || "").trim();
+    const isOpenAiReasoningChoice = /(?:^|\/)(?:o1|o3|o4)(?:-|$)/i.test(choiceModel);
     // A choice request is a cheap, one-off extraction-like call: `stream` is false.
     const body = {
       model: choiceModel,
       messages: request.payload,
       stream: false,
-      max_tokens: request.outputTokens,
+      ...(isOpenAiReasoningChoice
+        ? { max_completion_tokens: request.outputTokens }
+        : { max_tokens: request.outputTokens }),
       ...(activeSettings?.reasoningEffort || /(?:o1|o3|r1|reasoner|thinking)/i.test(choiceModel)
         ? { reasoning_effort: "low" }
         : {}),
     };
-    if (typeof activeSettings.temperature === "number") {
-      // Slightly cooler than the RP default: choices want variety, not the full
-      // creative spread, and a stable set is easier to scan.
-      body.temperature = Math.min(activeSettings.temperature, 0.7);
-    } else {
-      body.temperature = 0.7;
+    if (!isOpenAiReasoningChoice) {
+      if (typeof activeSettings.temperature === "number") {
+        // Slightly cooler than the RP default: choices want variety, not the full
+        // creative spread, and a stable set is easier to scan.
+        body.temperature = Math.min(activeSettings.temperature, 0.7);
+      } else {
+        body.temperature = 0.7;
+      }
     }
 
     const res = await fetch(`${base}/chat/completions`, {
