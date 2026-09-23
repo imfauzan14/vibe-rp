@@ -63,7 +63,7 @@
 // brief window where a page loaded under the old worker is controlled by the new
 // one. `activate` deletes every other cache version, so no stale shell survives.
 
-const CACHE = "vibe-rp-shell-v13";
+const CACHE = "vibe-rp-shell-v14";
 const GEN_KEY = "./__sw_generation__";
 const PREV_KEY = "./__sw_previous__";
 const PIN_DIR = "/__sw_pin__/";
