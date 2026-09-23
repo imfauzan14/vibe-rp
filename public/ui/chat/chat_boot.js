@@ -288,8 +288,8 @@
       onSelect: (id) => selectChoice(id),
       onRegenerate: () => requestChoices(),
       onRetry: () => requestChoices(),
-      // Never steal focus from a reader who is typing in the composer.
-      autoFocus: () => document.activeElement !== authorInput,
+      // Never steal focus on arrival: choices are read in-place, shortcuts work globally
+      autoFocus: () => false,
     });
 
     /** Applies the mode to the chrome. Never touches the transcript. */

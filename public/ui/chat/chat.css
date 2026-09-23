@@ -428,10 +428,6 @@ mark.rp-search-hit.is-current {
   border-color: var(--border-strong);
 }
 
-.rp-choices[data-collapsed="true"][data-status="ready"] {
-  border-color: var(--accent-annotation);
-}
-
 .rp-choices[data-collapsed="true"] .rp-choices__header {
   border-bottom: none;
   padding-bottom: 0;
@@ -459,7 +455,7 @@ mark.rp-search-hit.is-current {
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  padding: 1px var(--space-0-5) 1px 1px;
+  padding: var(--space-1);
 }
 
 /* A real button, styled as an elegant manuscript option line. Full width, left aligned,
@@ -789,10 +785,16 @@ mark.rp-search-hit.is-current {
   min-height: 36px;
 }
 
-/* Focus is stated on the option itself, since it is a real control. */
+/* Focus is stated on the option itself, since it is a real control.
+   Inset outline ensures crisp borders without being clipped by the scroll container. */
 .rp-choices__option:focus-visible {
-  outline: var(--focus-width) solid var(--focus-ring);
-  outline-offset: var(--focus-offset);
+  outline: var(--focus-width) solid var(--accent-annotation);
+  outline-offset: -1px;
+  border-color: var(--accent-annotation);
+}
+
+.rp-choices__collapse-btn:focus:not(:focus-visible) {
+  outline: none;
 }
 
 /* ------------------------------------------------------- Context ledger --- */

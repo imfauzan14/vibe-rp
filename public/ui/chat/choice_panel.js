@@ -263,7 +263,7 @@ export function createChoicePanel({
     // Focus only on a real transition, and only when the caller allows it, so a
     // reader typing in the composer is never interrupted.
     if (arrived && autoFocus()) {
-      return { focusTarget: isCollapsed ? collapseBtn : (list.querySelector("button") || heading) };
+      return { focusTarget: isCollapsed ? null : (list.querySelector("button") || heading) };
     }
     if (entering) return { focusTarget: mount };
     return { focusTarget: null };
