@@ -247,6 +247,19 @@ describe("planChoiceRequest", () => {
     const args = { card, session: grownSession(), settings, persona: null, count: 4 };
     expect(BrowserChatEngine.planChoiceRequest(args).inputTokens).toBe(planChoiceRequest(args).inputTokens);
   });
+
+  test("carries agentsContract into the system prompt for choice generation", () => {
+    const customContract = "Bahasa Indonesia contract: tulis dalam bahasa Indonesia.";
+    const req = planChoiceRequest({
+      card,
+      session: { messages: [{ id: "g", role: "assistant", content: "The greeting." }] },
+      settings: { ...settings, agentsContract: customContract },
+      persona: { name: "Rowan" },
+      count: 4,
+    });
+    const systemMessage = req.payload.find((m) => m.role === "system");
+    expect(systemMessage?.content).toContain("Bahasa Indonesia contract");
+  });
 });
 
 describe("generateChoices - auxiliary request behaviour", () => {

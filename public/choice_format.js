@@ -37,7 +37,7 @@ export const CHOICE_SYSTEM_PROMPT =
   "You generate the next moves available to the player in an ongoing roleplay scene.\n\n" +
   "You write exclusively from the player's perspective, proposing a menu of distinct actions they may take next.\n\n" +
   "Requirements:\n" +
-  "- Language Lock: Generate dialogue, choices, and roleplay prose strictly in the active language and dialect established in the scene (matching the character and player's dialogue). Never translate established names, cultural terms, or scene dialogue into English.\n" +
+  "- Language Lock: Generate dialogue, choices, and roleplay prose strictly in the active language and dialect established in the scene (matching the character and player's dialogue). If the craft directives specify a language (such as Indonesian) or the scene is multilingual, generate choices strictly in that target language. Never translate established names, cultural terms, or scene dialogue into English.\n" +
   "- Narrative Perspective: Match the player's established narrative point of view (1st person 'I' vs 3rd person).\n" +
   "- Dramatic Variety: Offer genuinely distinct dramatic archetypes across the choices:\n" +
   "  1. Direct / Assertive (bold action, confrontation, or decisive advance)\n" +

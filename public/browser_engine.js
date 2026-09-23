@@ -644,7 +644,15 @@ export function planChoiceRequest({
       scenarioHint = `\nScenario: ${cleanScenario.slice(0, 300)}`;
     }
   }
-  const system = `${CHOICE_SYSTEM_PROMPT}\n\nScene: ${name} opposite ${who}.${scenarioHint}`;
+  let directiveHint = "";
+  const rawContract = (settings?.agentsContract || "").trim();
+  if (rawContract) {
+    const cleanContract = substituteCardPlaceholders(rawContract, card, persona).replace(/\s+/g, " ").trim();
+    if (cleanContract) {
+      directiveHint = `\nCraft Directives & Language: ${cleanContract.slice(0, 1500)}`;
+    }
+  }
+  const system = `${CHOICE_SYSTEM_PROMPT}\n\nScene: ${name} opposite ${who}.${scenarioHint}${directiveHint}`;
   const task = choicePrompt(count, { charName: name, playerName: who });
 
   // Everything that is not history or ledger: the fixed instruction overhead.
