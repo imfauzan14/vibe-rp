@@ -203,13 +203,48 @@ describe("Redundancy cleanup and legacy export removal", () => {
     expect(src).toContain("Data & Storage");
     expect(src).toContain("mountDataPanel");
   });
+
+  test("el handles both string and object styles safely without throwing index setter error", async () => {
+    const { el } = await import("../public/ui/dom.js");
+    const fakeDoc = {
+      createElement(tag: string) {
+        return {
+          tagName: tag.toUpperCase(),
+          style: { cssText: "" },
+          className: "",
+          textContent: "",
+          setAttribute() {},
+          append() {},
+        };
+      },
+    };
+    const orig = (globalThis as any).document;
+    (globalThis as any).document = fakeDoc;
+    try {
+      const nodeString = el("div", { style: "margin-bottom: var(--space-3);" });
+      expect(nodeString.style.cssText).toBe("margin-bottom: var(--space-3);");
+
+      const nodeObj = el("div", { style: { display: "none" } });
+      expect((nodeObj.style as any).display).toBe("none");
+    } finally {
+      if (orig === undefined) {
+        delete (globalThis as any).document;
+      } else {
+        (globalThis as any).document = orig;
+      }
+    }
+  });
 });
 
 describe("Cookie serialization helpers", () => {
   const origDocument = (globalThis as any).document;
 
   afterEach(() => {
-    (globalThis as any).document = origDocument;
+    if (origDocument === undefined) {
+      delete (globalThis as any).document;
+    } else {
+      (globalThis as any).document = origDocument;
+    }
   });
 
   test("readBrowserCookies parses cookie string into key-value items", () => {

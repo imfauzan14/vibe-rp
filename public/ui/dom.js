@@ -26,11 +26,15 @@ export function el(tag, props = {}, children = []) {
     else if (key === "text") node.textContent = String(value);
     else if (key === "html") node.innerHTML = String(value);
     else if (key === "dataset") Object.assign(node.dataset, value);
-    else if (key === "attrs") for (const [k, v] of Object.entries(value)) {
-      if (v === false || v === null || v === undefined) node.removeAttribute(k);
-      else node.setAttribute(k, v === true ? "" : String(v));
-    } else if (key === "style") Object.assign(node.style, value);
-    else node[key] = value;
+    else if (key === "attrs") {
+      for (const [k, v] of Object.entries(value)) {
+        if (v === false || v === null || v === undefined) node.removeAttribute(k);
+        else node.setAttribute(k, v === true ? "" : String(v));
+      }
+    } else if (key === "style") {
+      if (typeof value === "string") node.style.cssText = value;
+      else Object.assign(node.style, value);
+    } else node[key] = value;
   }
   for (const child of [].concat(children)) {
     if (child === null || child === undefined || child === false) continue;

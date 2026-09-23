@@ -184,47 +184,56 @@ describe("Unified settings surface", () => {
 
     type GlobalWithDoc = typeof globalThis & { document?: { createElement(tag: string): MockNode } };
     const globalHost = globalThis as GlobalWithDoc;
-    globalHost.document = {
-      createElement(tag: string) {
-        return makeNode(null, tag);
-      },
-    };
+    const origDoc = globalHost.document;
+    try {
+      globalHost.document = {
+        createElement(tag: string) {
+          return makeNode(null, tag);
+        },
+      };
 
-    const nodes: Record<string, MockNode> = {
-      "#popup-api-endpoint": makeNode("popup-api-endpoint", "input"),
-      "#popup-api-key": makeNode("popup-api-key", "input"),
-      "#popup-model-select": makeNode("popup-model-select", "select"),
-      "#popup-choice-model-select": makeNode("popup-choice-model-select", "select"),
-      "#popup-fetch-models-btn": makeNode("popup-fetch-models-btn", "button"),
-      "#popup-save-engine-btn": makeNode("popup-save-engine-btn", "button"),
-      "#popup-engine-status": makeNode("popup-engine-status", "p"),
-      ".rp-settings__footer": makeNode(null, "div"),
-    };
+      const nodes: Record<string, MockNode> = {
+        "#popup-api-endpoint": makeNode("popup-api-endpoint", "input"),
+        "#popup-api-key": makeNode("popup-api-key", "input"),
+        "#popup-model-select": makeNode("popup-model-select", "select"),
+        "#popup-choice-model-select": makeNode("popup-choice-model-select", "select"),
+        "#popup-fetch-models-btn": makeNode("popup-fetch-models-btn", "button"),
+        "#popup-save-engine-btn": makeNode("popup-save-engine-btn", "button"),
+        "#popup-engine-status": makeNode("popup-engine-status", "p"),
+        ".rp-settings__footer": makeNode(null, "div"),
+      };
 
-    const root = {
-      querySelector(sel: string) {
-        return nodes[sel] || null;
-      },
-    };
+      const root = {
+        querySelector(sel: string) {
+          return nodes[sel] || null;
+        },
+      };
 
-    let saved: Record<string, unknown> | null = null;
-    const panel = mountEnginePanel(root as unknown as HTMLElement, {
-      getSettings: () => ({
-        model: "claude-3-5-sonnet",
-        choiceModel: "gpt-4o-mini",
-        availableModels: ["claude-3-5-sonnet", "gpt-4o-mini"],
-      }),
-      saveSettings: (patch: Record<string, unknown>) => { saved = patch; },
-    });
+      let saved: Record<string, unknown> | null = null;
+      const panel = mountEnginePanel(root as unknown as HTMLElement, {
+        getSettings: () => ({
+          model: "claude-3-5-sonnet",
+          choiceModel: "gpt-4o-mini",
+          availableModels: ["claude-3-5-sonnet", "gpt-4o-mini"],
+        }),
+        saveSettings: (patch: Record<string, unknown>) => { saved = patch; },
+      });
 
-    panel.refresh();
+      panel.refresh();
 
-    // Save settings
-    nodes["#popup-model-select"].value = "claude-3-5-sonnet";
-    nodes["#popup-choice-model-select"].value = "gpt-4o-mini";
-    nodes["#popup-save-engine-btn"].dispatchEvent("click");
+      // Save settings
+      nodes["#popup-model-select"].value = "claude-3-5-sonnet";
+      nodes["#popup-choice-model-select"].value = "gpt-4o-mini";
+      nodes["#popup-save-engine-btn"].dispatchEvent("click");
 
-    expect(saved?.model).toBe("claude-3-5-sonnet");
-    expect(saved?.choiceModel).toBe("gpt-4o-mini");
+      expect(saved?.model).toBe("claude-3-5-sonnet");
+      expect(saved?.choiceModel).toBe("gpt-4o-mini");
+    } finally {
+      if (origDoc === undefined) {
+        delete globalHost.document;
+      } else {
+        globalHost.document = origDoc;
+      }
+    }
   });
 });

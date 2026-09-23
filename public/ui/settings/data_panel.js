@@ -84,7 +84,6 @@ export function mountDataPanel(root, options = {}) {
   // Section 1: Backup & Restore
   const backupNotice = el("p", {
     class: "rp-help",
-    style: "margin-bottom: var(--space-3);",
     text: "Backups contain your stored API keys, cards, chat transcripts, custom personas, system prompts, and cookies. Store your backup file securely.",
   });
 
@@ -99,7 +98,7 @@ export function mountDataPanel(root, options = {}) {
     type: "file",
     id: "rp-data-import-input",
     accept: ".json,application/json",
-    style: "display: none;",
+    attrs: { hidden: true },
   });
 
   const importBtn = el("button", {
@@ -109,7 +108,7 @@ export function mountDataPanel(root, options = {}) {
     text: "Import Backup File",
   });
 
-  const backupActions = el("div", { style: "display: flex; flex-wrap: wrap; gap: var(--space-2);" }, [
+  const backupActions = el("div", { class: "rp-actions-row" }, [
     exportBtn,
     importBtn,
     importInput,
@@ -158,7 +157,7 @@ export function mountDataPanel(root, options = {}) {
     text: "Clear import session & cookies",
   });
 
-  const granularActions = el("div", { style: "display: flex; flex-wrap: wrap; gap: var(--space-2);" }, [
+  const granularActions = el("div", { class: "rp-actions-row" }, [
     clearSessionsBtn,
     clearCardsBtn,
     resetPersonasBtn,
@@ -171,7 +170,6 @@ export function mountDataPanel(root, options = {}) {
     el("span", { class: "rp-label", text: "Granular Resets" }),
     el("p", {
       class: "rp-help",
-      style: "margin-bottom: var(--space-3);",
       text: "Targeted resets allow deleting conversations or resetting presets without losing your full configuration.",
     }),
     granularActions,

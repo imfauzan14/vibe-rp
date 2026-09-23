@@ -1233,6 +1233,13 @@ dialog.rp-dialog:not([open]) {
   margin-bottom: var(--space-2);
 }
 
+/* Flexible row of action buttons. */
+.rp-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
 /* The saved-persona and saved-prompt rows. Shared so the library dialog and
    the chat settings popup render identical cards. The action group is a
    footer under the text, not a third column: at full width its controls never
