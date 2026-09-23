@@ -32,6 +32,11 @@ function isEditableTarget(target) {
   return Boolean(target.isContentEditable);
 }
 
+const isMobileViewport = () =>
+  typeof window !== "undefined" &&
+  typeof window.matchMedia === "function" &&
+  window.matchMedia("(max-width: 720px)").matches;
+
 export function createChoicePanel({
   mount,
   onSelect = () => {},
@@ -48,6 +53,8 @@ export function createChoicePanel({
 
   const header = el("div", { class: "rp-choices__header" });
   const heading = el("h2", { class: "rp-choices__title", id: "choice-title", text: "What do you do?" });
+  const badge = el("span", { class: "rp-choices__badge" });
+  const headTitleWrap = el("div", { class: "rp-choices__header-title" }, [heading, badge]);
   const collapseBtn = el("button", {
     type: "button",
     class: "rp-btn rp-btn--ghost rp-btn--sm rp-choices__collapse-btn",
@@ -58,7 +65,7 @@ export function createChoicePanel({
     },
     text: "Collapse",
   });
-  header.append(heading, collapseBtn);
+  header.append(headTitleWrap, collapseBtn);
 
   // A quiet live region: the reader hears that choices arrived, and that a turn
   // started, without the panel taking over the reading flow.
@@ -79,15 +86,54 @@ export function createChoicePanel({
 
   mount.append(header, body);
 
+  function updateBadge() {
+    badge.className = "rp-choices__badge";
+    if (state.status === "generating") {
+      badge.classList.add("is-generating");
+      badge.textContent = "Generating…";
+    } else if (state.status === "ready") {
+      badge.classList.add("is-ready");
+      badge.textContent = `${state.choices.length} ready`;
+    } else if (state.status === "submitting") {
+      badge.classList.add("is-submitting");
+      badge.textContent = "Writing reply…";
+    } else if (state.status === "error") {
+      badge.classList.add("is-error");
+      badge.textContent = "Failed";
+    } else {
+      badge.textContent = "";
+    }
+  }
+
   function setCollapsed(next) {
     isCollapsed = Boolean(next);
     mount.dataset.collapsed = isCollapsed ? "true" : "false";
     body.hidden = isCollapsed;
     collapseBtn.setAttribute("aria-expanded", isCollapsed ? "false" : "true");
-    collapseBtn.textContent = isCollapsed
-      ? (state.choices.length > 0 ? `Show choices (${state.choices.length})` : "Show choices")
-      : "Collapse";
-    collapseBtn.title = isCollapsed ? "Expand choices" : "Collapse choices to view story";
+    updateBadge();
+
+    if (isCollapsed) {
+      if (state.status === "generating") {
+        collapseBtn.textContent = "Generating…";
+        collapseBtn.title = "Choices are generating";
+      } else if (state.status === "ready") {
+        const count = state.choices.length;
+        collapseBtn.textContent = count > 0 ? `Show choices (${count})` : "Show choices";
+        collapseBtn.title = "Expand choices to select an action";
+      } else if (state.status === "submitting") {
+        collapseBtn.textContent = "Writing…";
+        collapseBtn.title = "Writing reply";
+      } else if (state.status === "error") {
+        collapseBtn.textContent = "Review error";
+        collapseBtn.title = "Expand choices to see error and retry";
+      } else {
+        collapseBtn.textContent = "Show choices";
+        collapseBtn.title = "Expand choices";
+      }
+    } else {
+      collapseBtn.textContent = "Collapse";
+      collapseBtn.title = "Collapse choices to view story";
+    }
   }
 
   collapseBtn.addEventListener("click", (event) => {
@@ -107,6 +153,7 @@ export function createChoicePanel({
   list.addEventListener("click", (event) => {
     const btn = event.target.closest("[data-choice-id]");
     if (!btn || btn.disabled) return;
+    setCollapsed(true);
     onSelect(btn.getAttribute("data-choice-id"));
   });
 
@@ -205,7 +252,7 @@ export function createChoicePanel({
     lastStatus = state.status;
 
     if (arrived) {
-      setCollapsed(false);
+      setCollapsed(isMobileViewport());
     } else if (submitting) {
       setCollapsed(true);
     } else {

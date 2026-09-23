@@ -60,7 +60,7 @@ describe("Unified settings surface", () => {
     expect(html).toContain('id="history-modal"');
   });
 
-  test("prompt cache key is not present while thought and choice models are configured", () => {
+  test("prompt cache key and thoughts are not present while choice model is configured", () => {
     const modal = read("ui/settings/settings_modal.js");
     const panel = read("ui/settings/engine_panel.js");
     const engine = read("browser_engine.js");
@@ -69,11 +69,11 @@ describe("Unified settings surface", () => {
     expect(panel).not.toContain("cacheKey");
     expect(engine).not.toContain("prompt_cache_key");
 
-    expect(modal).toContain("popup-thought-model-select");
+    expect(modal).not.toContain("popup-thought-model-select");
     expect(modal).toContain("popup-choice-model-select");
-    expect(panel).toContain("popup-thought-model-select");
+    expect(panel).not.toContain("popup-thought-model-select");
     expect(panel).toContain("popup-choice-model-select");
-    expect(panel).toContain("thoughtModel");
+    expect(panel).not.toContain("thoughtModel");
     expect(panel).toContain("choiceModel");
   });
 
@@ -141,7 +141,7 @@ describe("Unified settings surface", () => {
     expect(strip(read("ui/chat/chat.css"))).not.toContain(".rp-dialog:not([open])");
   });
 
-  test("mountEnginePanel wires thought toggle and choice model save", () => {
+  test("mountEnginePanel wires choice model save", () => {
     interface MockNode {
       id: string | null;
       tagName: string;
@@ -194,9 +194,6 @@ describe("Unified settings surface", () => {
       "#popup-api-endpoint": makeNode("popup-api-endpoint", "input"),
       "#popup-api-key": makeNode("popup-api-key", "input"),
       "#popup-model-select": makeNode("popup-model-select", "select"),
-      "#popup-enable-thoughts": makeNode("popup-enable-thoughts", "input"),
-      "#popup-thought-model-wrap": makeNode("popup-thought-model-wrap", "div"),
-      "#popup-thought-model-select": makeNode("popup-thought-model-select", "select"),
       "#popup-choice-model-select": makeNode("popup-choice-model-select", "select"),
       "#popup-fetch-models-btn": makeNode("popup-fetch-models-btn", "button"),
       "#popup-save-engine-btn": makeNode("popup-save-engine-btn", "button"),
@@ -214,37 +211,20 @@ describe("Unified settings surface", () => {
     const panel = mountEnginePanel(root as unknown as HTMLElement, {
       getSettings: () => ({
         model: "claude-3-5-sonnet",
-        enableSubagentThoughts: false,
-        thoughtModel: "deepseek-r1",
         choiceModel: "gpt-4o-mini",
-        availableModels: ["claude-3-5-sonnet", "deepseek-r1", "gpt-4o-mini"],
+        availableModels: ["claude-3-5-sonnet", "gpt-4o-mini"],
       }),
       saveSettings: (patch: Record<string, unknown>) => { saved = patch; },
     });
 
     panel.refresh();
 
-    // With enableSubagentThoughts = false, thoughtWrap starts hidden
-    expect(nodes["#popup-thought-model-wrap"].hidden).toBe(true);
-
-    // Toggle thoughts on
-    nodes["#popup-enable-thoughts"].checked = true;
-    nodes["#popup-enable-thoughts"].dispatchEvent("change");
-    expect(nodes["#popup-thought-model-wrap"].hidden).toBe(false);
-
-    // Toggle thoughts off
-    nodes["#popup-enable-thoughts"].checked = false;
-    nodes["#popup-enable-thoughts"].dispatchEvent("change");
-    expect(nodes["#popup-thought-model-wrap"].hidden).toBe(true);
-
     // Save settings
-    nodes["#popup-enable-thoughts"].checked = true;
-    nodes["#popup-thought-model-select"].value = "deepseek-r1";
+    nodes["#popup-model-select"].value = "claude-3-5-sonnet";
     nodes["#popup-choice-model-select"].value = "gpt-4o-mini";
     nodes["#popup-save-engine-btn"].dispatchEvent("click");
 
-    expect(saved?.enableSubagentThoughts).toBe(true);
-    expect(saved?.thoughtModel).toBe("deepseek-r1");
+    expect(saved?.model).toBe("claude-3-5-sonnet");
     expect(saved?.choiceModel).toBe("gpt-4o-mini");
   });
 });

@@ -484,21 +484,6 @@ export function buildSystemSections(card, persona, settings = {}) {
     sections.push({ id: "persona", text: `[User Persona: ${pName}]\n${pDesc}${template}`, required: true, priority: 950 });
   }
 
-  if (settings && settings.enableSubagentThoughts === true) {
-    sections.push({
-      id: "cognitive",
-      required: true,
-      priority: 900,
-      text: `### SUBAGENT COGNITIVE LAYER
-Before outputting narrative prose or spoken dialogue, formulate an internal consciousness scratchpad in <thought character="${cName}"> ... </thought> (or the active character/GM in dynamic scenes).
-- Hidden desire, fear, or immediate objective.
-- Emotional impression of the user's latest act.
-- Pacing or tactical steering for the response.
-Write raw, immediate consciousness. Never use em dashes or generic AI cliches.
-After the thought block, output the public prose and dialogue.`,
-    });
-  }
-
   return sections;
 }
 
@@ -1519,11 +1504,6 @@ export class BrowserChatEngine {
         .map((e) => `[World Info: ${substituteCardPlaceholders(e.content, card, activePersona)}]`)
         .join("\n");
       fullPostHistory = fullPostHistory ? `${loreText}\n\n${fullPostHistory}` : loreText;
-    }
-    if (activeSettings && activeSettings.enableSubagentThoughts === true) {
-      const cName = (card && (card.data?.name || card.name)) || "Character";
-      const thoughtReminder = `[Guidance: Begin your reply with <thought character="${cName}">...</thought> exploring internal consciousness, doubts, or tactical steering, then output the public response.]`;
-      fullPostHistory = fullPostHistory ? `${fullPostHistory}\n\n${thoughtReminder}` : thoughtReminder;
     }
     const guidanceTokens = fullPostHistory.trim() ? estimateTokens(fullPostHistory) + 4 : 0;
 

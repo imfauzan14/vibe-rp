@@ -312,9 +312,6 @@
       if (mode === "choice") {
         restoreChoicesForScene();
       } else {
-        // Leaving Choice Mode discards the pending set: the panel is hidden and
-        // a stale menu must not survive behind it.
-        controller.invalidateChoices();
         renderChoices();
       }
     }
@@ -350,7 +347,16 @@
      */
     function restoreChoicesForScene() {
       if (mode !== "choice") {
-        controller.invalidateChoices();
+        renderChoices();
+        return;
+      }
+      const currentSource = controller.choiceScene();
+      if (
+        controller.choiceState.status === CHOICE_STATUS.READY &&
+        controller.choiceState.sourceId &&
+        currentSource &&
+        String(currentSource.id) === String(controller.choiceState.sourceId)
+      ) {
         renderChoices();
         return;
       }

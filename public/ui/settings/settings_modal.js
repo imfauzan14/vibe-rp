@@ -101,20 +101,6 @@ export function openSettingsModal(options = {}) {
       el("select", { id: "popup-model-select", class: "rp-select" }),
       el("p", { class: "rp-help", text: "Used to generate prose, narration and dialogue." }),
     ]),
-    el("div", { class: "rp-panel rp-panel--raised rp-settings__check-box" }, [
-      el("label", { class: "rp-settings__check" }, [
-        el("input", { type: "checkbox", id: "popup-enable-thoughts" }),
-        el("span", {}, [
-          el("span", { class: "rp-settings__check-title", text: "Character inner thoughts" }),
-          el("span", { class: "rp-help", text: "Characters produce private monologue before speaking in scene." }),
-        ]),
-      ]),
-    ]),
-    el("div", { id: "popup-thought-model-wrap", class: "rp-field", hidden: true }, [
-      el("label", { class: "rp-label", for: "popup-thought-model-select", text: "Thought reasoning model" }),
-      el("select", { id: "popup-thought-model-select", class: "rp-select" }),
-      el("p", { class: "rp-help", text: "Optional dedicated model for inner monologue. Defaults to main model." }),
-    ]),
     el("div", { id: "popup-choice-model-wrap", class: "rp-field" }, [
       el("label", { class: "rp-label", for: "popup-choice-model-select", text: "Choice generator model" }),
       el("select", { id: "popup-choice-model-select", class: "rp-select" }),

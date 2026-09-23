@@ -17,21 +17,9 @@ import { escapeHtml, escapeAttr } from "../../safe_html.js";
 const MAX_RENDERED = 60;
 const RENDER_STEP = 40;
 
-export function extractThoughts(content, defaultCharName = "Character") {
-  if (!content) return { prose: "", thoughts: [] };
-  const blockRegex = /<(thought|think)([^>]*)>([\s\S]*?)<\/\1>/gi;
-  const thoughts = [];
-  let match;
-  while ((match = blockRegex.exec(content)) !== null) {
-    const attrs = match[2] || "";
-    const body = (match[3] || "").trim();
-    if (!body) continue;
-    const charMatch = attrs.match(/(?:character|name)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
-    const who = (charMatch && (charMatch[1] || charMatch[2] || charMatch[3])) || defaultCharName;
-    thoughts.push({ who: who.trim() || defaultCharName, body });
-  }
-  const prose = content.replace(/<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi, "").trim();
-  return { prose, thoughts };
+export function stripThoughts(content) {
+  if (!content) return "";
+  return content.replace(/<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi, "").trim();
 }
 
 export function createMessageFeed({
@@ -83,50 +71,22 @@ export function createMessageFeed({
   }
 
   function trayHtml(msg, opts) {
-    const { showDelete, showReroll, showFork, showRetry } = opts;
-    const id = safeId(msg.id);
+    const showDelete = Boolean(opts.showDelete);
+    const showReroll = Boolean(opts.showReroll);
+    const showFork = Boolean(opts.showFork);
+    const showRetry = Boolean(opts.showRetry);
     const btns = [];
-    if (showRetry) {
-      // A trailing user turn with no reply (its generation failed, or the page
-      // was closed mid-turn). Without this the only way to get a reply would be
-      // to retype the message, because the failure toast is gone by then.
-      btns.push(`<button type="button" class="rp-btn rp-btn--secondary rp-btn--sm" data-action="retry" data-msg-id="${escapeAttr(msg.id)}">Retry reply</button>`);
-    }
-    btns.push(`<button type="button" class="rp-btn rp-btn--ghost rp-btn--sm" data-action="copy" data-msg-id="${escapeAttr(msg.id)}">Copy</button>`);
-    btns.push(`<button type="button" class="rp-btn rp-btn--ghost rp-btn--sm" data-action="edit" data-msg-id="${escapeAttr(msg.id)}">Edit</button>`);
-    if (showFork) btns.push(`<button type="button" class="rp-btn rp-btn--ghost rp-btn--sm" data-action="fork" data-msg-id="${escapeAttr(msg.id)}">Fork from here</button>`);
+    const id = safeId(msg.id);
+    if (showRetry) btns.push(`<button type="button" class="rp-btn rp-btn--ghost rp-btn--sm" data-action="retry" data-msg-id="${escapeAttr(msg.id)}">Retry reply</button>`);
     if (showReroll) btns.push(`<button type="button" class="rp-btn rp-btn--ghost rp-btn--sm" data-action="reroll" data-msg-id="${escapeAttr(msg.id)}">Reroll</button>`);
+    btns.push(`<button type="button" class="rp-btn rp-btn--ghost rp-btn--sm" data-action="edit" data-msg-id="${escapeAttr(msg.id)}">Edit</button>`);
+    btns.push(`<button type="button" class="rp-btn rp-btn--ghost rp-btn--sm" data-action="copy" data-msg-id="${escapeAttr(msg.id)}">Copy</button>`);
+    if (showFork) btns.push(`<button type="button" class="rp-btn rp-btn--ghost rp-btn--sm" data-action="fork" data-msg-id="${escapeAttr(msg.id)}">Fork</button>`);
     if (showDelete) btns.push(`<button type="button" class="rp-btn rp-btn--danger-ghost rp-btn--sm" data-action="delete" data-msg-id="${escapeAttr(msg.id)}">Delete</button>`);
     return `
       <div class="rp-message__tray" id="tray-${id}" data-open="false" role="group" aria-label="Message actions">
         ${btns.join("")}
       </div>`;
-  }
-
-  function thoughtDrawerHtml(thoughts, msgId) {
-    if (!thoughts || !thoughts.length) return "";
-    const id = safeId(msgId);
-    const sections = thoughts.map((t) => `
-      <div class="rp-thought__item">
-        <div class="rp-thought__summary">${escapeHtml(t.who)}'s thought</div>
-        <div class="rp-thought__body">${formatProse(t.body)}</div>
-      </div>
-    `).join("");
-    return `
-      <div class="rp-thought" id="thought-${id}" hidden role="region" aria-label="Character inner thoughts">
-        ${sections}
-      </div>`;
-  }
-
-  function thoughtPillHtml(thoughts, msgId) {
-    if (!thoughts || !thoughts.length) return "";
-    const id = safeId(msgId);
-    const label = thoughts.length === 1 && thoughts[0].who && thoughts[0].who !== "Character" && thoughts[0].who !== context.charName
-      ? `💭 ${escapeHtml(thoughts[0].who)}`
-      : thoughts.length > 1
-        ? `💭 Thoughts (${thoughts.length})`
-        : "💭 Thought";
-    return `<button type="button" class="rp-thought-pill" data-action="toggle-thought" data-target="thought-${id}" aria-expanded="false" aria-controls="thought-${id}" title="Toggle character inner thoughts">${label}</button>`;
   }
 
   // --- element construction ------------------------------------------------
@@ -139,9 +99,7 @@ export function createMessageFeed({
     el.dataset.msgId = msg.id;
 
     const resolved = resolve(msg.content || "");
-    const { prose, thoughts } = extractThoughts(resolved, context.charName);
-    const pill = thoughtPillHtml(thoughts, msg.id);
-    const drawer = thoughtDrawerHtml(thoughts, msg.id);
+    const prose = stripThoughts(resolved);
 
     el.innerHTML = `
       <div class="rp-message__rail">
@@ -152,10 +110,9 @@ export function createMessageFeed({
           <button type="button" class="rp-message__title" aria-expanded="false" aria-controls="tray-${id}" title="Message actions">
             <span class="rp-message__speaker">${escapeHtml(speakerName(isUser))}</span>
           </button>
-          <span class="rp-message__meta"><span class="rp-message__time rp-tnum">${escapeHtml(timeText(msg.timestamp))}</span>${pill}${tokenMetaHtml(estimateTokens(msg.content || ""))}</span>
+          <span class="rp-message__meta"><span class="rp-message__time rp-tnum">${escapeHtml(timeText(msg.timestamp))}</span>${tokenMetaHtml(estimateTokens(msg.content || ""))}</span>
           <button type="button" class="rp-message__more-btn" aria-expanded="false" aria-controls="tray-${id}" title="Message actions">⋯</button>
         </div>
-        ${drawer}
         <div class="rp-message__prose" id="prose-${id}">${formatProse(prose)}</div>
         ${trayHtml(msg, opts)}
       </div>`;
@@ -329,22 +286,6 @@ export function createMessageFeed({
     if (!stream || !chunk) return;
     stream.buffer += chunk;
 
-    const hasUnclosedThought = /<(thought|think)[^>]*>(?![\s\S]*?<\/\1>)/i.test(stream.buffer);
-    const statusEl = stream.el.querySelector(".rp-stream-status");
-    if (statusEl) {
-      if (hasUnclosedThought) {
-        if (!statusEl.classList.contains("rp-stream-status--thinking")) {
-          statusEl.classList.add("rp-stream-status--thinking");
-          statusEl.textContent = "💭 Thinking…";
-        }
-      } else {
-        if (statusEl.classList.contains("rp-stream-status--thinking")) {
-          statusEl.classList.remove("rp-stream-status--thinking");
-          statusEl.textContent = "Writing";
-        }
-      }
-    }
-
     const stripped = stream.buffer
       .replace(/<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi, "")
       .replace(/<(thought|think)[^>]*>[\s\S]*$/i, "");
@@ -367,7 +308,7 @@ export function createMessageFeed({
     el.querySelector(".rp-stream-status")?.remove();
 
     const resolved = resolve(msg.content || "");
-    const { prose, thoughts } = extractThoughts(resolved, context.charName);
+    const prose = stripThoughts(resolved);
     const proseEl = el.querySelector(".rp-message__prose");
     proseEl.removeAttribute("aria-busy");
     proseEl.removeAttribute("role");
@@ -377,17 +318,14 @@ export function createMessageFeed({
 
     const content = el.querySelector(".rp-message__content");
     const head = content.querySelector(".rp-message__head");
-    const drawerHtml = thoughtDrawerHtml(thoughts, msg.id);
-    if (drawerHtml) head.insertAdjacentHTML("afterend", drawerHtml);
 
     const meta = head.querySelector(".rp-message__meta");
     if (meta) {
       meta.querySelector(".rp-message__tokens")?.remove();
       meta.querySelector(".rp-message__forks")?.remove();
       const timeStr = `<span class="rp-message__time rp-tnum">${escapeHtml(timeText(msg.timestamp))}</span>`;
-      const pill = thoughtPillHtml(thoughts, msg.id);
       const tokens = tokenMetaHtml(estimateTokens(msg.content || "")) + forkMetaHtml((msg.forks || []).length);
-      meta.innerHTML = `${timeStr}${pill}${tokens}`;
+      meta.innerHTML = `${timeStr}${tokens}`;
     }
     const settledOpts = { showDelete: true, showReroll: true, showFork: true, showRetry: false };
     content.insertAdjacentHTML("beforeend", trayHtml(msg, settledOpts));
@@ -444,25 +382,6 @@ export function createMessageFeed({
   // --- one delegated listener ---------------------------------------------
 
   mount.addEventListener("click", (e) => {
-    const thoughtBtn = e.target.closest("[data-action='toggle-thought']");
-    if (thoughtBtn) {
-      const targetId = thoughtBtn.getAttribute("data-target");
-      const drawer = targetId ? document.getElementById(targetId) : null;
-      if (drawer) {
-        const isHidden = drawer.hasAttribute("hidden");
-        if (isHidden) {
-          drawer.removeAttribute("hidden");
-          thoughtBtn.setAttribute("aria-expanded", "true");
-          thoughtBtn.classList.add("is-active");
-        } else {
-          drawer.setAttribute("hidden", "");
-          thoughtBtn.setAttribute("aria-expanded", "false");
-          thoughtBtn.classList.remove("is-active");
-        }
-      }
-      return;
-    }
-
     const btn = e.target.closest("[data-action]");
     if (btn) {
       const action = btn.dataset.action;

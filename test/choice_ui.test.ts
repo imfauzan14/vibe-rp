@@ -58,6 +58,15 @@ describe("choice panel structure", () => {
     expect(panel).toMatch(/collapseBtn\.addEventListener\("click"/);
   });
 
+  test("the header displays a status badge and dynamic collapsed state", () => {
+    expect(panel).toContain("rp-choices__badge");
+    expect(panel).toContain("is-generating");
+    expect(panel).toContain("is-ready");
+    expect(panel).toContain("is-submitting");
+    expect(panel).toContain("is-error");
+    expect(panel).toContain("isMobileViewport");
+  });
+
   test("shortcuts and escape handle collapse state cleanly", () => {
     expect(panel).toMatch(/event\.key === "Escape"/);
     expect(panel).toMatch(/if \(isCollapsed\) return/);

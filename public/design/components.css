@@ -1507,91 +1507,6 @@ dialog.rp-dialog:not([open]) {
   color: var(--accent-annotation);
 }
 
-/* -- thought block: an annotation, so it wears the gold ---------------- */
-
-.rp-thought {
-  max-width: var(--measure);
-  margin-block: var(--space-2);
-  padding: var(--space-3) var(--space-4);
-  background-color: var(--annotation-subtle);
-  border-inline-start: var(--border-width-strong) solid var(--accent-annotation);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  font-family: var(--font-prose);
-  font-size: var(--text-base);
-  font-style: italic;
-  line-height: var(--leading-prose);
-  color: var(--accent-annotation);
-}
-
-.rp-thought[hidden] {
-  display: none !important;
-}
-
-.rp-thought__item + .rp-thought__item {
-  margin-top: var(--space-3);
-  padding-top: var(--space-2);
-  border-top: var(--border-width) solid var(--border-hairline);
-}
-
-.rp-thought__summary {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-family: var(--font-ui);
-  font-size: var(--text-xs);
-  font-style: normal;
-  font-weight: 600;
-  color: var(--accent-annotation);
-  margin-bottom: var(--space-1);
-}
-
-.rp-thought__body {
-  font-family: var(--font-prose);
-  font-style: italic;
-  line-height: var(--leading-prose);
-  color: var(--accent-annotation);
-}
-
-.rp-thought-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 1px var(--space-2);
-  border: var(--border-width) solid var(--border-hairline);
-  border-radius: var(--radius-full);
-  background: var(--surface-raised);
-  color: var(--accent-annotation);
-  font-family: var(--font-ui);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  cursor: pointer;
-  line-height: 1.4;
-  transition: background-color var(--duration-fast), border-color var(--duration-fast);
-}
-
-.rp-thought-pill:hover {
-  background-color: var(--annotation-subtle);
-  border-color: var(--accent-annotation);
-}
-
-.rp-thought-pill.is-active,
-.rp-thought-pill[aria-expanded="true"] {
-  background-color: var(--annotation-subtle);
-  border-color: var(--accent-annotation);
-  font-weight: 600;
-}
-
-.rp-thought-pill:focus-visible {
-  outline: var(--border-width-strong) solid var(--focus-ring);
-  outline-offset: 1px;
-}
-
-.rp-stream-status--thinking {
-  color: var(--accent-annotation);
-  font-style: italic;
-  font-weight: 500;
-}
-
 /* -- ledger: continuity notes, the app's marginalia ------------------- */
 
 .rp-ledger {
@@ -2017,7 +1932,6 @@ dialog.rp-dialog:not([open]) {
   }
 
   .rp-message__prose,
-  .rp-thought,
   .rp-ledger {
     max-width: none;
   }

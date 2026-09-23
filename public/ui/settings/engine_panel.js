@@ -54,9 +54,6 @@ export function mountEnginePanel(root, options = {}) {
   const endpoint = qs(root, "#popup-api-endpoint");
   const apiKey = qs(root, "#popup-api-key");
   const modelSelect = qs(root, "#popup-model-select");
-  const thoughts = qs(root, "#popup-enable-thoughts");
-  const thoughtWrap = qs(root, "#popup-thought-model-wrap");
-  const thoughtSelect = qs(root, "#popup-thought-model-select");
   const choiceSelect = qs(root, "#popup-choice-model-select");
   const fetchBtn = qs(root, "#popup-fetch-models-btn");
   const saveBtn = qs(root, "#popup-save-engine-btn");
@@ -78,26 +75,15 @@ export function mountEnginePanel(root, options = {}) {
     if (tone === "danger") host?.toast?.(message, { tone: "danger" });
   }
 
-  function syncThoughtVisibility() {
-    if (thoughtWrap && thoughts) thoughtWrap.hidden = !thoughts.checked;
-  }
-
   function refresh() {
     const settings = getSettings?.() || {};
     if (endpoint) endpoint.value = settings.apiEndpoint || "";
     if (apiKey) apiKey.value = settings.apiKey || "";
-    if (thoughts) thoughts.checked = Boolean(settings.enableSubagentThoughts);
-    syncThoughtVisibility();
     fillModels(modelSelect, settings.availableModels || [], settings.model || "");
-    fillModels(thoughtSelect, settings.availableModels || [], settings.thoughtModel || "", {
-      placeholder: SAME_AS_MAIN,
-    });
     fillModels(choiceSelect, settings.availableModels || [], settings.choiceModel || "", {
       placeholder: SAME_AS_MAIN,
     });
   }
-
-  on(thoughts, "change", syncThoughtVisibility);
 
   on(fetchBtn, "click", async () => {
     if (!fetchBtn) return;
@@ -114,9 +100,6 @@ export function mountEnginePanel(root, options = {}) {
       saveSettings?.({ availableModels: list });
       const settings = getSettings?.() || {};
       fillModels(modelSelect, list, settings.model || "");
-      fillModels(thoughtSelect, list, settings.thoughtModel || "", {
-        placeholder: SAME_AS_MAIN,
-      });
       fillModels(choiceSelect, list, settings.choiceModel || "", {
         placeholder: SAME_AS_MAIN,
       });
@@ -135,8 +118,6 @@ export function mountEnginePanel(root, options = {}) {
       apiEndpoint: endpoint?.value.trim() ?? "",
       apiKey: apiKey?.value.trim() ?? "",
       model: modelSelect?.value ?? "",
-      enableSubagentThoughts: Boolean(thoughts?.checked),
-      thoughtModel: thoughtSelect?.value ?? "",
       choiceModel: choiceSelect?.value ?? "",
     });
     announce("Engine settings saved.");

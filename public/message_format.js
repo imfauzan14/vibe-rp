@@ -161,27 +161,7 @@ export function formatMessages({ messages, card, persona, charName, initialLette
     // greetings and any echoed assistant output must never show `{{user}}` /
     // `{{char}}` on screen.
     let content = substitutePlaceholders(msg.content, { user: userSpeaker, char: charName });
-    let thoughtHtml = "";
-
-    const blockMatch = /<(thought|think)([^>]*)>([\s\S]*?)<\/\1>/i.exec(content);
-    if (blockMatch) {
-      const attrs = blockMatch[2] || "";
-      const charMatch = attrs.match(/(?:character|name)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
-      const thoughtChar = (charMatch && (charMatch[1] || charMatch[2] || charMatch[3])) || charName;
-      const thoughtBody = escapeHtml(blockMatch[3].trim());
-      content = content.replace(/<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi, "").trim();
-      thoughtHtml = `
-            <details class="msg-thought">
-              <summary class="msg-thought-summary">
-                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
-                  <polygon points="5 3 19 12 5 21 5 3"></polygon>
-                </svg>
-                ${escapeHtml(thoughtChar)}'s Thought
-              </summary>
-              <div class="msg-thought-body">${thoughtBody}</div>
-            </details>
-          `;
-    }
+    content = content.replace(/<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi, "").trim();
 
     return {
       id: msg.id,
@@ -191,7 +171,6 @@ export function formatMessages({ messages, card, persona, charName, initialLette
       roleTag: isUser ? "USER" : "ASSISTANT",
       avatarHtml,
       tokenTagHtml,
-      thoughtHtml,
       proseHtml: formatProse(content),
       timestamp: msg.timestamp,
       rawContent: msg.content,

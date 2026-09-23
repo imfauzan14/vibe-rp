@@ -541,7 +541,7 @@ export class SessionController {
       status: CHOICE_STATUS.READY,
       sourceId: saved.sourceId,
       sourceSig: saved.sourceSig,
-      choices: saved.choices.map((c) => ({ id: c.id, text: c.text })),
+      choices: saved.choices.map((c) => ({ id: c.id, text: c.text, label: c.label || "" })),
       error: null,
     };
     return this.choiceState;
