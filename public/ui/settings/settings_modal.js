@@ -26,6 +26,7 @@ import { mountEnginePanel } from "./engine_panel.js";
 import { mountParamsPanel } from "./params_panel.js";
 import { mountPersonaList } from "./persona_list.js";
 import { mountDirectiveList } from "./directive_list.js";
+import { mountDataPanel } from "./data_panel.js";
 import { openPersonaEditor } from "../editors/persona_editor.js";
 import { openDirectiveEditor } from "../editors/directive_editor.js";
 
@@ -56,6 +57,7 @@ const TABS = [
   { id: "settings-params-tab", label: "Parameters" },
   { id: "settings-personas-tab", label: "Personas" },
   { id: "settings-directives-tab", label: "System prompts" },
+  { id: "settings-data-tab", label: "Data & Storage" },
 ];
 
 function guidance(title, text) {
@@ -175,6 +177,9 @@ export function openSettingsModal(options = {}) {
     directiveRoot,
   ]);
 
+  // Data & Storage panel.
+  const dataPanel = el("div", { class: "rp-tabpanel rp-settings__panel", id: "settings-data-tab", hidden: true });
+
   const dialog = el("dialog", { class: "rp-dialog rp-dialog--wide", attrs: { "aria-labelledby": "rp-settings-title" } }, [
     el("div", { class: "rp-dialog__panel" }, [
       el("div", { class: "rp-sheet__handle", attrs: { "aria-hidden": "true" } }),
@@ -190,7 +195,7 @@ export function openSettingsModal(options = {}) {
           attrs: { "aria-label": "Close settings" },
         }),
       ]),
-      el("div", { class: "rp-dialog__body" }, [tablist, enginePanel, paramsPanel, personasPanel, directivesPanel]),
+      el("div", { class: "rp-dialog__body" }, [tablist, enginePanel, paramsPanel, personasPanel, directivesPanel, dataPanel]),
     ]),
   ]);
 
@@ -272,11 +277,21 @@ export function openSettingsModal(options = {}) {
     host,
   });
 
+  const data = mountDataPanel(dataPanel, {
+    confirm: options.confirm,
+    host,
+    onDataChanged: async () => {
+      refreshAll();
+      await options.onDataChanged?.();
+    },
+  });
+
   function refreshAll() {
     engine.refresh();
     params.refresh();
     personas.refresh();
     directives.refresh();
+    data.refresh();
   }
   refreshAll();
 
@@ -288,6 +303,7 @@ export function openSettingsModal(options = {}) {
     params.destroy();
     personas.destroy();
     directives.destroy();
+    data.destroy();
     tabs.destroy();
     closeModal(dialog);
     dialog.remove();

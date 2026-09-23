@@ -207,6 +207,10 @@ function openSettings(initialTab) {
     saveDirective: (directive) => LocalDb.saveDirective(directive),
     deleteDirective: (id) => LocalDb.deleteDirective(id),
     setDefaultDirective: (id) => LocalDb.setDefaultDirective(id),
+    onDataChanged: async () => {
+      await controller.load();
+      render();
+    },
   });
 }
 

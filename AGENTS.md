@@ -48,11 +48,11 @@ Page shells (markup plus a thin bootstrap only):
 
 Shared UI modules (**`public/ui/`**, 26 modules, ~5400 lines). Reuse these instead of re-implementing:
 
-- Shared: `dom.js`, `toast.js`, `modal.js`, `tabs.js`, `confirm.js`, `theme.js`, `image.js`
+- Shared: `dom.js`, `toast.js`, `modal.js`, `tabs.js`, `confirm.js`, `theme.js`, `image.js`, `data_transfer.js`
 - Library: `library_page.js`, `library_controller.js`, `library_view.js`, `character_card.js`, `detail_modal.js`, `import_flow.js`
-- Library subfolders: `settings/**` (modal, persona/directive lists, params and engine panels), `editors/**` (persona and directive editors)
-- Chat: `ui/chat/**` (feed, composer, search, export, confirm)
-- Both pages mount the SAME settings surface: `ui/settings/settings_modal.js` (plus `ui/editors/**`). There is no chat-only settings panel; the library-only session-import block is rendered only when the caller passes `saveSession`.
+- Library subfolders: `settings/**` (modal, persona/directive lists, params, engine, and data panels), `editors/**` (persona and directive editors)
+- Chat: `ui/chat/**` (feed, composer, search, confirm)
+- Both pages mount the SAME settings surface: `ui/settings/settings_modal.js` (plus `ui/editors/**` and `ui/settings/data_panel.js`). There is no chat-only settings panel; the library-only session-import block is rendered only when the caller passes `saveSession`.
 
 Design system (**`public/design/`**): `DESIGN.md` (the contract), `tokens.css` (every colour value), `components.css` (the `rp-` classes), `fonts/`.
 

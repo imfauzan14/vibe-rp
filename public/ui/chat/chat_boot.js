@@ -12,7 +12,6 @@
     import { createComposer } from "./composer.js";
     import { createChoicePanel } from "./choice_panel.js";
     import { createSearch } from "./search.js";
-    import { downloadExport, buildPlainText, readImportFile } from "./export.js";
     import { compressImage } from "../image.js";
     import { openSettingsModal } from "../settings/settings_modal.js";
 
@@ -771,57 +770,6 @@
       showToast("New chat started.", "success");
     });
 
-    // Export and restore actions.
-    $("export-json-btn").addEventListener("click", () => {
-      try {
-        const name = downloadExport({ session: controller.activeSession, card: controller.activeCard, persona: controller.currentPersona });
-        showToast(`Exported ${name}.`, "success");
-      } catch (err) {
-        showToast(`Export failed: ${err.message}`, "error");
-      }
-    });
-
-    $("export-text-btn").addEventListener("click", () => {
-      const text = buildPlainText({ session: controller.activeSession, card: controller.activeCard });
-      const blob = new Blob([text], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${(controller.activeSession?.title || "conversation").toLowerCase().replace(/[^a-z0-9]+/g, "-")}.txt`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
-      showToast("Exported as text.", "success");
-    });
-
-    $("import-restore-btn").addEventListener("click", () => $("import-restore-input").click());
-    $("import-restore-input").addEventListener("change", async (e) => {
-      const file = e.target.files?.[0];
-      e.target.value = "";
-      if (!file) return;
-      try {
-        const parsed = await readImportFile(file);
-        const ok = await confirmAction({
-          title: "Restore this conversation?",
-          body: `${parsed.messages.length} messages are added to the end of the current chat. Nothing is removed.`,
-          confirmLabel: "Add messages",
-        });
-        if (!ok) return;
-        const session = controller.activeSession;
-        for (const m of parsed.messages) session.messages.push({ ...m, id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}` });
-        if (parsed.ledger && !session.ledger) session.ledger = parsed.ledger;
-        session.updatedAt = Date.now();
-        await persistOrReport();
-        renderFeed();
-        closeDialog();
-        restoreChoicesForScene();
-        showToast(`Restored ${parsed.messages.length} messages.`, "success");
-      } catch (err) {
-        showToast(err.message, "error");
-      }
-    });
-
     // Settings surface. The chat page mounts the SAME modal as the library
     // (ui/settings/settings_modal.js) instead of carrying its own copy, so
     // engine, parameters, personas and directives have one implementation and
@@ -864,6 +812,18 @@
         saveDirective: (d) => controller.db.saveDirective(d),
         deleteDirective: (id) => controller.db.deleteDirective(id),
         setDefaultDirective: (id) => controller.db.setDefaultDirective(id),
+        onDataChanged: async () => {
+          if (cardId) {
+            try {
+              await controller.loadCard(cardId);
+            } catch (e) {
+              console.warn("Could not reload card after data change", e);
+            }
+          }
+          renderFeed();
+          updateContextStats();
+          refreshPresets();
+        },
         onClose: () => {
           settingsModal = null;
           controller.closeModal();

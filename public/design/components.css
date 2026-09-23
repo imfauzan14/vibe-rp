@@ -1182,6 +1182,57 @@ dialog.rp-dialog:not([open]) {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Storage metrics display in Data & Storage settings panel. */
+.rp-storage-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--surface-raised);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+}
+
+.rp-storage-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  background-color: var(--surface-base);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+}
+
+.rp-storage-stat__label {
+  color: var(--ink-muted);
+}
+
+/* Danger zone for destructive reset operations. */
+.rp-settings__danger-zone {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background-color: var(--danger-subtle);
+  border: var(--border-width) solid var(--danger);
+  border-radius: var(--radius-md);
+  margin-top: var(--space-2);
+}
+
+.rp-settings__danger-title {
+  font-weight: 600;
+  font-size: var(--text-sm);
+  color: var(--danger);
+}
+
+.rp-settings__danger-text {
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+  line-height: var(--leading-ui);
+  margin-bottom: var(--space-2);
+}
+
 /* The saved-persona and saved-prompt rows. Shared so the library dialog and
    the chat settings popup render identical cards. The action group is a
    footer under the text, not a third column: at full width its controls never

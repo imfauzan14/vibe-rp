@@ -13,8 +13,7 @@ Vibe RP is a browser-first roleplay client for importing character cards, managi
 - Fork a conversation from any turn into a new session, leaving the original untouched
 - Edit a message as a new draft: the prior text is retained on the message, never overwritten
 - In-chat search (Ctrl/Cmd+F), library sort (recent or name), and tag filtering
-- Context inspector sheet with a live prompt-budget meter, reply reservation, and token allocations
-- Conversation export to JSON or plain text, and restore that appends to the current chat
+- Complete browser data backup & restore (IndexedDB cards and sessions, localStorage presets, settings, and cookies) plus granular storage resets
 - Undoable destructive actions in place of blocking `confirm()` dialogs
 - Pure formatting pipeline for model output (markdown subset, code-block protection, em-dash suppression)
 - **Choice Mode**: the model proposes 3-5 player choices after each reply; picking one becomes an ordinary user turn, and the normal pipeline runs unchanged. Switch with the chip in the composer; the preference persists per browser.

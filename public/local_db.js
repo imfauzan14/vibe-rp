@@ -312,4 +312,276 @@ export class LocalDb {
   static saveSettings(settings) {
     localStorage.setItem("vibe_rp_settings", JSON.stringify(settings));
   }
+
+  // Data Management: Clear, Reset, Export, and Import
+
+  static async clearAllSessions() {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("sessions", "readwrite");
+      tx.objectStore("sessions").clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(LocalDb.#wrapStorageError(tx.error, "clearAllSessions"));
+    });
+  }
+
+  static async clearAllCards() {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(["cards", "sessions"], "readwrite");
+      tx.objectStore("cards").clear();
+      tx.objectStore("sessions").clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(LocalDb.#wrapStorageError(tx.error, "clearAllCards"));
+    });
+  }
+
+  static resetPersonas() {
+    const seed = PERSONA_PRESETS.defaultFactory();
+    localStorage.setItem(PERSONA_PRESETS.key, JSON.stringify([seed]));
+    return [seed];
+  }
+
+  static resetDirectives() {
+    const seed = DIRECTIVE_PRESETS.defaultFactory();
+    localStorage.setItem(DIRECTIVE_PRESETS.key, JSON.stringify([seed]));
+    return [seed];
+  }
+
+  static resetSettings() {
+    localStorage.removeItem("vibe_rp_settings");
+    return { ...DEFAULT_SETTINGS };
+  }
+
+  static clearImportSession() {
+    try {
+      localStorage.removeItem("vibe_rp_import_session");
+      localStorage.removeItem("vibe_rp_import_session_refresh_lock");
+    } catch (_) {}
+  }
+
+  static async wipeAllData({ resetCache = false } = {}) {
+    const db = await this.open();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(["cards", "sessions"], "readwrite");
+      tx.objectStore("cards").clear();
+      tx.objectStore("sessions").clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(LocalDb.#wrapStorageError(tx.error, "wipeAllData"));
+    });
+
+    try {
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith("vibe_rp")) keysToRemove.push(k);
+      }
+      for (const k of keysToRemove) localStorage.removeItem(k);
+    } catch (_) {}
+
+    this.resetPersonas();
+    this.resetDirectives();
+    this.resetSettings();
+
+    if (resetCache && typeof globalThis.caches !== "undefined") {
+      try {
+        const names = await globalThis.caches.keys();
+        for (const name of names) {
+          if (name.startsWith("vibe-rp")) await globalThis.caches.delete(name);
+        }
+      } catch (_) {}
+    }
+  }
+
+  static async getAllSessions() {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("sessions", "readonly");
+      const req = tx.objectStore("sessions").getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(LocalDb.#wrapStorageError(req.error, "getAllSessions"));
+    });
+  }
+
+  static async getStorageStats() {
+    const cards = await this.getAllCards();
+    const db = await this.open();
+    const sessionCount = await new Promise((resolve) => {
+      try {
+        const tx = db.transaction("sessions", "readonly");
+        const store = tx.objectStore("sessions");
+        if (typeof store.count === "function") {
+          const req = store.count();
+          req.onsuccess = () => resolve(req.result || 0);
+          req.onerror = () => resolve(0);
+        } else {
+          const req = store.getAll();
+          req.onsuccess = () => resolve(req.result?.length || 0);
+          req.onerror = () => resolve(0);
+        }
+      } catch (_) {
+        resolve(0);
+      }
+    });
+
+    const personas = await this.getAllPersonas();
+    const directives = await this.getAllDirectives();
+
+    let storageEstimate = null;
+    if (typeof navigator !== "undefined" && navigator.storage?.estimate) {
+      try {
+        storageEstimate = await navigator.storage.estimate();
+      } catch (_) {}
+    }
+
+    return {
+      cardCount: cards.length,
+      sessionCount,
+      personaCount: personas.length,
+      directiveCount: directives.length,
+      usage: storageEstimate?.usage || 0,
+      quota: storageEstimate?.quota || 0,
+    };
+  }
+
+  static async exportAllData({ cookies = [] } = {}) {
+    const cards = await this.getAllCards();
+    const sessions = await this.getAllSessions();
+
+    const localData = {};
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith("vibe_rp")) {
+          localData[k] = localStorage.getItem(k);
+        }
+      }
+    } catch (_) {}
+
+    const sessionData = {};
+    if (typeof sessionStorage !== "undefined") {
+      try {
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const k = sessionStorage.key(i);
+          if (k && k.startsWith("vibe_rp")) {
+            sessionData[k] = sessionStorage.getItem(k);
+          }
+        }
+      } catch (_) {}
+    }
+
+    return {
+      format: "vibe-rp-full-backup",
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      data: {
+        indexedDb: {
+          cards,
+          sessions,
+        },
+        localStorage: localData,
+        sessionStorage: sessionData,
+        cookies: Array.isArray(cookies) ? cookies : [],
+      },
+    };
+  }
+
+  static async importAllData(payload, { mode = "merge" } = {}) {
+    if (!payload || typeof payload !== "object") {
+      throw new Error("Invalid backup: data is empty or not an object.");
+    }
+
+    if (payload.format === "vibe-rp-conversation") {
+      if (!Array.isArray(payload.messages) || !payload.messages.length) {
+        throw new Error("Legacy conversation export has no messages.");
+      }
+      const legacySession = {
+        id: `sess_import_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        title: payload.title || "Restored chat",
+        cardId: payload.cardId || "imported",
+        messages: payload.messages,
+        ledger: payload.ledger || "",
+        consumed: payload.consumed || 0,
+        updatedAt: Date.now(),
+      };
+      await this.saveSession(legacySession);
+      return {
+        ok: true,
+        cardsImported: 0,
+        sessionsImported: 1,
+        localStorageKeysImported: 0,
+        cookies: [],
+      };
+    }
+
+    const payloadData = payload.data || payload;
+    if (payload.format !== "vibe-rp-full-backup" || !payloadData) {
+      throw new Error("Invalid backup format: expected vibe-rp-full-backup.");
+    }
+
+    const { indexedDb: idbData = {}, localStorage: lsData = {}, sessionStorage: ssData = {}, cookies = [] } = payloadData;
+    const cards = Array.isArray(idbData.cards) ? idbData.cards : [];
+    const sessions = Array.isArray(idbData.sessions) ? idbData.sessions : [];
+
+    const db = await this.open();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(["cards", "sessions"], "readwrite");
+      const cardStore = tx.objectStore("cards");
+      const sessionStore = tx.objectStore("sessions");
+
+      if (mode === "replace") {
+        cardStore.clear();
+        sessionStore.clear();
+      }
+
+      for (const card of cards) {
+        if (card && card.id) cardStore.put(card);
+      }
+      for (const session of sessions) {
+        if (session && session.id) sessionStore.put(session);
+      }
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(LocalDb.#wrapStorageError(tx.error, "importAllData:idb"));
+    });
+
+    if (mode === "replace") {
+      try {
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith("vibe_rp")) keysToRemove.push(k);
+        }
+        for (const k of keysToRemove) localStorage.removeItem(k);
+      } catch (_) {}
+    }
+
+    let lsCount = 0;
+    if (lsData && typeof lsData === "object") {
+      try {
+        for (const [k, v] of Object.entries(lsData)) {
+          if (typeof v === "string") {
+            localStorage.setItem(k, v);
+            lsCount++;
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (ssData && typeof ssData === "object" && typeof sessionStorage !== "undefined") {
+      try {
+        for (const [k, v] of Object.entries(ssData)) {
+          if (typeof v === "string") sessionStorage.setItem(k, v);
+        }
+      } catch (_) {}
+    }
+
+    return {
+      ok: true,
+      cardsImported: cards.length,
+      sessionsImported: sessions.length,
+      localStorageKeysImported: lsCount,
+      cookies: Array.isArray(cookies) ? cookies : [],
+    };
+  }
 }
