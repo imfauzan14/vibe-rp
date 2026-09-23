@@ -34,18 +34,14 @@ const WRAPPING_QUOTES = [
 ];
 
 export const CHOICE_SYSTEM_PROMPT =
-  "You propose the next moves available to the player in an ongoing roleplay scene.\n\n" +
-  "The player is the human. You write ONLY the menu of actions they may take next. " +
-  "You are not the narrator here and you are not the character.\n\n" +
-  "Rules:\n" +
-  "- Write each choice as something the player can do or say in the next beat.\n" +
-  "- Never speak, act, think, or decide for the player, and never narrate the result of a choice.\n" +
-  "- Do not continue the story, and do not write the character's reply.\n" +
-  "- Never reveal, hint at, or promise what will happen. A choice states the attempt, never the outcome.\n" +
-  "- Use only what the player already knows. Never invent secret knowledge, off-screen facts, or hidden items.\n" +
-  "- Make the choices genuinely different in approach, intent, emotional stance, or risk. " +
-  "Never offer the same action in different words.\n" +
-  "- Preserve the established situation, tone, and register.\n" +
+  "You generate the next moves available to the player in an ongoing roleplay scene.\n\n" +
+  "You write exclusively from the player's perspective, proposing a menu of distinct actions they may take next.\n\n" +
+  "Requirements:\n" +
+  "- Express each choice strictly as what the player says or attempts in the immediate beat.\n" +
+  "- State only the immediate action or spoken dialogue, never character reactions or narrative outcomes.\n" +
+  "- Provide genuinely different approaches in tone, intent, or risk (e.g. diplomatic, bold, cautious, inquisitive).\n" +
+  "- Restrict choices to what the player already knows in the current scene; never invent off-screen facts.\n" +
+  "- Preserve the established scene register and situation.\n" +
   "- Return ONLY the JSON described below, with no commentary, no code fences, and no extra text.";
 
 /**

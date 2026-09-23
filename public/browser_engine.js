@@ -299,16 +299,13 @@ Use exactly these sections, omitting any that would be empty:
 - [Register, tense, and stylistic commitments the prose must keep.]
 
 Rules to guarantee factual canon and zero hallucination:
-- Preserve every proper noun exactly as written. Never rename, merge, or drop a character.
-- Preserve concrete numbers, colours, materials, inventory items, and wounds verbatim.
-- Record settled facts and physical truths only. Never infer unmentioned background or fabricate motivation.
+- Preserve verbatim: proper nouns, numbers, dates and time anchors, promises, inventory items, wounds, unresolved threads, and any text the character spoke verbatim. Never rename, merge, or drop a character.
+- Record settled facts and physical truths only. Never infer unmentioned background, fabricate motivation, or invent facts outside the transcript.
 - Fold dialogue into objective outcomes: record what became true, not banter.
 - Prefer concrete specifics over abstractions: "bronze key, bent at the bow" over "a key".
-- Never invent a fact that is not in the transcript.
 - Keep it concise and under ${SUMMARY_TARGET_WORDS} words. Cut atmospheric commentary before cutting facts.
 - Anything you do not carry into the new ledger is lost forever; the conversation record wins any conflict with the prior ledger.
-- Preserve verbatim: proper nouns, numbers, dates and time anchors, promises, unresolved threads, and any text the character spoke verbatim.
-- Anchor each event in time relative to the story's start (e.g. "earlier", "recently", "the night before").`
+- Anchor each event in time relative to the story's start (e.g. "earlier", "recently", "the night before").`;
 
 export const SUMMARY_UPDATE_PROMPT = `The transcript above continues the story. Merge it into the prior ledger.
 
@@ -316,12 +313,11 @@ Rules:
 - Keep every fact already in the prior ledger unless the transcript explicitly changes it.
 - Move resolved threads out of Threads; record how they resolved in Timeline.
 - Add new cast, places, and objects. Never drop or rename an existing one.
-- Preserve exact proper nouns, numbers, colours, and materials.
+- Preserve verbatim: proper nouns, numbers, dates and time anchors, promises, inventory items, wounds, unresolved threads, and any text the character spoke verbatim.
 - Never invent facts. Never continue the story.
 - Keep it under ${SUMMARY_UPDATE_TARGET_WORDS} words. Compress wording, never drop a fact.
 - Anything you do not carry into the new ledger is lost forever; the conversation record wins any conflict with the prior ledger.
-- Preserve verbatim: proper nouns, numbers, dates and time anchors, promises, unresolved threads, and any text the character spoke verbatim.
-- Anchor each event in time relative to the story's start (e.g. "earlier", "recently", "the night before").`
+- Anchor each event in time relative to the story's start (e.g. "earlier", "recently", "the night before").`;
 
 /** Rendered around a stored ledger on every send. Constant text, so it caches. */
 export const LEDGER_OPEN =
@@ -415,7 +411,14 @@ export function selectLorebookEntries(card, { budget = 1000, constantOnly = fals
     if (!constantOnly) {
       if (isConstant) continue;
       const keys = Array.isArray(entry.keys) ? entry.keys : [entry.keys];
-      const matched = keys.some((k) => k && lowerText.includes(String(k).toLowerCase()));
+      const matched = keys.some((k) => {
+        if (!k) return false;
+        const str = String(k).trim().toLowerCase();
+        if (!str) return false;
+        const escaped = str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const re = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, "iu");
+        return re.test(lowerText);
+      });
       if (!matched) continue;
     }
 
@@ -1046,9 +1049,10 @@ export class BrowserChatEngine {
       (fittedLedger ? `\n\n<prior-ledger>\n${fittedLedger}\n</prior-ledger>` : "") +
       `\n\n${prompt}`;
     const budget = this.#summaryBudget({ settings, transcript, previousLedger: fittedLedger, extraTokens });
+    const model = String(settings?.model || "").trim();
     return {
       body: {
-        model: String(settings?.model || "").trim(),
+        model,
         messages: [
           { role: "system", content: SUMMARY_SYSTEM_PROMPT },
           { role: "user", content: userContent },
@@ -1056,6 +1060,9 @@ export class BrowserChatEngine {
         stream: false,
         temperature: 0.1, // Near-zero temperature for strictly deterministic, hallucination-free factual extraction
         max_tokens: budget,
+        ...(settings?.reasoningEffort || /(?:o1|o3|r1|reasoner|thinking)/i.test(model)
+          ? { reasoning_effort: "low" }
+          : {}),
       },
       budget,
     };
@@ -1835,12 +1842,16 @@ export class BrowserChatEngine {
     const request = planChoiceRequest({ card, session, settings: activeSettings, persona, count, charName, playerName });
     const { base, headers } = this.#resolveEndpoint(activeSettings);
 
+    const choiceModel = String(activeSettings.choiceModel || activeSettings.model || "").trim();
     // A choice request is a cheap, one-off extraction-like call: `stream` is false.
     const body = {
-      model: String(activeSettings.choiceModel || activeSettings.model || "").trim(),
+      model: choiceModel,
       messages: request.payload,
       stream: false,
       max_tokens: request.outputTokens,
+      ...(activeSettings?.reasoningEffort || /(?:o1|o3|r1|reasoner|thinking)/i.test(choiceModel)
+        ? { reasoning_effort: "low" }
+        : {}),
     };
     if (typeof activeSettings.temperature === "number") {
       // Slightly cooler than the RP default: choices want variety, not the full

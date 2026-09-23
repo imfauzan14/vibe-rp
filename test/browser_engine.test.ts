@@ -136,4 +136,42 @@ describe("Browser-First Chat Engine & In-UI Config", () => {
     expect(oldAssistant.content).toBe("We head north.");
     expect(oldAssistant.content).not.toContain("<think>");
   });
+
+  test("10. selectLorebookEntries uses word-boundary matching to prevent substring false-positives", () => {
+    const card = {
+      data: {
+        name: "Elena",
+        character_book: {
+          entries: [
+            { keys: ["sword"], content: "Blade entry.", constant: false, enabled: true },
+            { keys: ["royal archivist"], content: "Archivist entry.", constant: false, enabled: true },
+          ],
+        },
+      },
+    };
+    // Substring match should NOT trigger (e.g. "swordsman" does not trigger "sword")
+    const planNoMatch = BrowserChatEngine.planRequest({
+      card,
+      session: { messages: [{ role: "user", content: "He is a swordsman." }] },
+      settings: {},
+    });
+    expect(planNoMatch.postHistory).not.toContain("Blade entry.");
+
+    // Word boundary matches should trigger
+    const planMatchPunctuation = BrowserChatEngine.planRequest({
+      card,
+      session: { messages: [{ role: "user", content: "Draw your sword!" }] },
+      settings: {},
+    });
+    expect(planMatchPunctuation.postHistory).toContain("Blade entry.");
+
+    // Multi-word key match
+    const planMultiWord = BrowserChatEngine.planRequest({
+      card,
+      session: { messages: [{ role: "user", content: "Where is the Royal Archivist today?" }] },
+      settings: {},
+    });
+    expect(planMultiWord.postHistory).toContain("Archivist entry.");
+  });
 });
+
