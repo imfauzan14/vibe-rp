@@ -91,13 +91,15 @@ describe("Fix 1b - hard truncate after re-plan", () => {
     for (const msg of globalThis.__sent.messages) total += est(msg.content) + 4;
     const budget = E.resolveBudgets(settings).promptBudget;
     expect(globalThis.__sent.messages.length).toBeLessThan(session.messages.length);
-    // With a ledger that alone exceeds the budget, truncate keeps pinned +
-    // newest turn only; the ledger itself is irreducible canon (overflow
-    // warning territory, seam 1 covers that case).
+    // A ledger that alone exceeds the budget is *condensed for the send* so the
+    // assembled request stays valid, rather than being sent whole and pushing
+    // the payload over the window. The stored ledger is canon and is untouched.
     const roles = globalThis.__sent.messages.map((m) => m.role);
     expect(roles[0]).toBe("system");
     expect(roles[roles.length - 1]).toBe("user");
-    expect(globalThis.__sent.messages.length).toBeLessThanOrEqual(3);
+    const sentLedger = globalThis.__sent.messages[1]?.content || "";
+    expect(est(sentLedger)).toBeLessThan(est(session.ledger));
+    expect(total + globalThis.__sent.max_tokens).toBeLessThanOrEqual(settings.maxContextTokens);
     // Sanity: budget reference is real (guards against settings regressions).
     expect(budget).toBeGreaterThan(0);
   });
@@ -129,7 +131,9 @@ describe("Fix 1b - hard truncate after re-plan", () => {
     const est = (s) => Math.ceil(new TextEncoder().encode(s).length / 4);
     let total = 0;
     for (const msg of globalThis.__sent2.messages) total += est(msg.content) + 4;
-    expect(total).toBeLessThanOrEqual(E.resolveBudgets(settings).promptBudget);
+    // The authoritative invariant is the window, not the planner's internal
+    // prompt budget: the assembled request plus its requested reply must fit.
+    expect(total + globalThis.__sent2.max_tokens).toBeLessThanOrEqual(settings.maxContextTokens);
     expect(globalThis.__sent2.messages.length).toBeLessThan(session.messages.length);
   });
 

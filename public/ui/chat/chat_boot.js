@@ -384,32 +384,39 @@
     const formatK = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 
     function updateContextStats() {
-      const budgets = BrowserChatEngine.resolveBudgets(controller.settings);
-      const systemPrompt = BrowserChatEngine.formatSystemPrompt(
-        controller.activeCard,
-        controller.currentPersona,
-        { ...controller.settings, agentsContract: controller.currentDirective?.content || controller.settings.agentsContract },
-      );
       const sess = controller.activeSession;
-      const consumed = Math.max(1, Number(sess?.consumed) || 1);
-      const plan = BrowserChatEngine.planContext({
-        systemPrompt,
-        messages: sess?.messages || [],
-        ledger: sess?.ledger || "",
-        consumed,
+      const request = BrowserChatEngine.describeRequest({
+        card: controller.activeCard,
+        session: sess || { messages: [], ledger: "", consumed: 1 },
         settings: controller.settings,
+        persona: controller.currentPersona,
+        agentsContract: controller.currentDirective?.content || controller.settings.agentsContract,
       });
-      const pct = Math.min(999, Math.round((plan.promptTokens / Math.max(1, plan.budget)) * 100));
-
-
-      const ledgerMark = sess?.ledger ? "yes" : "no";
+      const b = request.breakdown;
+      const window = request.contextWindow;
+      const used = request.totalTokens;
+      const pct = Math.min(100, Math.round((used / Math.max(1, window)) * 100));
+      const row = (key, value) =>
+        `<div class="rp-ledger__row"><span class="rp-ledger__key">${key}</span><span class="rp-ledger__value">${value}</span></div>`;
+      const excluded = request.excludedSections
+        .map((id) => (id === "examples" ? "dialogue examples" : id === "constantLore" ? "constant world lore" : id))
+        .join(", ");
       contextLedger.innerHTML = `
-        <div class="rp-ledger__row"><span class="rp-ledger__key">Prompt size</span><span class="rp-ledger__value">${formatK(plan.promptTokens)} of ${formatK(plan.budget)} tokens</span></div>
+        ${row("Effective context", `${formatK(window)} tokens`)}
+        ${row("Required static", `${formatK(b.requiredStatic)} tokens`)}
+        ${row("Optional static", `${formatK(b.optionalStatic)} tokens`)}
+        ${row("Persona", `${formatK(b.persona)} tokens`)}
+        ${row("Lore / guidance", `${formatK(b.lore)} tokens`)}
+        ${row("Continuity ledger", `${formatK(b.ledger)} tokens${request.ledgerCondensed ? " (condensed)" : ""}`)}
+        ${row("History", `${formatK(b.history)} tokens`)}
+        ${row("Current input", `${formatK(b.currentInput)} tokens`)}
+        ${row("Output allowance", `${formatK(b.output)} tokens`)}
+        ${row("Safety margin", `${formatK(b.safetyMargin)} tokens`)}
         <div class="rp-chat__ledger-meter"><div class="rp-ledger__meter"><span style="width:${pct}%"></span></div></div>
-        <div class="rp-ledger__row"><span class="rp-ledger__key">Reserved for reply</span><span class="rp-ledger__value">${formatK(budgets.reservedOutput)} tokens</span></div>
-        <div class="rp-ledger__row"><span class="rp-ledger__key">Model window</span><span class="rp-ledger__value">${formatK(budgets.contextWindow)} tokens</span></div>
-        <div class="rp-ledger__row"><span class="rp-ledger__key">Story summary kept</span><span class="rp-ledger__value">${ledgerMark}</span></div>
-        <div class="rp-ledger__row"><span class="rp-ledger__key">Messages</span><span class="rp-ledger__value">${(sess?.messages || []).length}</span></div>`;
+        ${row("Used", `${formatK(used)} of ${formatK(window)} tokens`)}
+        ${row("Remaining", `${formatK(b.remaining)} tokens`)}
+        ${row("Excluded / degraded", excluded || "none")}
+        ${request.impossible ? row("Status", "request exceeds the window: raise the context window or shrink the preset") : ""}`;
     }
 
     // Ledger sheet controls.

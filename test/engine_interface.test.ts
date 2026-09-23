@@ -7,6 +7,8 @@ describe("BrowserChatEngine public interface", () => {
     "streamTurn",
     "formatSystemPrompt",
     "planContext",
+    "planRequest",
+    "describeRequest",
     "assembleMessages",
     "resolveBudgets",
     "buildRequestBody",

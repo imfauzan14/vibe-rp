@@ -135,9 +135,17 @@ describe("Compaction stress - long-run stability", () => {
     // than one early in the run. Unbounded growth would fail this outright.
     const firstBounded = r.snapshot.find((row) => row.ledgerTokens > 0);
     expect(last.ledgerTokens).toBeLessThanOrEqual(Math.max(firstBounded.ledgerTokens, 20000));
-    // The ledger is canon and is preserved rather than silently truncated, so
-    // the persistent overflow is reported to the user exactly once.
-    expect(notices.filter((n) => n.includes("exceed the configured prompt budget")).length).toBe(1);
+    // The stored ledger is canon and is preserved rather than silently
+    // truncated. It no longer forces an over-window request: the allocator
+    // condenses only the *bytes sent* to fit, and tells the user it did so
+    // exactly once on the transition. (Before the universal allocator the only
+    // remedy was to send the over-window request and warn about it.)
+    expect(notices.filter((n) => n.includes("condensed to fit")).length).toBe(1);
+    // Every request the adversarial ledger produced is still valid: the derived
+    // ledger is condensed for the send, so nothing exceeds the window.
+    for (const row of r.snapshot) {
+      expect(row.payloadTokens + row.maxTokens).toBeLessThanOrEqual(BASE.maxContextTokens);
+    }
     // No request ever asks for a negative or zero allowance, and the reply
     // reservation is always a positive number.
     for (const row of r.snapshot) {

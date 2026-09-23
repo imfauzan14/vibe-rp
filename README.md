@@ -39,7 +39,7 @@ bun start        # serve.js, http://localhost:3000
 Run the tests:
 
 ```bash
-bun test test/   # 363 tests across 24 files
+bun test test/   # 390 tests across 28 files
 ```
 
 `bun run build` is a no-op; the client ships as static files.
@@ -76,6 +76,19 @@ The engine (`public/browser_engine.js`) assembles every request under four rules
 
 Folds target ~60% of the tail budget, leaving headroom so many turns pass between compactions. `<thought>` blocks are shaken from older history with tight bounds so the re-bill stays cheap. Cache routing: `prompt_cache_key` is sent on generation requests only (when the user sets a cache key), never on one-off fold requests, which must not pay the cache-write premium.
 
+### Universal context allocation
+
+The engine does not think in terms of "how much history fits in an internal prompt budget". It builds every candidate for one request, measures it, and asks the single allocator (`allocateContext`) what the largest *valid* request is right now:
+
+- **Required content is protected.** The craft contract, character identity (name, core directives, description, personality, scenario), the user persona, the cognitive-layer block, the current user turn, and writing guidance are never dropped.
+- **Optional content yields first.** Example dialogue and constant world lore are *degradable*; when the request would otherwise not fit, they are removed before anything required is touched. Examples yield before world lore.
+- **The reply is a ceiling, not a reservation.** `maxTokens` is granted in full whenever the window leaves room for it, and reduced only down to a viable floor when required content crowds it out.
+- **History occupies whatever remains**, after required content, the reply and the degradable sections have been fitted.
+- **The final request is measured after assembly.** A derived ledger larger than the window is condensed for the send (the stored ledger and transcript are untouched) rather than being sent over-window. Nothing is appended after allocation.
+- **Only a genuinely impossible request is impossible.** If the required content plus a minimum reply cannot fit, the request is still sent and the user is told, naming the component that is crowding the window out.
+
+A large preset consumes real context and reduces history; it is a budgeting condition, not a failure. A small preset leaves room for more history. A larger configured window buys more usable content. There is no hardcoded "64K mode".
+
 ## Routes
 
 - `/` — character library and settings modal
@@ -110,7 +123,7 @@ public/
   manifest.webmanifest  PWA manifest
 serve.js                Bun static server: SPA routing plus the security-header layer
 vercel.json             Deployment config mirroring serve.js routing, rewrites, and headers
-test/                   Bun test suite (18 files)
+test/                   Bun test suite (28 files)
 package.json            Scripts and metadata
 ```
 
@@ -122,7 +135,7 @@ Card URLs are accepted directly too: open **Import Card** and paste a JSON/JSONC
 
 ## Testing
 
-Bun's native test runner, 363 tests across 24 files under `test/`: engine interface contract, compaction seam edges (fold headroom, boundary alignment, shake bounds, adaptive summary budget and its bounded retry), long-run compaction stress (100-fold drift, ledger hard bound, canonical-transcript preservation), large-static-preset request accounting (the full-context invariant through the real `streamTurn` seam), responsive layout guards (phone-width filter bar, preset-row badge, message speaker truncation, long-name clamping, the touch artwork chip), settings-surface unification (both pages mount one modal; shared CSS home; cache key and session-import gating; the gold character name), core hardening (null-chunk suppression, degraded-fold notices, provider errors inside a 200 SSE body), session controller behavior against injected fakes (no DOM, cancellation, rollback, message forking), local-database hardening (the v1 to v2 in-place upgrade, single-transaction card deletion, typed quota and blocked errors), preset stores, preset resolution and defaults, message formatting, universal macro substitution, adaptive context limits, the HTML-to-markup converter for imported character cards (entity decoding, attribute stripping, idempotence), remote/direct-URL card import (URL validation, API mapping, content sniffing, stripped-definition fallbacks, session token exchange and proactive refresh), module seams, and unified singleton contracts.
+Bun's native test runner, 390 tests across 28 files under `test/`: engine interface contract, compaction seam edges (fold headroom, boundary alignment, shake bounds, adaptive summary budget and its bounded retry), long-run compaction stress (100-fold drift, ledger hard bound, canonical-transcript preservation), large-static-preset request accounting (the full-context invariant through the real `streamTurn` seam), the universal context allocator (no false overflow for a request that fits, static-section degradation, final-request measurement, provider context-overflow adaptation, randomized allocation properties, 500/1000-turn long runs), the context inspector (its breakdown sums to and matches the payload `streamTurn` sends), responsive layout guards (phone-width filter bar, preset-row badge, message speaker truncation, long-name clamping, the touch artwork chip), settings-surface unification (both pages mount one modal; shared CSS home; cache key and session-import gating; the gold character name), core hardening (null-chunk suppression, degraded-fold notices, provider errors inside a 200 SSE body), session controller behavior against injected fakes (no DOM, cancellation, rollback, message forking), local-database hardening (the v1 to v2 in-place upgrade, single-transaction card deletion, typed quota and blocked errors), preset stores, preset resolution and defaults, message formatting, universal macro substitution, adaptive context limits, the HTML-to-markup converter for imported character cards (entity decoding, attribute stripping, idempotence), remote/direct-URL card import (URL validation, API mapping, content sniffing, stripped-definition fallbacks, session token exchange and proactive refresh), module seams, and unified singleton contracts.
 
 ```bash
 bun test test/

@@ -64,6 +64,27 @@ The engine enforces cache-friendly context assembly:
 3. **Summarize, never drop**: rolling ledger via LLM summary, or a deterministic extractive digest when the summarizer is unreachable
 4. **Cache-aware timing**: compaction only when the suffix it invalidates is already cheap to re-send
 
+### Universal Context Allocation
+
+One allocator (`allocateContext` in `browser_engine.js`) owns the whole request
+budget. `planRequest` builds every candidate, classifies it, measures it, runs
+the allocation, plans history against the granted capacity, assembles the
+payload, and measures the *final* request. `streamTurn` calls `planRequest` to
+send; `describeRequest` calls it to power the context inspector, so the two can
+never disagree.
+
+Content is classified by semantics, not by an arbitrary number:
+
+- **Required**: craft contract, character name/core directives/description/personality/scenario, user persona, cognitive-layer block, the current user turn, writing guidance. Never dropped.
+- **Degradable**: example dialogue and constant world lore. Removed only when the request would otherwise not fit; examples yield before world lore.
+- **Dynamic**: history, which takes whatever capacity remains after required content, the reply and the degradable sections.
+- **Output**: `maxTokens` is a ceiling granted in full whenever room allows, reduced to a viable floor only under pressure.
+
+A derived ledger larger than the window is condensed *for the send* (stored
+ledger and transcript untouched). A request is reported as impossible only when
+the measured request actually exceeds the window. The `promptBudget` field of
+`resolveBudgets` is an internal planning figure; it is never the validity test.
+
 ## Key Directories
 
 - **`public/`**: All frontend code, served statically
@@ -208,7 +229,7 @@ bun test test/
 
 ### Stats
 
-363 tests, 2228 expect() calls, 24 files (measured with `bun test test/`).
+390 tests, 8674 expect() calls, 28 files (measured with `bun test test/`).
 
 ### Existing Test Files
 

@@ -72,6 +72,12 @@ export const TOKEN_SAFETY_MARGIN = 512;
 // output ceiling close to the whole window.
 export const MIN_INPUT_HEADROOM = 512;
 
+// The smallest reply the engine will ever request. Below this a turn is not
+// worth sending; the request is reported as impossible instead. This is a floor
+// on the *output allowance only* — it is never a floor on the input, which is
+// what required content actually needs.
+export const MIN_OUTPUT_TOKENS = 256;
+
 /**
  * Adaptive estimator safety allowance for a generation request.
  *
@@ -282,6 +288,247 @@ export const LEDGER_OPEN =
   "The story so far, in ledger form. This is settled continuity: build on it and never contradict it.\n\n<ledger>\n";
 export const LEDGER_CLOSE = "\n</ledger>";
 
+// Token allowance for the ledger's own framing (the open/close wrapper plus one
+// message's framing overhead). Charged wherever the ledger is measured, so the
+// planner, the truncator and the allocator all count the same bytes.
+export const LEDGER_FRAMING_TOKENS = estimateTokens(LEDGER_OPEN + LEDGER_CLOSE) + 4;
+
+/**
+ * The one implementation of the configured-budget split.
+ *
+ * `maxContextTokens` is the total capacity of one request; `maxTokens` is a
+ * *ceiling* on the reply, not a share of the window. This reserves the reply up
+ * to a minimum input floor and hands the rest to the prompt, so a larger window
+ * buys usable input rather than a proportionally larger reserve. It is
+ * module-level (not a class static) so the section builder and the public
+ * `BrowserChatEngine.resolveBudgets` seam share exactly one formula.
+ */
+export function resolveContextBudgets(settings = {}) {
+  const contextWindow = Math.max(2048, Number(settings.maxContextTokens) || 16384);
+  const maxOutput = Math.max(MIN_OUTPUT_TOKENS, Number(settings.maxTokens) || 1200);
+  const safetyMargin = resolveSafetyMargin(contextWindow);
+  // The output allowance may take everything above a minimal input floor; it
+  // is never halved merely because the window is large.
+  const reservedOutput = Math.max(
+    MIN_OUTPUT_TOKENS,
+    Math.min(maxOutput, contextWindow - safetyMargin - MIN_INPUT_HEADROOM)
+  );
+  const promptBudget = Math.max(512, contextWindow - reservedOutput - safetyMargin);
+  const loreBudget = Math.min(4000, Math.max(512, Math.floor(promptBudget * 0.12)));
+  // The degraded digest's size scales with the prompt budget, so a fallback
+  // ledger can never be larger than the transcript space it replaces — not
+  // even on a tiny window, where the old 3500-char floor alone could exceed
+  // the whole prompt budget. It is an extractive, lossy digest: it clips
+  // messages and the total, and the stored transcript is never touched.
+  const fallbackMaxChars = Math.min(16000, Math.max(1200, Math.floor(promptBudget * 3.5)));
+  return {
+    contextWindow,
+    maxOutput,
+    reservedOutput,
+    safetyMargin,
+    promptBudget,
+    loreBudget,
+    fallbackMaxChars,
+  };
+}
+
+/**
+ * Substitutes card-local placeholders in user-authored card text. Supports
+ * `{{char}}`/`{{user}}` case-insensitively plus single-bracket and angle-bracket
+ * aliases, mirroring `substitutePlaceholders` in message_format.js.
+ */
+export function substituteCardPlaceholders(text, card, persona) {
+  if (!text) return "";
+  const cName = card ? card.data?.name || card.name || "Character" : "Character";
+  const uName = persona && persona.name ? persona.name : "User";
+  return String(text)
+    .replace(/(?:\{\{|\{|<)\s*(?:char|bot)(?:_?name)?\s*(?:\}\}|\}|>)/gi, () => cName)
+    .replace(/(?:\{\{|\{|<)\s*user(?:_?name)?\s*(?:\}\}|\}|>)/gi, () => uName);
+}
+
+/**
+ * Selects lorebook entries atomically up to budget without mid-entry slicing.
+ * Constant entries (always-on) are candidates for the stable prefix; keyword
+ * entries trigger dynamically against recent messages and ride with the tail.
+ */
+export function selectLorebookEntries(card, { budget = 1000, constantOnly = false, recentText = "" } = {}) {
+  if (!card) return [];
+  const book = card.data?.character_book || card.character_book;
+  const rawEntries = book?.entries;
+  const entries = Array.isArray(rawEntries)
+    ? rawEntries
+    : rawEntries && typeof rawEntries === "object"
+      ? Object.values(rawEntries)
+      : [];
+  if (!entries.length) return [];
+
+  const active = entries.filter((e) => e && e.enabled !== false && e.content);
+  active.sort((a, b) => (b.priority ?? b.insertion_order ?? 0) - (a.priority ?? a.insertion_order ?? 0));
+
+  const lowerText = recentText ? String(recentText).toLowerCase() : "";
+  let usedTokens = 0;
+  const selected = [];
+
+  for (const entry of active) {
+    const isConstant = entry.constant === true || !entry.keys || (Array.isArray(entry.keys) && entry.keys.length === 0);
+    if (constantOnly && !isConstant) continue;
+    if (!constantOnly) {
+      if (isConstant) continue;
+      const keys = Array.isArray(entry.keys) ? entry.keys : [entry.keys];
+      const matched = keys.some((k) => k && lowerText.includes(String(k).toLowerCase()));
+      if (!matched) continue;
+    }
+
+    const cost = estimateTokens(entry.content) + 10;
+    if (usedTokens + cost <= budget) {
+      selected.push(entry);
+      usedTokens += cost;
+    }
+  }
+  return selected;
+}
+
+/**
+ * The stable prefix as individually measurable, individually classifiable
+ * sections, in render order.
+ *
+ * Classification is derived from the semantics of each field, not from an
+ * arbitrary priority number:
+ *   - REQUIRED — the craft contract, character identity (name, core
+ *     directives, description, personality, scenario), the user persona, and
+ *     the cognitive-layer contract. These define who is speaking and must
+ *     never be silently truncated.
+ *   - DEGRADABLE — example dialogue and always-on world lore. Both are
+ *     reference material whose job the live conversation takes over as it
+ *     grows, so they are the first to yield when the request would otherwise
+ *     not fit. `mes_example` yields before world lore: dialogue style is
+ *     re-established by the transcript, world facts are not.
+ *
+ * `formatSystemPrompt` renders the sections it is given; the allocator decides
+ * which degradable ones survive.
+ */
+export function buildSystemSections(card, persona, settings = {}) {
+  const sub = (t) => substituteCardPlaceholders(t, card, persona);
+  const sections = [];
+
+  const contract = settings && settings.agentsContract ? sub(String(settings.agentsContract).trim()) : "";
+  if (contract) sections.push({ id: "contract", text: contract, required: true, priority: 1000 });
+
+  const cName = card ? card.data?.name || card.name || "Character" : "Character";
+  sections.push({ id: "character", text: `### CHARACTER IN SCENE: ${cName}`, required: true, priority: 1000 });
+
+  const cardSystemPrompt = sub(card ? card.data?.system_prompt || card.system_prompt : "");
+  if (cardSystemPrompt) {
+    sections.push({ id: "cardDirectives", text: `[Character Core Directives:\n${cardSystemPrompt}]`, required: true, priority: 950 });
+  }
+  const desc = sub(card ? card.data?.description || card.description : "");
+  if (desc) sections.push({ id: "description", text: `[Description: ${desc}]`, required: true, priority: 950 });
+  const pers = sub(card ? card.data?.personality || card.personality : "");
+  if (pers) sections.push({ id: "personality", text: `[Personality: ${pers}]`, required: true, priority: 950 });
+  const scen = sub(card ? card.data?.scenario || card.scenario : "");
+  if (scen) sections.push({ id: "scenario", text: `[Scenario: ${scen}]`, required: true, priority: 950 });
+
+  const mesEx = sub(card ? card.data?.mes_example || card.mes_example : "");
+  if (mesEx) sections.push({ id: "examples", text: `[Dialogue Examples:\n${mesEx}]`, required: false, priority: 10 });
+
+  // Ingest constant lorebook entries into the stable prefix (atomic, cache-friendly)
+  const { loreBudget } = resolveContextBudgets(settings);
+  const constantLore = selectLorebookEntries(card, { budget: loreBudget, constantOnly: true });
+  if (constantLore.length > 0) {
+    const loreContent = constantLore.map((e) => `[World Lore: ${sub(e.content)}]`).join("\n\n");
+    sections.push({ id: "constantLore", text: `### CONSTANT WORLD LORE\n${loreContent}`, required: false, priority: 20 });
+  }
+
+  if (persona && persona.name) {
+    const pName = sub(persona.name);
+    const pDesc = sub(persona.description || "");
+    const template = persona.template ? `\n${sub(String(persona.template).trim())}` : "";
+    sections.push({ id: "persona", text: `[User Persona: ${pName}]\n${pDesc}${template}`, required: true, priority: 950 });
+  }
+
+  if (settings && settings.enableSubagentThoughts !== false) {
+    sections.push({
+      id: "cognitive",
+      required: true,
+      priority: 900,
+      text: `### SUBAGENT COGNITIVE LAYER
+Before outputting narrative prose or spoken dialogue, formulate an internal consciousness scratchpad in <thought character="${cName}"> ... </thought> (or the active character/GM in dynamic scenes).
+- Hidden desire, fear, or immediate objective.
+- Emotional impression of the user's latest act.
+- Pacing or tactical steering for the response.
+Write raw, immediate consciousness. Never use em dashes or generic AI cliches.
+After the thought block, output the public prose and dialogue.`,
+    });
+  }
+
+  return sections;
+}
+
+/**
+ * The one allocation decision for a request.
+ *
+ * Everything the request must send is classified before anything is sized:
+ * `requiredTokens` is the irreducible content (protected static sections plus
+ * the current turn and any always-sent guidance), and `optionalItems` are the
+ * degradable sections, each already measured.
+ *
+ * The reply is a ceiling, not a reservation. It is granted in full whenever the
+ * window leaves room for it above the required content and the safety margin,
+ * and it is reduced only down to `minOutput` when the required content crowds
+ * it out. Optional content is then fitted by descending priority into whatever
+ * input capacity remains. `feasible` is the true impossibility test: the
+ * required content plus the smallest viable reply plus the margin cannot fit
+ * the window at all.
+ *
+ * Pure and dependency-free, so the policy is testable in isolation and the same
+ * decision is reachable from the planner and the final-request validator.
+ */
+export function allocateContext({
+  contextWindow = 0,
+  desiredOutput = MIN_OUTPUT_TOKENS,
+  safetyMargin = 0,
+  minOutput = MIN_OUTPUT_TOKENS,
+  requiredTokens = 0,
+  optionalItems = [],
+} = {}) {
+  const window = Math.max(0, Number(contextWindow) || 0);
+  const margin = Math.max(0, Number(safetyMargin) || 0);
+  const floor = Math.max(1, Number(minOutput) || MIN_OUTPUT_TOKENS);
+  const desired = Math.max(floor, Number(desiredOutput) || floor);
+  const required = Math.max(0, Number(requiredTokens) || 0);
+
+  const outputCeiling = window - margin - required;
+  const output = Math.max(floor, Math.min(desired, outputCeiling));
+  const inputBudget = Math.max(0, window - margin - output);
+  const feasible = required + floor + margin <= window;
+
+  let remaining = Math.max(0, inputBudget - required);
+  const ordered = [...optionalItems].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+  const included = [];
+  const excluded = [];
+  for (const item of ordered) {
+    const tokens = Math.max(0, Number(item.tokens) || 0);
+    if (tokens <= remaining) {
+      included.push(item);
+      remaining -= tokens;
+    } else {
+      excluded.push(item);
+    }
+  }
+
+  const optionalTokens = included.reduce((n, i) => n + Math.max(0, Number(i.tokens) || 0), 0);
+  return {
+    output,
+    inputBudget,
+    requiredTokens: required,
+    optionalTokens,
+    historyBudget: remaining,
+    included,
+    excluded,
+    feasible,
+  };
+}
+
 export class BrowserChatEngine {
   // Block 0: the stable prefix
 
@@ -289,113 +536,26 @@ export class BrowserChatEngine {
    * Assembled once per session and reused byte-for-byte thereafter. Per-turn
    * values are deliberately excluded: a timestamp or counter here would
    * invalidate the provider's cached prefix on every single request.
+   *
+   * Renders every section, which is byte-identical to the historical prompt.
+   * Degradation is the allocator's decision, made against the measured
+   * sections in `planRequest`; this entry point is the un-degraded rendering.
    */
   static formatSystemPrompt(card, persona, settings) {
-    const parts = [];
-
-    const sub = (t) => this.#substitutePlaceholders(t, card, persona);
-    const contract = settings && settings.agentsContract ? sub(String(settings.agentsContract).trim()) : "";
-    if (contract) parts.push(contract);
-
-    const cName = card ? card.data?.name || card.name || "Character" : "Character";
-    parts.push(`### CHARACTER IN SCENE: ${cName}`);
-    // Card-local placeholders are resolved here so the model never sees a raw
-    // `{{user}}`/`{{char}}`. The substitution depends only on the card and the
-    // active persona, both session-scoped, so the assembled prefix stays
-    // byte-stable for a given session and the provider cache still holds.
-    const desc = sub(card ? card.data?.description || card.description : "");
-    const pers = sub(card ? card.data?.personality || card.personality : "");
-    const scen = sub(card ? card.data?.scenario || card.scenario : "");
-    const mesEx = sub(card ? card.data?.mes_example || card.mes_example : "");
-    const cardSystemPrompt = sub(card ? card.data?.system_prompt || card.system_prompt : "");
-    if (cardSystemPrompt) parts.push(`[Character Core Directives:\n${cardSystemPrompt}]`);
-    if (desc) parts.push(`[Description: ${desc}]`);
-    if (pers) parts.push(`[Personality: ${pers}]`);
-    if (scen) parts.push(`[Scenario: ${scen}]`);
-    if (mesEx) parts.push(`[Dialogue Examples:\n${mesEx}]`);
-
-    // Ingest constant lorebook entries into Block 0 (atomic, cache-friendly)
-    const { loreBudget } = this.resolveBudgets(settings);
-    const constantLore = this.#selectLorebookEntries(card, { budget: loreBudget, constantOnly: true });
-    if (constantLore.length > 0) {
-      const loreContent = constantLore.map((e) => `[World Lore: ${sub(e.content)}]`).join("\n\n");
-      parts.push(`### CONSTANT WORLD LORE\n${loreContent}`);
-    }
-
-    if (persona && persona.name) {
-      const pName = sub(persona.name);
-      const pDesc = sub(persona.description || "");
-      const template = persona.template ? `\n${sub(String(persona.template).trim())}` : "";
-      parts.push(`[User Persona: ${pName}]\n${pDesc}${template}`);
-    }
-
-    if (settings && settings.enableSubagentThoughts !== false) {
-      parts.push(`### SUBAGENT COGNITIVE LAYER
-Before outputting narrative prose or spoken dialogue, formulate an internal consciousness scratchpad in <thought character="${cName}"> ... </thought> (or the active character/GM in dynamic scenes).
-- Hidden desire, fear, or immediate objective.
-- Emotional impression of the user's latest act.
-- Pacing or tactical steering for the response.
-Write raw, immediate consciousness. Never use em dashes or generic AI cliches.
-After the thought block, output the public prose and dialogue.`);
-    }
-
-    return parts.join("\n\n").trim();
+    return buildSystemSections(card, persona, settings)
+      .map((s) => s.text)
+      .join("\n\n")
+      .trim();
   }
 
-  /**
-   * Selects lorebook entries atomically up to budget without mid-entry slicing.
-   * Constant entries (always-on) go to Block 0 system prompt; keyword entries
-   * trigger dynamically against recent messages and go to the tail.
-   */
-  static #selectLorebookEntries(card, { budget = 1000, constantOnly = false, recentText = "" } = {}) {
-    if (!card) return [];
-    const book = card.data?.character_book || card.character_book;
-    const rawEntries = book?.entries;
-    const entries = Array.isArray(rawEntries)
-      ? rawEntries
-      : rawEntries && typeof rawEntries === "object"
-        ? Object.values(rawEntries)
-        : [];
-    if (!entries.length) return [];
-
-    const active = entries.filter((e) => e && e.enabled !== false && e.content);
-    active.sort((a, b) => (b.priority ?? b.insertion_order ?? 0) - (a.priority ?? a.insertion_order ?? 0));
-
-    const lowerText = recentText ? String(recentText).toLowerCase() : "";
-    let usedTokens = 0;
-    const selected = [];
-
-    for (const entry of active) {
-      const isConstant = entry.constant === true || !entry.keys || (Array.isArray(entry.keys) && entry.keys.length === 0);
-      if (constantOnly && !isConstant) continue;
-      if (!constantOnly) {
-        if (isConstant) continue;
-        const keys = Array.isArray(entry.keys) ? entry.keys : [entry.keys];
-        const matched = keys.some((k) => k && lowerText.includes(String(k).toLowerCase()));
-        if (!matched) continue;
-      }
-
-      const cost = estimateTokens(entry.content) + 10;
-      if (usedTokens + cost <= budget) {
-        selected.push(entry);
-        usedTokens += cost;
-      }
-    }
-    return selected;
+  /** @see selectLorebookEntries */
+  static #selectLorebookEntries(card, options) {
+    return selectLorebookEntries(card, options);
   }
 
-  /**
-   * Substitutes card-local placeholders in user-authored card text. Supports
-   * `{{char}}`/`{{user}}` case-insensitively plus single-bracket and angle-bracket
-   * aliases, mirroring `substitutePlaceholders` in message_format.js.
-   */
+  /** @see substituteCardPlaceholders */
   static #substitutePlaceholders(text, card, persona) {
-    if (!text) return "";
-    const cName = card ? card.data?.name || card.name || "Character" : "Character";
-    const uName = persona && persona.name ? persona.name : "User";
-    return String(text)
-      .replace(/(?:\{\{|\{|<)\s*(?:char|bot)(?:_?name)?\s*(?:\}\}|\}|>)/gi, () => cName)
-      .replace(/(?:\{\{|\{|<)\s*user(?:_?name)?\s*(?:\}\}|\}|>)/gi, () => uName);
+    return substituteCardPlaceholders(text, card, persona);
   }
 
   // Thought shaking
@@ -474,32 +634,7 @@ After the thought block, output the public prose and dialogue.`);
    * `safetyMargin`, not eliminated.
    */
   static resolveBudgets(settings = {}) {
-    const contextWindow = Math.max(2048, Number(settings.maxContextTokens) || 16384);
-    const maxOutput = Math.max(256, Number(settings.maxTokens) || 1200);
-    const safetyMargin = resolveSafetyMargin(contextWindow);
-    // The output allowance may take everything above a minimal input floor; it
-    // is never halved merely because the window is large.
-    const reservedOutput = Math.max(
-      256,
-      Math.min(maxOutput, contextWindow - safetyMargin - MIN_INPUT_HEADROOM)
-    );
-    const promptBudget = Math.max(512, contextWindow - reservedOutput - safetyMargin);
-    const loreBudget = Math.min(4000, Math.max(512, Math.floor(promptBudget * 0.12)));
-    // The degraded digest's size scales with the prompt budget, so a fallback
-    // ledger can never be larger than the transcript space it replaces — not
-    // even on a tiny window, where the old 3500-char floor alone could exceed
-    // the whole prompt budget. It is an extractive, lossy digest: it clips
-    // messages and the total, and the stored transcript is never touched.
-    const fallbackMaxChars = Math.min(16000, Math.max(1200, Math.floor(promptBudget * 3.5)));
-    return {
-      contextWindow,
-      maxOutput,
-      reservedOutput,
-      safetyMargin,
-      promptBudget,
-      loreBudget,
-      fallbackMaxChars,
-    };
+    return resolveContextBudgets(settings);
   }
 
   /**
@@ -529,18 +664,20 @@ After the thought block, output the public prose and dialogue.`);
 
   /**
    * Last-resort truncation for the post-fold re-plan: keep the system prompt,
-   * then as much of the newest history as fits the prompt budget, cutting only
-   * at a user turn. Returns the input unchanged when everything already fits.
+   * then as much of the newest history as fits the input capacity the allocator
+   * granted, cutting only at a user turn. Returns the input unchanged when
+   * everything already fits.
    */
-  static #truncateHistory(history, settings, ledger, extraInputTokens = 0) {
+  static #truncateHistory(history, settings, ledger, extraInputTokens = 0, inputBudget = null) {
     const { promptBudget } = this.resolveBudgets(settings);
+    const capacity = Math.max(0, Number(inputBudget) || promptBudget);
     const system = history[0] && history[0].role === "system" ? [history[0]] : [];
     const rest = history.slice(system.length);
     // Account for the ledger (sent as message 1) and any material appended after
     // planning (dynamic lore / writing guidance) when sizing what remains.
     const ledgerTokens = ledger ? estimateTokens(ledger) + 40 : 0;
     const extra = Math.max(0, Number(extraInputTokens) || 0);
-    const budget = Math.max(0, promptBudget - countMessages(system) - ledgerTokens - extra);
+    const budget = Math.max(0, capacity - countMessages(system) - ledgerTokens - extra);
     if (budget <= 0 || rest.length <= 1) {
       // Even the newest turn may not fit next to the ledger; keep it anyway —
       // a reply with no target user turn is useless — and accept the overflow.
@@ -612,8 +749,9 @@ After the thought block, output the public prose and dialogue.`);
    * caller folds, then re-plans. Nothing leaves the payload without being
    * summarized first.
    */
-  static planContext({ systemPrompt, messages, ledger, consumed = 1, settings, extraInputTokens = 0 }) {
-    const { promptBudget } = this.resolveBudgets(settings);
+  static planContext({ systemPrompt, messages, ledger, consumed = 1, settings, extraInputTokens = 0, inputBudget = null }) {
+    const budgets = this.resolveBudgets(settings);
+    const promptBudget = Math.max(0, Number(inputBudget) || budgets.promptBudget);
     const all = Array.isArray(messages) ? messages : [];
     // `extraInputTokens` is input the caller will append to the payload *after*
     // planning — dynamic lore and post-history instructions. It is part of the
@@ -623,11 +761,14 @@ After the thought block, output the public prose and dialogue.`);
     const extra = Math.max(0, Number(extraInputTokens) || 0);
     const outer = estimateTokens(systemPrompt) + (ledger ? estimateTokens(ledger) + 40 : 0) + extra;
     // `overflow` means the *irreducible* prefix (static prompt + ledger + the
-    // material appended after planning) already exceeds the input budget, so no
-    // amount of history reduction can bring the request under it.
+    // material appended after planning) already exceeds the input capacity the
+    // allocator granted, so no amount of history reduction can bring the
+    // request under it. The allocator grants that capacity only after reserving
+    // the reply and fitting every degradable section it can, so this flag is a
+    // true impossibility test rather than a planner-internal threshold.
     const overflow = outer >= promptBudget;
     const overflowWarning = overflow
-      ? `System prompt, ledger and writing guidance (${outer} est. tokens) exceed the configured prompt budget (${promptBudget} tokens); raise the context window or history will be crowded out.`
+      ? `The static prompt, ledger and writing guidance (${outer} est. tokens) exceed the configured prompt budget (${promptBudget} tokens) that remains once the reply is reserved; raise the context window, shrink the preset, or lower the max output tokens.`
       : "";
     const budget = Math.max(256, promptBudget - outer);
     const pinned = all.length > 0 && all[0] && all[0].content ? [all[0]] : [];
@@ -835,7 +976,7 @@ After the thought block, output the public prose and dialogue.`);
    * Streams one completion. Only non-neutral sampler values are sent, so an
    * untouched control cannot silently override a provider default.
    */
-  static buildRequestBody(settings, messages) {
+  static buildRequestBody(settings, messages, outputCeiling = null) {
     const model = String(settings?.model || "").trim();
     const body = {
       model,
@@ -861,13 +1002,18 @@ After the thought block, output the public prose and dialogue.`);
     //      reservation assumes. Without (2), `context=2048, maxTokens=4096`
     //      asked for a 1024-token reply beside a 1400-token prompt and pushed
     //      the request past the configured window on every turn.
+    // `outputCeiling` is the allocator's decision for this exact payload. The
+    // send path passes it so the request cannot disagree with what the
+    // allocator (and therefore the context inspector) reported; callers without
+    // an allocation fall back to the configured reservation.
     // Keep the key absent when the user set no ceiling at all, so the provider
     // default still applies.
-    if (typeof settings.maxTokens === "number") {
+    if (typeof settings.maxTokens === "number" || typeof outputCeiling === "number") {
       const { reservedOutput, contextWindow, safetyMargin } = this.resolveBudgets(settings);
       const promptTokens = countMessages(messages);
-      const headroom = Math.max(256, contextWindow - promptTokens - safetyMargin);
-      body.max_tokens = Math.max(256, Math.min(reservedOutput, headroom));
+      const headroom = Math.max(MIN_OUTPUT_TOKENS, contextWindow - promptTokens - safetyMargin);
+      const ceiling = typeof outputCeiling === "number" ? outputCeiling : reservedOutput;
+      body.max_tokens = Math.max(MIN_OUTPUT_TOKENS, Math.min(ceiling, headroom));
     }
     if (settings.cacheKey) body.prompt_cache_key = settings.cacheKey;
     return body;
@@ -877,9 +1023,9 @@ After the thought block, output the public prose and dialogue.`);
    * Streams one completion. Only non-neutral sampler values are sent, so an
    * untouched control cannot silently override a provider default.
    */
-  static async *#streamDirect(settings, messages, onCleanChunk, onUsage, signal) {
+  static async *#streamDirect(settings, messages, onCleanChunk, onUsage, signal, outputCeiling = null) {
     const { base, headers } = this.#resolveEndpoint(settings);
-    const body = this.buildRequestBody(settings, messages);
+    const body = this.buildRequestBody(settings, messages, outputCeiling);
 
     // The abort signal is threaded through every network path so a Stop button
     // can cancel the turn at any point, generation included.
@@ -889,7 +1035,7 @@ After the thought block, output the public prose and dialogue.`);
       body: JSON.stringify(body),
       signal,
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw await this.#generationHttpError(res);
 
     // A provider that ignores `stream: true` (or mislabels its body) answers
     // with a single JSON completion document. Anything explicitly typed as JSON
@@ -1032,6 +1178,41 @@ After the thought block, output the public prose and dialogue.`);
   }
 
   /**
+   * Normalises a non-2xx generation response into a descriptive Error.
+   *
+   * The status alone ("HTTP 400") erases the one piece of information that
+   * explains a failure: a provider context-overflow body names the model's real
+   * limit, which is the only reliable signal available over an OpenAI-compatible
+   * API. The body is read best-effort (a body read must never mask the status)
+   * and its `error.message`/`error.type`/top-level `message` extracted, so
+   * `describeFailure` in the UI can still match on the status and the user can
+   * see why the request was rejected.
+   */
+  static async #generationHttpError(res) {
+    let detail = "";
+    try {
+      const raw = await res.text();
+      if (raw) {
+        let parsed = null;
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          parsed = null;
+        }
+        const error = parsed?.error ?? parsed;
+        detail =
+          (typeof error === "string" ? error : error?.message || error?.type || "") ||
+          (typeof parsed?.message === "string" ? parsed.message : "");
+        if (!detail) detail = raw.slice(0, 300).trim();
+      }
+    } catch {
+      // A body that cannot be read is not a reason to lose the status.
+    }
+    const suffix = detail ? `: ${detail}` : "";
+    return new Error(`HTTP ${res.status}${suffix}`);
+  }
+
+  /**
    * Normalises a provider error payload into a descriptive Error. The `error`
    * object shape varies by provider (OpenAI, OpenRouter, Anthropic-compatible),
    * so the message and code are extracted defensively.
@@ -1086,6 +1267,195 @@ After the thought block, output the public prose and dialogue.`);
   }
 
   /**
+   * Builds the complete, measured request for one turn without sending it.
+   *
+   * This is the single allocation seam: classification of static sections,
+   * measurement of dynamic content, the one `allocateContext` decision, history
+   * planning against the granted capacity, final assembly, and a final
+   * measurement of the assembled payload. `streamTurn` calls it to send;
+   * `describeRequest` calls it to show the user the same numbers. Because both
+   * paths run identical code, the inspector can never disagree with what is
+   * actually sent.
+   *
+   * Nothing is appended after this returns: `payload` is the exact message
+   * array that will be sent, and `inputTokens` is its measured size.
+   */
+  static planRequest({ card, session, settings, persona, agentsContract, window = null }) {
+    const activePersona = persona || { name: "You" };
+    const activeSettings = agentsContract ? { ...settings, agentsContract } : settings;
+    const budgets = this.resolveBudgets(activeSettings);
+    const contextWindow = Math.max(0, Number(window) || budgets.contextWindow);
+
+    const all = Array.isArray(session?.messages) ? session.messages : [];
+    const consumed = Math.max(1, Number(session?.consumed) || 1);
+
+    // Static prompt sections are classified and measured *before* anything is
+    // sized: required sections are protected, degradable ones (examples,
+    // constant lore) are candidates the allocator may drop to make the request
+    // fit.
+    const sections = buildSystemSections(card, activePersona, activeSettings);
+    const requiredIds = new Set(sections.filter((s) => s.required).map((s) => s.id));
+    const renderSystem = (includedIds) =>
+      sections.filter((s) => includedIds.has(s.id)).map((s) => s.text).join("\n\n").trim();
+    const requiredStaticTokens = estimateTokens(renderSystem(requiredIds)) + 4;
+    const optionalSections = sections
+      .filter((s) => !s.required)
+      .map((s) => ({ id: s.id, priority: s.priority, tokens: estimateTokens(s.text) + 4 }));
+
+    // Dynamic lore and post-history instructions are appended to the payload
+    // after the history is planned, but they are part of the real request, so
+    // they are measured here and charged to the allocator. Otherwise the
+    // planner fits history to its own budget and the assembled request still
+    // overflows the window — exactly the failure mode a large static preset
+    // triggers.
+    const postHistory = substituteCardPlaceholders(
+      card ? card.data?.post_history_instructions || card.post_history_instructions || "" : "",
+      card,
+      activePersona
+    );
+    const recentText = all.slice(-3).map((m) => m?.content || "").join(" ");
+    const dynamicLore = selectLorebookEntries(card, {
+      // One lore budget, derived from the window rather than from the reply
+      // ceiling: a larger requested reply must not silently buy more lore.
+      budget: Math.min(1000, Math.floor(budgets.loreBudget)),
+      constantOnly: false,
+      recentText,
+    });
+    let fullPostHistory = postHistory;
+    if (dynamicLore.length > 0) {
+      const loreText = dynamicLore
+        .map((e) => `[World Info: ${substituteCardPlaceholders(e.content, card, activePersona)}]`)
+        .join("\n");
+      fullPostHistory = fullPostHistory ? `${loreText}\n\n${fullPostHistory}` : loreText;
+    }
+    const guidanceTokens = fullPostHistory.trim() ? estimateTokens(fullPostHistory) + 4 : 0;
+
+    // Required dynamic content: the pinned opening and the current turn. Both
+    // are kept verbatim, so the allocator must reserve room for them before it
+    // grants the reply.
+    const nonEmpty = all.filter((m) => m && m.content);
+    const pinned = nonEmpty.length ? [nonEmpty[0]] : [];
+    const currentTurn = nonEmpty.length > 1 ? nonEmpty[nonEmpty.length - 1] : null;
+    const pinnedTokens = countMessages(pinned);
+    const currentTurnTokens = currentTurn ? estimateTokens(currentTurn.content) + 4 : 0;
+
+    // A derived ledger must never make the request impossible. The stored
+    // ledger (`session.ledger`) is canon and is never touched; only the bytes
+    // actually sent are condensed, and only when the full ledger could not fit
+    // beside the minimum viable reply and the required dynamic content.
+    const requiredWithoutLedger = requiredStaticTokens + guidanceTokens + pinnedTokens + currentTurnTokens + LEDGER_FRAMING_TOKENS;
+    const desiredOutput = typeof activeSettings.maxTokens === "number" ? activeSettings.maxTokens : budgets.maxOutput;
+    const ledgerBudget = Math.max(0, contextWindow - budgets.safetyMargin - MIN_OUTPUT_TOKENS - requiredWithoutLedger);
+
+    let requestLedger = session?.ledger || "";
+    let ledgerCondensed = false;
+    if (estimateTokens(requestLedger) > ledgerBudget) {
+      requestLedger = clipLedgerToTokens(requestLedger, ledgerBudget);
+      ledgerCondensed = true;
+    }
+    const ledgerTokens = requestLedger ? estimateTokens(requestLedger) + LEDGER_FRAMING_TOKENS : 0;
+    const requiredTokens = requiredStaticTokens + ledgerTokens + guidanceTokens + pinnedTokens + currentTurnTokens;
+
+    const alloc = allocateContext({
+      contextWindow,
+      desiredOutput,
+      safetyMargin: budgets.safetyMargin,
+      minOutput: MIN_OUTPUT_TOKENS,
+      requiredTokens,
+      optionalItems: optionalSections,
+    });
+
+    const includedIds = new Set([...requiredIds, ...alloc.included.map((i) => i.id)]);
+    const systemPrompt = renderSystem(includedIds);
+    const excludedSections = alloc.excluded.map((i) => i.id);
+
+    let plan = this.planContext({
+      systemPrompt,
+      messages: all,
+      ledger: requestLedger,
+      consumed,
+      settings: activeSettings,
+      extraInputTokens: guidanceTokens,
+      inputBudget: alloc.inputBudget,
+    });
+
+    // Assemble the actual payload and measure it. The FINAL request is
+    // authoritative: the planner's numbers are an intermediate estimate, so if
+    // the assembled input exceeds the granted capacity, history is cut at a
+    // user turn and the payload rebuilt once.
+    const subbed = (list) =>
+      list.map((m) => ({ role: m.role, content: substituteCardPlaceholders(m.content, card, activePersona) }));
+    const assemble = (history) =>
+      this.assembleMessages({
+        systemPrompt,
+        history: subbed(history),
+        ledger: requestLedger,
+        postHistoryInstructions: fullPostHistory,
+      });
+
+    let payload = assemble(plan.history);
+    let inputTokens = countMessages(payload);
+    if (inputTokens > alloc.inputBudget && plan.history.length > 1) {
+      const truncated = this.#truncateHistory(plan.history, activeSettings, requestLedger, guidanceTokens, alloc.inputBudget);
+      if (truncated.length !== plan.history.length) {
+        plan = { ...plan, history: truncated };
+        payload = assemble(truncated);
+        inputTokens = countMessages(payload);
+      }
+    }
+
+    // The reply the provider is actually asked for: the allocated reply,
+    // further clamped by the real remaining headroom (mirrors
+    // buildRequestBody), and never below the viable floor.
+    const outputTokens = Math.max(
+      MIN_OUTPUT_TOKENS,
+      Math.min(alloc.output, contextWindow - budgets.safetyMargin - inputTokens)
+    );
+
+    const includedOptionalTokens = alloc.included.reduce((n, i) => n + i.tokens, 0);
+    const personaTokens = sections.some((s) => s.id === "persona")
+      ? estimateTokens(renderSystem(new Set(["persona"]))) + 4
+      : 0;
+    const historyTokens = plan.history.length > 1
+      ? countMessages(plan.history) - pinnedTokens - currentTurnTokens
+      : 0;
+
+    return {
+      payload,
+      systemPrompt,
+      requestLedger,
+      postHistory: fullPostHistory,
+      plan,
+      budgets,
+      contextWindow,
+      inputTokens,
+      outputTokens,
+      totalTokens: inputTokens + outputTokens,
+      ledgerCondensed,
+      // The observable breakdown. Buckets are non-overlapping and sum to the
+      // request's input, so the user can see exactly where the window went and
+      // why a section is missing. `requiredStatic` excludes the persona, which
+      // is reported separately; `optionalStatic` is only the degradable
+      // sections that survived; `excluded` names those that did not.
+      breakdown: {
+        requiredStatic: requiredStaticTokens - personaTokens,
+        optionalStatic: includedOptionalTokens,
+        persona: personaTokens,
+        lore: guidanceTokens,
+        ledger: ledgerTokens,
+        history: historyTokens,
+        currentInput: currentTurnTokens,
+        output: outputTokens,
+        safetyMargin: budgets.safetyMargin,
+        remaining: Math.max(0, contextWindow - inputTokens - outputTokens),
+      },
+      includedSections: [...includedIds],
+      excludedSections,
+      impossible: inputTokens + outputTokens > contextWindow,
+    };
+  }
+
+  /**
    * Unified turn runner invoked by the UI.
    *
    * `session.messages` stays the complete, append-only, user-visible transcript.
@@ -1096,69 +1466,32 @@ After the thought block, output the public prose and dialogue.`);
   static async streamTurn({ card, session, settings, persona, agentsContract, onChunk, onNotice, signal }) {
     const activePersona = persona || { name: "You" };
     const activeSettings = agentsContract ? { ...settings, agentsContract } : settings;
-    const systemPrompt = this.formatSystemPrompt(card, activePersona, activeSettings);
-
+    const budgets = this.resolveBudgets(activeSettings);
     const all = Array.isArray(session.messages) ? session.messages : [];
-    const postHistory = this.#substitutePlaceholders(
-      card ? card.data?.post_history_instructions || card.post_history_instructions || "" : "",
-      card,
-      activePersona
-    );
-    const ledger = session.ledger || "";
     const consumed = Math.max(1, Number(session.consumed) || 1);
 
-    // Dynamic lore and post-history instructions are appended to the payload
-    // *after* the history is planned, but they are part of the real request, so
-    // they must be measured before planning. Otherwise the planner fits history
-    // to its own budget and the assembled request still overflows the window —
-    // exactly the failure mode a large static preset triggers. Computing them
-    // here (rather than after planning) makes the planner and the payload
-    // builder agree on what "fits".
-    const recentText = all.slice(-3).map((m) => m?.content || "").join(" ");
-    const dynamicLore = this.#selectLorebookEntries(card, {
-      budget: Math.min(1000, Math.floor((activeSettings?.maxTokens || 1200) * 0.8)),
-      constantOnly: false,
-      recentText,
-    });
-    let fullPostHistory = postHistory;
-    if (dynamicLore.length > 0) {
-      const loreText = dynamicLore
-        .map((e) => `[World Info: ${this.#substitutePlaceholders(e.content, card, activePersona)}]`)
-        .join("\n");
-      fullPostHistory = fullPostHistory ? `${loreText}\n\n${fullPostHistory}` : loreText;
-    }
-    // The guidance is appended to the trailing user turn (or a fresh user
-    // message), so charge its tokens plus one message's framing overhead.
-    const extraInputTokens = fullPostHistory.trim() ? estimateTokens(fullPostHistory) + 4 : 0;
+    let request = this.planRequest({ card, session, settings, persona: activePersona, agentsContract, window: budgets.contextWindow });
+    let ledgerCondensed = request.ledgerCondensed;
 
-    let plan = this.planContext({
-      systemPrompt,
-      messages: all,
-      ledger,
-      consumed,
-      settings: activeSettings,
-      extraInputTokens,
-    });
-
-    if (plan.compacted && plan.folded.length > 0) {
+    if (request.plan.compacted && request.plan.folded.length > 0) {
       // Fold the exact contiguous range the ledger will cover: everything from
       // the last covered index up to the new boundary. Slicing by absolute
       // index is what guarantees no gap can open between the ledger and the
       // verbatim tail.
       // consumedAfter is an absolute index over `all` (empty-content messages
       // included), so this slice can never skip or double-count a message.
-      const toFold = all.slice(consumed, plan.consumedAfter);
+      const toFold = all.slice(consumed, request.plan.consumedAfter);
       const result = await this.#foldLedger({
         settings: activeSettings,
         messages: toFold,
         card,
         persona: activePersona,
-        previousLedger: ledger,
+        previousLedger: session.ledger || "",
         signal,
       });
       if (result.ledger) {
         session.ledger = result.ledger;
-        session.consumed = plan.consumedAfter;
+        session.consumed = request.plan.consumedAfter;
         // Notices travel on their own channel: a degraded fold has no chunk to
         // emit, and passing a null chunk here used to be stringified into the
         // reply as the literal text "null".
@@ -1171,65 +1504,163 @@ After the thought block, output the public prose and dialogue.`);
           session.ledgerTruncated = true;
           if (onNotice) onNotice("Continuity ledger reached its size limit and was compressed; some detail may be condensed.");
         }
-        // Re-plan: the ledger changed size, so the tail must be re-measured.
-        plan = this.planContext({
-          systemPrompt,
-          messages: all,
-          ledger: session.ledger,
-          consumed: session.consumed,
-          settings: activeSettings,
-          extraInputTokens,
-        });
-        // Hard truncate: a swollen ledger can still leave the re-planned tail
-        // over budget. Never send an over-budget payload — cut the tail at a
-        // user turn (pinned + newest turn guaranteed). Anything cut here is
-        // already ledger-covered, so no fact is lost.
-        if (plan.history.length > 1) {
-          const truncated = this.#truncateHistory(plan.history, activeSettings, session.ledger || "", extraInputTokens);
-          if (truncated.length !== plan.history.length) plan = { ...plan, history: truncated };
-        }
+        // Re-plan: the ledger changed size, so the tail must be re-measured and
+        // the allocation (reply, degradable sections, capacity) re-decided.
+        request = this.planRequest({ card, session, settings, persona: activePersona, agentsContract, window: budgets.contextWindow });
+        ledgerCondensed = ledgerCondensed || request.ledgerCondensed;
       }
     }
 
-    // A ledger can legitimately remain larger than the prompt budget — it is
-    // canon, and the audit decision is to preserve and report rather than
-    // silently truncate. Report the *transition* into overflow (not every turn)
-    // so a user whose configured window is too small for their ledger is told
-    // why their history is being truncated, and can raise the window.
-    if (plan.overflow) {
+    // The FINAL request is authoritative: assemble it, measure it, and only
+    // then send. A context-overflow rejection from the provider is the one
+    // failure that can be adapted to, because it names the model's real window
+    // — which may be smaller than the user configured. That adaptation is
+    // bounded to a single attempt, only fires when nothing has been streamed
+    // (so a partial reply is never duplicated), and never runs on a
+    // cancellation.
+    let streamedAny = false;
+    const send = async (req) => {
+      // The allocator's output decision is authoritative for the request, but
+      // only when the user actually set a ceiling: with no ceiling the provider
+      // default must stay in force, so no `max_tokens` is sent at all.
+      const ceiling = typeof activeSettings.maxTokens === "number" ? req.outputTokens : null;
+      let text = "";
+      for await (const chunk of this.#streamDirect(
+        activeSettings,
+        req.payload,
+        onChunk,
+        (u) => {
+          session.lastUsage = u;
+        },
+        signal,
+        ceiling
+      )) {
+        streamedAny = true;
+        text += chunk;
+      }
+      return text;
+    };
+
+    let fullText = "";
+    try {
+      fullText = await send(request);
+    } catch (err) {
+      if (err && err.name === "AbortError") throw err;
+      const realWindow = this.#providerContextWindow(err);
+      // Adapt only when nothing has been streamed yet: a context-overflow
+      // rejection arrives as an HTTP 400 before the first chunk, so a resend is
+      // safe. If content already reached the caller, retrying would duplicate
+      // the partial reply, so the error propagates instead.
+      if (streamedAny || realWindow === null || realWindow >= budgets.contextWindow) throw err;
+      // The provider named a smaller window than the user configured. Re-run
+      // the allocation against the real limit and resend once. No recursion:
+      // a second overflow propagates untouched.
+      request = this.planRequest({ card, session, settings, persona: activePersona, agentsContract, window: realWindow });
+      ledgerCondensed = ledgerCondensed || request.ledgerCondensed;
+      if (onNotice) {
+        onNotice(
+          `The provider rejected the request for exceeding the model's real context window (~${realWindow} tokens, not the ${budgets.contextWindow} configured). The request was re-fitted to the model's limit and sent again; set the context window to ${realWindow} to avoid this.`
+        );
+      }
+      fullText = await send(request);
+    }
+
+    // Impossible only when the request actually assembled is over the window —
+    // that is the one condition no budgeting can repair. (A request that fits
+    // the window but eats into the estimator safety margin is valid, and is not
+    // reported: a false alarm here was the original defect.) Report the
+    // *transition* into the impossible state, not every turn, and name the
+    // component crowding the window out so the failure is never silent.
+    if (request.impossible) {
       if (!session.ledgerOverflowReported) {
         session.ledgerOverflowReported = true;
-        if (onNotice) onNotice(plan.overflowWarning || "System prompt and ledger exceed the configured prompt budget; raise the context window or the ledger will crowd out history.");
+        if (onNotice) onNotice(this.#overflowReport(request, ledgerCondensed));
       }
     } else if (session.ledgerOverflowReported) {
       session.ledgerOverflowReported = false;
     }
 
-    const subHistory = plan.history.map((m) => ({
-      role: m.role,
-      content: this.#substitutePlaceholders(m.content, card, activePersona),
-    }));
-
-    const payload = this.assembleMessages({
-      systemPrompt,
-      history: subHistory,
-      ledger: session.ledger || "",
-      postHistoryInstructions: fullPostHistory,
-    });
-
-    let fullText = "";
-    for await (const chunk of this.#streamDirect(
-      activeSettings,
-      payload,
-      onChunk,
-      (u) => {
-        session.lastUsage = u;
-      },
-      signal
-    )) {
-      fullText += chunk;
+    // A condensed ledger is a lossy *send* of derived data, not a loss of canon:
+    // the stored ledger and the transcript are untouched. It is reported on the
+    // transition so the user knows why the model may have forgotten detail.
+    if (ledgerCondensed) {
+      if (!session.ledgerCondensedReported) {
+        session.ledgerCondensedReported = true;
+        if (onNotice) onNotice("The continuity ledger was condensed to fit this request; older ledger detail is omitted from the model's context but the stored ledger and transcript are unchanged. Raise the context window to restore it.");
+      }
+    } else if (session.ledgerCondensedReported) {
+      session.ledgerCondensedReported = false;
     }
+
     return fullText;
+  }
+
+  /**
+   * The measured breakdown of the request that would be sent on the next turn,
+   * without sending it. Powers the context inspector. Runs the same
+   * `planRequest` the send path runs, so the figures can never drift from what
+   * is actually transmitted.
+   *
+   * Caveat: on a turn that triggers a fold, `streamTurn` folds first and then
+   * re-plans, so the sent request reflects the post-fold ledger rather than
+   * this pre-fold preview. `plan.compacted` marks that case.
+   */
+  static describeRequest({ card, session, settings, persona, agentsContract }) {
+    return this.planRequest({ card, session, settings, persona, agentsContract });
+  }
+
+  /**
+   * The model's real context window as named by a provider error, or null.
+   *
+   * A context-length rejection is the only portable signal of the model's true
+   * window over an OpenAI-compatible API, so it is worth recovering. The
+   * patterns cover the common providers (OpenAI/OpenRouter "maximum context
+   * length is N tokens", Anthropic "prompt is too long: N tokens > M maximum",
+   * llama.cpp/vLLM "exceeds the available context size"). Returns null when the
+   * error is not a context overflow or names no usable number, so the caller
+   * never retries on an unrelated failure.
+   */
+  static #providerContextWindow(err) {
+    const message = String(err?.message || "");
+    const overflow = /context[_ ]length|maximum context|context window|too long|too many tokens|exceeds? the (?:available )?context/i.test(message);
+    if (!overflow) return null;
+    // "maximum context length is 8192 tokens", "context length is 8192",
+    // "8192 tokens > 4096 maximum", "context size of 8192".
+    const patterns = [
+      /(?:maximum|max)\s+context\s+(?:length|window|size)\s*(?:is|of|:)?\s*(\d{3,9})/i,
+      /context\s+(?:length|window|size)\s*(?:is|of|:)?\s*(\d{3,9})/i,
+      // Anthropic-style "N tokens > M maximum": the *maximum* (M) is the real
+      // window, not the requested size (N).
+      /\d{3,9}\s*(?:tokens?\s*)?>\s*(\d{3,9})\s*(?:maximum|max)/i,
+    ];
+    for (const re of patterns) {
+      const m = message.match(re);
+      if (m) {
+        const n = Number(m[1]);
+        if (Number.isFinite(n) && n >= 512) return n;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Human-readable explanation of why a request does not fit, naming the
+   * largest contributor so the user knows what to change. Always contains the
+   * phrase "exceed the configured prompt budget" so the failure is
+   * recognisable and stable.
+   */
+  static #overflowReport(request, ledgerCondensed) {
+    const { breakdown, contextWindow, inputTokens, outputTokens } = request;
+    const components = [
+      { name: "static preset", tokens: breakdown.requiredStatic + breakdown.optionalStatic + breakdown.persona },
+      { name: "continuity ledger", tokens: breakdown.ledger },
+      { name: "writing guidance", tokens: breakdown.lore },
+      { name: "current message", tokens: breakdown.currentInput },
+    ].sort((a, b) => b.tokens - a.tokens);
+    const biggest = components[0];
+    const ledgerNote = ledgerCondensed ? " (the ledger was condensed for this request; the stored transcript is unchanged)" : "";
+    const detail = request.plan.overflow && request.plan.overflowWarning ? `${request.plan.overflowWarning} ` : "";
+    return `${detail}The required content (${components.map((c) => `${c.name} ~${c.tokens}`).join(", ")}) exceeds the configured prompt budget: ~${inputTokens} input tokens plus a ${outputTokens}-token reply do not fit the ${contextWindow}-token window. The largest component is the ${biggest.name}; raise the context window or shrink it.${ledgerNote}`;
   }
 
   /**
