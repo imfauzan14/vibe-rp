@@ -350,17 +350,30 @@ describe("generateChoices - auxiliary request behaviour", () => {
     });
     expect(sent.model).toBe("main-model");
 
-    // When choiceModel is OpenAI reasoning model (o3-mini)
-    await BrowserChatEngine.generateChoices({
+    // When choiceModel endpoint requires max_completion_tokens and rejects temperature
+    let calls = 0;
+    globalThis.fetch = async (url, init) => {
+      calls++;
+      const payload = JSON.parse(init.body);
+      if (payload.model === "adapted-choice-model" && calls === 1) {
+        return new Response(JSON.stringify({ error: { message: "Unsupported parameter: 'temperature'. Use 'max_completion_tokens'." } }), { status: 400, headers: { "Content-Type": "application/json" } });
+      }
+      sent = payload;
+      return new Response(JSON.stringify({ choices: [{ message: { content: '{"choices":[{"text":"Adapted action."}]}' } }] }), { status: 200, headers: { "Content-Type": "application/json" } });
+    };
+
+    const res = await BrowserChatEngine.generateChoices({
       card: null,
       session,
-      settings: { ...settings, choiceModel: "o3-mini" },
+      settings: { ...settings, choiceModel: "adapted-choice-model" },
       persona: null,
     });
-    expect(sent.model).toBe("o3-mini");
+    expect(res.choices.length).toBe(1);
+    expect(sent.model).toBe("adapted-choice-model");
     expect(sent.max_completion_tokens).toBeGreaterThan(0);
     expect(sent.max_tokens).toBeUndefined();
     expect(sent.temperature).toBeUndefined();
+    expect(calls).toBe(2);
   });
 
   test("parseChoices ignores draft JSON inside reasoning <think> blocks and parses final JSON", () => {

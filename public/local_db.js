@@ -27,8 +27,8 @@ export const DEFAULT_SETTINGS = {
   availableModels: [], // Cached list from endpoint fetch
 
   // Core Generation Samplers (Optimized for creative RP prose)
-  // ponytail: tuned for modern instruct-tuned chat models (Claude/GPT/Gemini/DeepSeek
-  // via OpenRouter); adjust if targeting base completions models instead.
+  // Tuned for modern instruct-tuned chat models; adjust if targeting
+  // base completions models or reasoning models instead.
   temperature: 0.95, // 0.8-1.1 creative-prose sweet spot; pairs with min_p (when set) as the tail control since top_p is left at provider default
   topP: 1, // omitted from request body (buildRequestBody skips >=1): modern provider guidance is temperature OR top_p, not both
   minP: 0, // omitted from request body (buildRequestBody skips <=0): OpenAI/Anthropic silently ignore min_p (llama.cpp/vLLM-ism), so 0 = cross-provider "send provider default"
@@ -46,6 +46,7 @@ export const DEFAULT_SETTINGS = {
   // Turn mode: "normal" (freeform author input) or "choice" (interactive choice menu)
   choiceMode: "normal",
   choiceModel: "",
+  reasoningEffort: "", // optional: "low", "medium", "high", or "" (default/auto)
 };
 
 const DB_NAME = "vibe_rp";

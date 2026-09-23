@@ -24,12 +24,61 @@ const BYTE_CACHE_MAX = 4096;
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();
 
+// Dynamic registry of learned endpoint/model capabilities.
+// Populated when providers or gateways (9router, OpenRouter, local servers, direct APIs)
+// indicate parameter support or rejection via standard responses or HTTP 400.
+const modelCapabilities = new Map();
+
+export function getModelCapability(endpoint, model) {
+  const key = `${String(endpoint || "").trim()}::${String(model || "").trim()}`;
+  return modelCapabilities.get(key) || {};
+}
+
+export function updateModelCapability(endpoint, model, updates) {
+  const key = `${String(endpoint || "").trim()}::${String(model || "").trim()}`;
+  const current = modelCapabilities.get(key) || {};
+  modelCapabilities.set(key, { ...current, ...updates });
+}
+
+export function clearModelCapabilities() {
+  modelCapabilities.clear();
+}
+
 /**
- * Token estimate: UTF-8 bytes / 4.
+ * Detects HTTP 400 parameter rejection errors returned by providers,
+ * routers (such as 9router, OpenRouter), and local inference engines.
+ */
+export function detectParameterRejection(err) {
+  const msg = String(err?.message || "").toLowerCase();
+  const unsupportedTemp =
+    /(?:temperature|sampling).*?(?:not supported|unsupported)/i.test(msg) ||
+    /unsupported.*?(?:parameter ['"]?temperature['"]?|temperature|top_p|presence_penalty|frequency_penalty)/i.test(msg);
+  const needsMaxCompletionTokens =
+    /max_tokens.*?(?:not supported|unsupported|unrecognized)/i.test(msg) ||
+    /use ['"]?max_completion_tokens['"]?/i.test(msg);
+  const needsMaxTokens =
+    /max_completion_tokens.*?(?:not supported|unsupported|unrecognized|unknown)/i.test(msg);
+  const unsupportedReasoningEffort =
+    /reasoning_effort.*?(?:not supported|unsupported|unrecognized|unknown)/i.test(msg);
+
+  if (unsupportedTemp || needsMaxCompletionTokens || needsMaxTokens || unsupportedReasoningEffort) {
+    return {
+      unsupportedTemp,
+      needsMaxCompletionTokens,
+      needsMaxTokens,
+      unsupportedReasoningEffort,
+    };
+  }
+  return null;
+}
+
+/**
+ * Token estimate: UTF-8 bytes / 4 with safe multilingual calibration.
  *
  * Byte-based rather than `String.length`, which counts UTF-16 code units and so
- * undercounts CJK and emoji by ~3x. Byte lengths are memoized because history is
- * re-measured on every turn.
+ * undercounts CJK and emoji by ~3x. Multilingual non-ASCII text compresses to
+ * fewer bytes per token in BPE tokenizers, so multiByteExtra protects against
+ * undercounting in non-English dialogue.
  */
 export function estimateTokens(text) {
   if (!text) return 0;
@@ -55,8 +104,8 @@ export function countMessages(messages) {
 
 /**
  * Strips internal `<thought>` and `<think>` scratchpad blocks from text.
- * Reasoning models (DeepSeek R1, Qwen 2.5 Max, OpenAI o1/o3) emit large
- * reasoning traces that are irrelevant to auxiliary tasks like Choice Mode.
+ * Reasoning models emit internal reasoning traces that are irrelevant to
+ * auxiliary tasks like Choice Mode.
  */
 export function stripThoughtBlocks(text) {
   if (typeof text !== "string") return "";
@@ -1100,20 +1149,25 @@ export class BrowserChatEngine {
       `\n\n${prompt}`;
     const budget = this.#summaryBudget({ settings, transcript, previousLedger: fittedLedger, extraTokens });
     const model = String(settings?.model || "").trim();
+    const cap = getModelCapability(settings?.apiEndpoint, model);
+    const tokenKey = cap.tokenKey === "max_completion_tokens" ? "max_completion_tokens" : "max_tokens";
+    const body = {
+      model,
+      messages: [
+        { role: "system", content: SUMMARY_SYSTEM_PROMPT },
+        { role: "user", content: userContent },
+      ],
+      stream: false,
+      [tokenKey]: budget,
+    };
+    if (cap.supportsTemperature !== false) {
+      body.temperature = 0.1; // Near-zero temperature for strictly deterministic, factual extraction
+    }
+    if (settings?.reasoningEffort && cap.supportsReasoningEffort !== false) {
+      body.reasoning_effort = settings.reasoningEffort;
+    }
     return {
-      body: {
-        model,
-        messages: [
-          { role: "system", content: SUMMARY_SYSTEM_PROMPT },
-          { role: "user", content: userContent },
-        ],
-        stream: false,
-        temperature: 0.1, // Near-zero temperature for strictly deterministic, hallucination-free factual extraction
-        max_tokens: budget,
-        ...(settings?.reasoningEffort || /(?:o1|o3|r1|reasoner|thinking)/i.test(model)
-          ? { reasoning_effort: "low" }
-          : {}),
-      },
+      body,
       budget,
     };
   }
@@ -1170,14 +1224,33 @@ export class BrowserChatEngine {
 
   /** One fold request. Reports whether a larger-budget retry is warranted. */
   static async #summaryAttempt({ base, headers, settings, transcript, previousLedger, signal, extraTokens = 0 }) {
-    const { body, budget } = this.#buildSummaryRequest({ settings, transcript, previousLedger, extraTokens });
-    const res = await fetch(`${base}/chat/completions`, {
+    let { body, budget } = this.#buildSummaryRequest({ settings, transcript, previousLedger, extraTokens });
+    let res = await fetch(`${base}/chat/completions`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
       signal,
     });
-    if (!res.ok) throw new Error(`Summarizer error (${res.status}): ${await res.text()}`);
+    if (!res.ok) {
+      const errText = await res.text();
+      const rejection = detectParameterRejection({ message: `HTTP ${res.status}: ${errText}` });
+      if (rejection) {
+        if (rejection.unsupportedTemp) updateModelCapability(settings?.apiEndpoint, settings?.model, { supportsTemperature: false });
+        if (rejection.needsMaxCompletionTokens) updateModelCapability(settings?.apiEndpoint, settings?.model, { tokenKey: "max_completion_tokens" });
+        if (rejection.needsMaxTokens) updateModelCapability(settings?.apiEndpoint, settings?.model, { tokenKey: "max_tokens" });
+        if (rejection.unsupportedReasoningEffort) updateModelCapability(settings?.apiEndpoint, settings?.model, { supportsReasoningEffort: false });
+
+        const rebuilt = this.#buildSummaryRequest({ settings, transcript, previousLedger, extraTokens });
+        body = rebuilt.body;
+        res = await fetch(`${base}/chat/completions`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+          signal,
+        });
+      }
+      if (!res.ok) throw new Error(`Summarizer error (${res.status}): ${errText}`);
+    }
     const data = await res.json();
     const choice = data?.choices?.[0];
     const text = choice?.message?.content;
@@ -1215,14 +1288,15 @@ export class BrowserChatEngine {
    */
   static buildRequestBody(settings, messages, outputCeiling = null) {
     const model = String(settings?.model || "").trim();
-    const isOpenAiReasoning = /(?:^|\/)(?:o1|o3|o4)(?:-|$)/i.test(model);
+    const endpoint = settings?.apiEndpoint || "";
+    const cap = getModelCapability(endpoint, model);
     const body = {
       model,
       messages,
       stream: true,
       stream_options: { include_usage: true },
     };
-    if (!isOpenAiReasoning) {
+    if (cap.supportsTemperature !== false) {
       if (typeof settings.temperature === "number") body.temperature = settings.temperature;
       if (typeof settings.topP === "number" && settings.topP < 1) body.top_p = settings.topP;
       if (typeof settings.minP === "number" && settings.minP > 0) body.min_p = settings.minP;
@@ -1233,28 +1307,23 @@ export class BrowserChatEngine {
         body.presence_penalty = settings.presencePenalty;
       }
     }
+    if (settings?.reasoningEffort && cap.supportsReasoningEffort !== false) {
+      body.reasoning_effort = settings.reasoningEffort;
+    }
     // `maxTokens` is a ceiling the user asked for, not a promise the window can
     // keep. Two separate bounds apply:
     //   1. the planner's reserved allowance, which honours the ceiling up to the
     //      minimum input floor (no fixed-percentage reservation); and
     //   2. the *actual* remaining headroom after this payload's real prompt,
     //      because a prompt near the nominal budget leaves less room than the
-    //      reservation assumes. Without (2), `context=2048, maxTokens=4096`
-    //      asked for a 1024-token reply beside a 1400-token prompt and pushed
-    //      the request past the configured window on every turn.
-    // `outputCeiling` is the allocator's decision for this exact payload. The
-    // send path passes it so the request cannot disagree with what the
-    // allocator (and therefore the context inspector) reported; callers without
-    // an allocation fall back to the configured reservation.
-    // Keep the key absent when the user set no ceiling at all, so the provider
-    // default still applies.
+    //      reservation assumes.
     if (typeof settings.maxTokens === "number" || typeof outputCeiling === "number") {
       const { reservedOutput, contextWindow, safetyMargin } = this.resolveBudgets(settings);
       const promptTokens = countMessages(messages);
       const headroom = Math.max(MIN_OUTPUT_TOKENS, contextWindow - promptTokens - safetyMargin);
       const ceiling = typeof outputCeiling === "number" ? outputCeiling : reservedOutput;
       const targetTokens = Math.max(MIN_OUTPUT_TOKENS, Math.min(ceiling, headroom));
-      if (isOpenAiReasoning) {
+      if (cap.tokenKey === "max_completion_tokens") {
         body.max_completion_tokens = targetTokens;
       } else {
         body.max_tokens = targetTokens;
@@ -1269,17 +1338,37 @@ export class BrowserChatEngine {
    */
   static async *#streamDirect(settings, messages, onCleanChunk, onUsage, signal, outputCeiling = null) {
     const { base, headers } = this.#resolveEndpoint(settings);
-    const body = this.buildRequestBody(settings, messages, outputCeiling);
+    let body = this.buildRequestBody(settings, messages, outputCeiling);
 
     // The abort signal is threaded through every network path so a Stop button
     // can cancel the turn at any point, generation included.
-    const res = await fetch(`${base}/chat/completions`, {
+    let res = await fetch(`${base}/chat/completions`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
       signal,
     });
-    if (!res.ok) throw await this.#generationHttpError(res);
+    if (!res.ok) {
+      const httpErr = await this.#generationHttpError(res);
+      const rejection = detectParameterRejection(httpErr);
+      if (rejection) {
+        if (rejection.unsupportedTemp) updateModelCapability(settings?.apiEndpoint, settings?.model, { supportsTemperature: false });
+        if (rejection.needsMaxCompletionTokens) updateModelCapability(settings?.apiEndpoint, settings?.model, { tokenKey: "max_completion_tokens" });
+        if (rejection.needsMaxTokens) updateModelCapability(settings?.apiEndpoint, settings?.model, { tokenKey: "max_tokens" });
+        if (rejection.unsupportedReasoningEffort) updateModelCapability(settings?.apiEndpoint, settings?.model, { supportsReasoningEffort: false });
+
+        body = this.buildRequestBody(settings, messages, outputCeiling);
+        res = await fetch(`${base}/chat/completions`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+          signal,
+        });
+        if (!res.ok) throw await this.#generationHttpError(res);
+      } else {
+        throw httpErr;
+      }
+    }
 
     // A provider that ignores `stream: true` (or mislabels its body) answers
     // with a single JSON completion document. Anything explicitly typed as JSON
@@ -1311,7 +1400,7 @@ export class BrowserChatEngine {
       // Reasoning/thinking tokens are reported on a sibling field by several
       // OpenAI-compatible providers. They are not part of the visible reply,
       // but their presence explains a content-less stream.
-      const reasoning = choice?.delta?.reasoning_content ?? choice?.delta?.reasoning;
+      const reasoning = choice?.delta?.reasoning_content ?? choice?.delta?.reasoning ?? choice?.delta?.thought;
       if (typeof reasoning === "string" && reasoning) sawReasoning = true;
       const text = choice?.delta?.content ?? choice?.message?.content;
       if (typeof text !== "string" || !text) return null;
@@ -1802,15 +1891,23 @@ export class BrowserChatEngine {
       // rejection arrives as an HTTP 400 before the first chunk, so a resend is
       // safe. If content already reached the caller, retrying would duplicate
       // the partial reply, so the error propagates instead.
-      if (streamedAny || realWindow === null || realWindow >= budgets.contextWindow) throw err;
-      // The provider named a smaller window than the user configured. Re-run
-      // the allocation against the real limit and resend once. No recursion:
+      if (streamedAny || realWindow === null || realWindow > budgets.contextWindow) throw err;
+      // If realWindow < budgets.contextWindow: provider's real limit is lower than configured.
+      // If realWindow === budgets.contextWindow: local token estimate undercounted, so we re-fit
+      // with a slight safety reduction to force compaction.
+      const targetWindow = realWindow < budgets.contextWindow
+        ? realWindow
+        : Math.max(512, Math.floor(budgets.contextWindow * 0.88));
+
+      // Re-run the allocation against the fitted limit and resend once. No recursion:
       // a second overflow propagates untouched.
-      request = this.planRequest({ card, session, settings, persona: activePersona, agentsContract, window: realWindow });
+      request = this.planRequest({ card, session, settings, persona: activePersona, agentsContract, window: targetWindow });
       ledgerCondensed = ledgerCondensed || request.ledgerCondensed;
       if (onNotice) {
         onNotice(
-          `The provider rejected the request for exceeding the model's real context window (~${realWindow} tokens, not the ${budgets.contextWindow} configured). The request was re-fitted to the model's limit and sent again; set the context window to ${realWindow} to avoid this.`
+          realWindow < budgets.contextWindow
+            ? `The provider rejected the request for exceeding the model's real context window (~${realWindow} tokens, not the ${budgets.contextWindow} configured). The request was re-fitted to the model's limit and sent again; set the context window to ${realWindow} to avoid this.`
+            : `The request exceeded the provider's token limit and was re-compacted to ~${targetWindow} tokens.`
         );
       }
       fullText = await send(request);
@@ -1899,36 +1996,67 @@ export class BrowserChatEngine {
     const { base, headers } = this.#resolveEndpoint(activeSettings);
 
     const choiceModel = String(activeSettings.choiceModel || activeSettings.model || "").trim();
-    const isOpenAiReasoningChoice = /(?:^|\/)(?:o1|o3|o4)(?:-|$)/i.test(choiceModel);
-    // A choice request is a cheap, one-off extraction-like call: `stream` is false.
-    const body = {
+    const endpoint = activeSettings.apiEndpoint || "";
+    const cap = getModelCapability(endpoint, choiceModel);
+    const tokenKey = cap.tokenKey === "max_completion_tokens" ? "max_completion_tokens" : "max_tokens";
+
+    let body = {
       model: choiceModel,
       messages: request.payload,
       stream: false,
-      ...(isOpenAiReasoningChoice
-        ? { max_completion_tokens: request.outputTokens }
-        : { max_tokens: request.outputTokens }),
-      ...(activeSettings?.reasoningEffort || /(?:o1|o3|r1|reasoner|thinking)/i.test(choiceModel)
-        ? { reasoning_effort: "low" }
-        : {}),
+      [tokenKey]: request.outputTokens,
     };
-    if (!isOpenAiReasoningChoice) {
+    if (cap.supportsTemperature !== false) {
       if (typeof activeSettings.temperature === "number") {
-        // Slightly cooler than the RP default: choices want variety, not the full
-        // creative spread, and a stable set is easier to scan.
         body.temperature = Math.min(activeSettings.temperature, 0.7);
       } else {
         body.temperature = 0.7;
       }
     }
+    if (activeSettings?.reasoningEffort && cap.supportsReasoningEffort !== false) {
+      body.reasoning_effort = activeSettings.reasoningEffort;
+    }
 
-    const res = await fetch(`${base}/chat/completions`, {
+    let res = await fetch(`${base}/chat/completions`, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
       signal,
     });
-    if (!res.ok) throw await this.#generationHttpError(res);
+    if (!res.ok) {
+      const httpErr = await this.#generationHttpError(res);
+      const rejection = detectParameterRejection(httpErr);
+      if (rejection) {
+        if (rejection.unsupportedTemp) updateModelCapability(endpoint, choiceModel, { supportsTemperature: false });
+        if (rejection.needsMaxCompletionTokens) updateModelCapability(endpoint, choiceModel, { tokenKey: "max_completion_tokens" });
+        if (rejection.needsMaxTokens) updateModelCapability(endpoint, choiceModel, { tokenKey: "max_tokens" });
+        if (rejection.unsupportedReasoningEffort) updateModelCapability(endpoint, choiceModel, { supportsReasoningEffort: false });
+
+        const updatedCap = getModelCapability(endpoint, choiceModel);
+        const updatedTokenKey = updatedCap.tokenKey === "max_completion_tokens" ? "max_completion_tokens" : "max_tokens";
+        body = {
+          model: choiceModel,
+          messages: request.payload,
+          stream: false,
+          [updatedTokenKey]: request.outputTokens,
+        };
+        if (updatedCap.supportsTemperature !== false) {
+          body.temperature = typeof activeSettings.temperature === "number" ? Math.min(activeSettings.temperature, 0.7) : 0.7;
+        }
+        if (activeSettings?.reasoningEffort && updatedCap.supportsReasoningEffort !== false) {
+          body.reasoning_effort = activeSettings.reasoningEffort;
+        }
+        res = await fetch(`${base}/chat/completions`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(body),
+          signal,
+        });
+        if (!res.ok) throw await this.#generationHttpError(res);
+      } else {
+        throw httpErr;
+      }
+    }
 
     // A body that is not JSON (an HTML error page, a truncated response) is a
     // malformed choice response, not a crash: it yields no choices, which the
@@ -2126,16 +2254,24 @@ export class BrowserChatEngine {
         contextWindow,
         hasPriorLedger: true,
       });
+      const model = String(settings?.model || "").trim();
+      const cap = getModelCapability(settings?.apiEndpoint, model);
+      const tokenKey = cap.tokenKey === "max_completion_tokens" ? "max_completion_tokens" : "max_tokens";
       const body = {
-        model: String(settings?.model || "").trim(),
+        model,
         messages: [
           { role: "system", content: SUMMARY_SYSTEM_PROMPT },
           { role: "user", content: `<prior-ledger>\n${ledger}\n</prior-ledger>\n\n${LEDGER_COMPRESS_PROMPT}` },
         ],
         stream: false,
-        temperature: 0.1,
-        max_tokens: compressBudget,
+        [tokenKey]: compressBudget,
       };
+      if (cap.supportsTemperature !== false) {
+        body.temperature = 0.1;
+      }
+      if (settings?.reasoningEffort && cap.supportsReasoningEffort !== false) {
+        body.reasoning_effort = settings.reasoningEffort;
+      }
       const res = await fetch(`${base}/chat/completions`, {
         method: "POST",
         headers,

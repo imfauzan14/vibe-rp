@@ -197,20 +197,63 @@ describe("Streaming contract - max_tokens forwarding", () => {
     expect("max_tokens" in body).toBe(false);
   });
 
-  test("11. OpenAI reasoning models (o1, o3-mini) send max_completion_tokens and omit unsupported samplers", () => {
-    const o1Settings = {
-      model: "o3-mini",
+  test("11. Parameter self-healing adapts to provider rejection and caches model capabilities", async () => {
+    let calls = 0;
+    let sentBodies = [];
+    globalThis.fetch = async (url, opts) => {
+      calls++;
+      const body = JSON.parse(opts.body);
+      sentBodies.push(body);
+      if (body.temperature !== undefined) {
+        return new Response(JSON.stringify({ error: { message: "Unsupported parameter: 'temperature'. Use 'max_completion_tokens'." } }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      return sse('data: {"choices":[{"delta":{"content":"Adapted reply."}}]}\n\ndata: [DONE]\n\n');
+    };
+
+    const targetSettings = {
+      apiEndpoint: "https://router.local/v1",
+      model: "adaptive-story-model",
       maxTokens: 1000,
       temperature: 0.9,
       frequencyPenalty: 0.2,
       presencePenalty: 0.2,
     };
-    const body = BrowserChatEngine.buildRequestBody(o1Settings, [{ role: "user", content: "hello" }]);
-    expect(body.max_completion_tokens).toBe(1000);
-    expect(body.max_tokens).toBeUndefined();
-    expect(body.temperature).toBeUndefined();
-    expect(body.frequency_penalty).toBeUndefined();
-    expect(body.presence_penalty).toBeUndefined();
+
+    const reply = await BrowserChatEngine.streamTurn({
+      card: null,
+      session: session(),
+      settings: targetSettings,
+      persona: null,
+      agentsContract: "",
+    });
+
+    expect(calls).toBe(2);
+    expect(reply).toContain("Adapted reply");
+    // First call sent standard parameters
+    expect(sentBodies[0].max_tokens).toBe(1000);
+    expect(sentBodies[0].temperature).toBe(0.9);
+    // Second call adapted: max_completion_tokens and stripped temperature
+    expect(sentBodies[1].max_completion_tokens).toBe(1000);
+    expect(sentBodies[1].max_tokens).toBeUndefined();
+    expect(sentBodies[1].temperature).toBeUndefined();
+    expect(sentBodies[1].frequency_penalty).toBeUndefined();
+
+    // Subsequent call uses cached capabilities directly on first attempt
+    calls = 0;
+    sentBodies = [];
+    await BrowserChatEngine.streamTurn({
+      card: null,
+      session: session(),
+      settings: targetSettings,
+      persona: null,
+      agentsContract: "",
+    });
+    expect(calls).toBe(1);
+    expect(sentBodies[0].max_completion_tokens).toBe(1000);
+    expect(sentBodies[0].temperature).toBeUndefined();
   });
 });
 
