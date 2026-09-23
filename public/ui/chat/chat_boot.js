@@ -18,7 +18,7 @@
 
     const $ = (id) => document.getElementById(id);
     const controller = new SessionController();
-    const estimateTokens = (text) => estimateTokensModule(text);
+    const estimateTokens = estimateTokensModule;
 
     const notifier = createNotifier({ region: $("toast-region"), status: $("turn-status") });
     const showToast = (msg, tone = "info") => notifier.toast(msg, { tone: tone === "error" ? "error" : tone });

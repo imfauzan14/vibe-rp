@@ -35,6 +35,8 @@ const PUBLIC_CLIENT_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 // JWT and session metadata (never throws)
 
+const utf8Decoder = new TextDecoder();
+
 function base64UrlToText(segment) {
   let s = String(segment).replace(/-/g, "+").replace(/_/g, "/");
   const rem = s.length % 4;
@@ -45,7 +47,7 @@ function base64UrlToText(segment) {
   try { bin = atob(s); } catch { return null; }
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  try { return new TextDecoder().decode(bytes); } catch { return null; }
+  try { return utf8Decoder.decode(bytes); } catch { return null; }
 }
 
 // Decodes a JWT payload. Returns an object, or null for a malformed,

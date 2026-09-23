@@ -43,12 +43,13 @@ export function extractSessionToken(input) {
       }
       return s;
     };
+    const utf8Decoder = new TextDecoder();
     const b64Text = (s) => {
       let b64 = s.startsWith("base64-") ? s.slice(7) : s;
       b64 = b64.replace(/-/g, "+").replace(/_/g, "/");
       b64 += "=".repeat((4 - (b64.length % 4)) % 4);
       const bin = atob(b64);
-      return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+      return utf8Decoder.decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
     };
     const decodeValue = (v) => {
       const s = prepValue(v);

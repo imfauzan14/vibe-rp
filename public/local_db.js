@@ -160,7 +160,7 @@ export class LocalDb {
       const tx = db.transaction("cards", "readonly");
       const req = tx.objectStore("cards").getAll();
       req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => reject(req.error);
+      req.onerror = () => reject(LocalDb.#wrapStorageError(req.error, "getAllCards"));
     });
   }
 
@@ -201,7 +201,7 @@ export class LocalDb {
       const tx = db.transaction("sessions", "readwrite");
       tx.objectStore("sessions").delete(sessionId);
       tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
+      tx.onerror = () => reject(LocalDb.#wrapStorageError(tx.error, "deleteSession"));
     });
   }
 

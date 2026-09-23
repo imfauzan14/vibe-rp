@@ -12,10 +12,14 @@ const MARK_CLASS = "rp-search-hit";
 /** Removes every highlight and restores the original text nodes. */
 export function clearHighlights(container) {
   if (!container) return;
+  const parents = new Set();
   for (const mark of container.querySelectorAll(`mark.${MARK_CLASS}`)) {
     const parent = mark.parentNode;
     if (!parent) continue;
     parent.replaceChild(document.createTextNode(mark.textContent || ""), mark);
+    parents.add(parent);
+  }
+  for (const parent of parents) {
     parent.normalize();
   }
 }

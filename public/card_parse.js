@@ -133,22 +133,24 @@ export function parseJsonLoose(text) {
   try { return JSON.parse(String(text).trim()); } catch { return null; }
 }
 
+const latin1Decoder = new TextDecoder("latin1");
+const utf8Decoder = new TextDecoder("utf-8");
+
 export async function inflateDecompress(u8) {
   const ds = new DecompressionStream("deflate");
   const stream = new Blob([u8]).stream().pipeThrough(ds);
   const out = await new Response(stream).arrayBuffer();
-  return new TextDecoder().decode(out);
+  return utf8Decoder.decode(out);
 }
 
 export function parsePngChara(buf) {
   const view = new DataView(buf);
   if (view.byteLength < 8 || view.getUint32(0) !== 0x89504e47) return null;
   const bytes = new Uint8Array(buf);
-  const latin1 = new TextDecoder("latin1");
   let off = 8;
   while (off + 8 <= bytes.length) {
     const len = view.getUint32(off);
-    const type = latin1.decode(bytes.subarray(off + 4, off + 8));
+    const type = latin1Decoder.decode(bytes.subarray(off + 4, off + 8));
     const dataStart = off + 8;
     const dataEnd = dataStart + len;
     if (dataEnd > bytes.length) break;
@@ -157,16 +159,19 @@ export function parsePngChara(buf) {
       const data = bytes.subarray(dataStart, dataEnd);
       let k = 0;
       while (k < data.length && data[k] !== 0) k++;
-      const keyword = latin1.decode(data.subarray(0, k)).toLowerCase();
+      const keyword = latin1Decoder.decode(data.subarray(0, k)).toLowerCase();
       if (keyword === "chara") {
         const rest = data.subarray(k + 1);
         if (type === "tEXt") {
-          const raw = latin1.decode(rest).trim();
+          const raw = latin1Decoder.decode(rest).trim();
           // chub.ai encodes as base64; fall back to direct parse for plain-JSON embeds
           try { return parseJsonLoose(atob(raw)); } catch { return parseJsonLoose(raw); }
         }
         if (type === "zTXt") {
-          return inflateDecompress(rest.subarray(1)).then(parseJsonLoose).catch(() => null);
+          return inflateDecompress(rest.subarray(1)).then((raw) => {
+            const clean = String(raw || "").trim();
+            try { return parseJsonLoose(atob(clean)); } catch { return parseJsonLoose(clean); }
+          }).catch(() => null);
         }
         // iTXt: compressionFlag(1) compressionMethod(1) lang\0 translated\0 [compressed] text
         const cflag = rest[0];
@@ -174,9 +179,14 @@ export function parsePngChara(buf) {
         while (p < rest.length && rest[p] !== 0) p++; p++;
         while (p < rest.length && rest[p] !== 0) p++; p++;
         const payload = rest.subarray(p);
-        return cflag
-          ? inflateDecompress(payload).then(parseJsonLoose).catch(() => null)
-          : new TextDecoder().decode(payload);
+        if (cflag) {
+          return inflateDecompress(payload).then((raw) => {
+            const clean = String(raw || "").trim();
+            try { return parseJsonLoose(atob(clean)); } catch { return parseJsonLoose(clean); }
+          }).catch(() => null);
+        }
+        const text = utf8Decoder.decode(payload).trim();
+        try { return parseJsonLoose(atob(text)); } catch { return parseJsonLoose(text); }
       }
     }
     off = dataEnd + 4; // skip CRC
@@ -230,7 +240,7 @@ export function scanExifIfdForChara(bytes, view, ifdStart, littleEndian) {
       if (dataOff + count > bytes.length) break;
       // UserComment starts with 8-byte charset code (ASCII\0\0\0 or UNICODE\0 etc)
       const payload = bytes.subarray(dataOff + 8, dataOff + count);
-      const text = new TextDecoder("utf-8").decode(payload).replace(/\0/g, "").trim();
+      const text = utf8Decoder.decode(payload).replace(/\0/g, "").trim();
       if (text) {
         const result = tryExtractBase64Json(text);
         if (result) return result;
@@ -245,17 +255,16 @@ export function parseWebpChara(buf) {
   const view = new DataView(buf);
   if (view.byteLength < 12 || view.getUint32(0) !== 0x52494646) return null;
   const bytes = new Uint8Array(buf);
-  const latin1 = new TextDecoder("latin1");
   let off = 12;
   while (off + 8 <= bytes.length) {
-    const type = latin1.decode(bytes.subarray(off, off + 4));
+    const type = latin1Decoder.decode(bytes.subarray(off, off + 4));
     const size = view.getUint32(off + 4, true);
     const dataStart = off + 8;
     const dataEnd = dataStart + size;
     if (dataEnd > bytes.length) break;
     if (type === "EXIF" || type === "XMP ") {
       // Strategy A: treat chunk as text and try base64/JSON extraction
-      const chunk = latin1.decode(bytes.subarray(dataStart, dataEnd));
+      const chunk = latin1Decoder.decode(bytes.subarray(dataStart, dataEnd));
       const found = tryExtractBase64Json(chunk);
       if (found) return found;
 

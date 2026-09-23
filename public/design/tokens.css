@@ -104,9 +104,13 @@
 
   /* -- lines ----------------------------------------------------------- */
   --border-hairline: #2A3034;  /* dividers, card edges (decorative)        */
+  --border-subtle:   #22272B;  /* quiet hairline border                    */
   --border-control:  #68707A;  /* input/control outline, needs 3:1         */
   --border-strong:   #7C858C;  /* hovered control outline                  */
   --ink-subtle:      #272A2D;  /* flat wash for chip fills                 */
+  --surface-subtle:  #13171A;  /* subtle surface for collapsed panels      */
+  --ink-secondary:   #A6ADB1;  /* secondary copy alias                     */
+  --ink-primary:     #E9E7E2;  /* primary ink alias                        */
 
   /* -- focus ----------------------------------------------------------- */
   --focus-ring:  #D3B36C;
@@ -158,22 +162,27 @@
   --tracking-tight:  -0.011em;  /* display sizes only                     */
   --tracking-normal: 0;
   --tracking-wide:   0.02em;    /* lowercase micro-labels, not all-caps   */
+  --tracking-micro:  0.04em;    /* fine uppercase tracking                */
 
   /* -- reading measure ------------------------------------------------- */
   --measure:      68ch;   /* the prose column: 65-75ch target           */
   --measure-wide: 84ch;   /* long-form exchanges that resist breaking    */
 
   /* -- space (4px base, 1.5 rhythm) ------------------------------------ */
-  --space-0:  0;
-  --space-1:  0.25rem;   /*  4px */
-  --space-2:  0.5rem;    /*  8px */
-  --space-3:  0.75rem;   /* 12px */
-  --space-4:  1rem;      /* 16px */
-  --space-5:  1.5rem;    /* 24px */
-  --space-6:  2rem;      /* 32px */
-  --space-7:  2.5rem;    /* 40px */
-  --space-8:  3.5rem;    /* 56px */
-  --space-9:  5rem;      /* 80px */
+  --space-0:   0;
+  --space-0-5: 0.125rem; /*  2px */
+  --space-1:   0.25rem;  /*  4px */
+  --space-1-5: 0.375rem; /*  6px */
+  --space-2:   0.5rem;   /*  8px */
+  --space-2-5: 0.625rem; /* 10px */
+  --space-3:   0.75rem;  /* 12px */
+  --space-3-5: 0.875rem; /* 14px */
+  --space-4:   1rem;     /* 16px */
+  --space-5:   1.5rem;   /* 24px */
+  --space-6:   2rem;     /* 32px */
+  --space-7:   2.5rem;   /* 40px */
+  --space-8:   3.5rem;   /* 56px */
+  --space-9:   5rem;     /* 80px */
 
   /* -- radii (hierarchy: tighter inside, softer outside) --------------- */
   --radius-xs:   3px;   /* chips, badges, code                        */
@@ -254,9 +263,13 @@
   --on-danger: #FFFFFF;
 
   --border-hairline: #DCDAD2;
+  --border-subtle:   #E2E0D8;
   --border-control:  #7F848A;
   --border-strong:   #6B7178;
   --ink-subtle:      #E9E8E5;
+  --surface-subtle:  #F3F2EC;
+  --ink-secondary:   #4A4F54;
+  --ink-primary:     #191A1C;
 
   --focus-ring: #2E5E8C;
 

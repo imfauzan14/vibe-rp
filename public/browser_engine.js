@@ -21,6 +21,8 @@ import {
 
 const byteLenCache = new Map();
 const BYTE_CACHE_MAX = 4096;
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
 
 /**
  * Token estimate: UTF-8 bytes / 4.
@@ -34,7 +36,7 @@ export function estimateTokens(text) {
   const str = typeof text === "string" ? text : String(text);
   let bytes = byteLenCache.get(str);
   if (bytes === undefined) {
-    bytes = new TextEncoder().encode(str).length;
+    bytes = textEncoder.encode(str).length;
     if (byteLenCache.size >= BYTE_CACHE_MAX) byteLenCache.clear();
     byteLenCache.set(str, bytes);
   }
@@ -141,14 +143,14 @@ export function clipLedgerToTokens(text, maxTokens, marker = "\n- [older ledger 
   // target tends to produce.
   const markerTokens = estimateTokens(marker);
   const byteBudget = Math.max(0, (limit - markerTokens) * 4);
-  const bytes = new TextEncoder().encode(str);
+  const bytes = textEncoder.encode(str);
   let kept;
   if (bytes.length <= byteBudget) {
     kept = str;
   } else {
     // `stream: true` withholds any trailing partial multi-byte sequence, so a
     // CJK or emoji character is never cut in half.
-    kept = new TextDecoder().decode(bytes.subarray(0, byteBudget), { stream: true });
+    kept = textDecoder.decode(bytes.subarray(0, byteBudget), { stream: true });
     const nl = kept.lastIndexOf("\n");
     const sp = kept.lastIndexOf(" ");
     const cut = nl > kept.length * 0.5 ? nl : sp > kept.length * 0.5 ? sp : -1;
