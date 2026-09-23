@@ -9,6 +9,7 @@
 //   el(tag, props, children)   create an element; props.text sets textContent
 //   qs(root, selector)         first match, or null
 //   qsa(root, selector)        array of matches (never a live NodeList)
+//   on(node, type, handler, options)  attach listener; returns remover
 //   delegate(root, type, selector, handler, options)  one listener per root
 //   renderKeyed(container, items, keyOf, renderItem)  reuse nodes by key
 //   isVisible(node)            true when the node has layout boxes
@@ -51,6 +52,15 @@ export function qs(root, selector) {
 /** Every match inside `root`, as an array. */
 export function qsa(root, selector) {
   return root ? Array.from(root.querySelectorAll(selector)) : [];
+}
+
+/**
+ * Attaches a listener on `node`. Returns a function that removes the listener.
+ */
+export function on(node, type, handler, options) {
+  if (!node) return () => {};
+  node.addEventListener(type, handler, options);
+  return () => node.removeEventListener(type, handler, options);
 }
 
 /**

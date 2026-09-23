@@ -117,6 +117,9 @@ export class LocalDb {
 
   static async open() {
     if (this.db) return this.db;
+    if (typeof indexedDB === "undefined") {
+      throw new Error("IndexedDB is not supported in this environment");
+    }
     return new Promise((resolve, reject) => {
       const req = indexedDB.open(DB_NAME, DB_VERSION);
       req.onupgradeneeded = (e) => {
@@ -404,6 +407,18 @@ export class LocalDb {
   }
 
   static async getStorageStats() {
+    if (typeof indexedDB === "undefined") {
+      const personas = (await this.getAllPersonas?.()) || [];
+      const directives = (await this.getAllDirectives?.()) || [];
+      return {
+        cardCount: 0,
+        sessionCount: 0,
+        personaCount: personas.length,
+        directiveCount: directives.length,
+        usage: 0,
+        quota: 0,
+      };
+    }
     const cards = await this.getAllCards();
     const db = await this.open();
     const sessionCount = await new Promise((resolve) => {

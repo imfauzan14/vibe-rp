@@ -234,6 +234,82 @@ describe("Redundancy cleanup and legacy export removal", () => {
       }
     }
   });
+
+  test("on helper in dom.js attaches and detaches event listeners safely", async () => {
+    const { on } = await import("../public/ui/dom.js");
+    let called = 0;
+    const listeners: Record<string, Function[]> = {};
+    const fakeNode = {
+      addEventListener(type: string, fn: Function) {
+        (listeners[type] ||= []).push(fn);
+      },
+      removeEventListener(type: string, fn: Function) {
+        if (listeners[type]) listeners[type] = listeners[type].filter((f) => f !== fn);
+      },
+    };
+
+    const unsub = on(fakeNode as any, "click", () => {
+      called++;
+    });
+    expect(listeners["click"]?.length).toBe(1);
+
+    listeners["click"][0]();
+    expect(called).toBe(1);
+
+    unsub();
+    expect(listeners["click"]?.length).toBe(0);
+
+    // Null node safety
+    const noopUnsub = on(null as any, "click", () => {});
+    expect(typeof noopUnsub).toBe("function");
+    noopUnsub();
+  });
+
+  test("mountDataPanel mounts without throwing ReferenceError for on", async () => {
+    const { mountDataPanel } = await import("../public/ui/settings/data_panel.js");
+    const listeners: Record<string, Function[]> = {};
+    const makeNode = (tag: string) => ({
+      tagName: tag.toUpperCase(),
+      style: { cssText: "" },
+      className: "",
+      textContent: "",
+      value: "",
+      files: [],
+      hidden: false,
+      children: [] as any[],
+      setAttribute() {},
+      removeAttribute() {},
+      append(...nodes: any[]) {
+        this.children.push(...nodes);
+      },
+      addEventListener(type: string, fn: Function) {
+        (listeners[type] ||= []).push(fn);
+      },
+      removeEventListener(type: string, fn: Function) {
+        if (listeners[type]) listeners[type] = listeners[type].filter((f) => f !== fn);
+      },
+    });
+
+    const fakeDoc = {
+      createElement: makeNode,
+    };
+    const orig = (globalThis as any).document;
+    (globalThis as any).document = fakeDoc;
+    try {
+      const root = makeNode("div");
+      const panel = mountDataPanel(root as any);
+      expect(panel).toBeDefined();
+      expect(typeof panel.refresh).toBe("function");
+      expect(typeof panel.destroy).toBe("function");
+      expect(panel.destroy).not.toThrow();
+    } finally {
+      if (orig === undefined) {
+        delete (globalThis as any).document;
+      } else {
+        (globalThis as any).document = orig;
+      }
+    }
+  });
 });
 
 describe("Cookie serialization helpers", () => {
