@@ -1850,7 +1850,7 @@ export class BrowserChatEngine {
 
     // A choice request is a cheap, one-off extraction-like call: `stream` is false.
     const body = {
-      model: String(activeSettings.model || "").trim(),
+      model: String(activeSettings.choiceModel || activeSettings.model || "").trim(),
       messages: request.payload,
       stream: false,
       max_tokens: request.outputTokens,

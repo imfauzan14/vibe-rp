@@ -110,6 +110,16 @@ export function openSettingsModal(options = {}) {
         ]),
       ]),
     ]),
+    el("div", { id: "popup-thought-model-wrap", class: "rp-field", hidden: true }, [
+      el("label", { class: "rp-label", for: "popup-thought-model-select", text: "Thought reasoning model" }),
+      el("select", { id: "popup-thought-model-select", class: "rp-select" }),
+      el("p", { class: "rp-help", text: "Optional dedicated model for inner monologue. Defaults to main model." }),
+    ]),
+    el("div", { id: "popup-choice-model-wrap", class: "rp-field" }, [
+      el("label", { class: "rp-label", for: "popup-choice-model-select", text: "Choice generator model" }),
+      el("select", { id: "popup-choice-model-select", class: "rp-select" }),
+      el("p", { class: "rp-help", text: "Dedicated model for generating Choice Mode options. Defaults to main model." }),
+    ]),
     // The session-import control is a library-only concern (it unlocks full
     // card definitions during import). Only render it when the caller supplies
     // a `saveSession` handler, so the chat surface does not carry a hidden

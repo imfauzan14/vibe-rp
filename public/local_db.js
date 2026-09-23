@@ -42,9 +42,11 @@ export const DEFAULT_SETTINGS = {
 
   // Cognitive Layer (disabled by default)
   enableSubagentThoughts: false,
+  thoughtModel: "",
 
   // Turn mode: "normal" (freeform author input) or "choice" (interactive choice menu)
   choiceMode: "normal",
+  choiceModel: "",
 };
 
 const DB_NAME = "vibe_rp";

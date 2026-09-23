@@ -289,4 +289,30 @@ describe("generateChoices - auxiliary request behaviour", () => {
     const inputTokens = estimateTokens(JSON.stringify(sent.messages));
     expect(inputTokens + sent.max_tokens).toBeLessThan(8192 * 4);
   });
+
+  test("uses choiceModel when configured and falls back to model", async () => {
+    let sent = null;
+    globalThis.fetch = async (url, init) => {
+      sent = JSON.parse(init.body);
+      return new Response(JSON.stringify({ choices: [{ message: { content: '{"choices":[{"text":"A."}]}' } }] }), { status: 200, headers: { "Content-Type": "application/json" } });
+    };
+
+    // When choiceModel is configured
+    await BrowserChatEngine.generateChoices({
+      card: null,
+      session,
+      settings: { ...settings, model: "main-model", choiceModel: "custom-choice-model" },
+      persona: null,
+    });
+    expect(sent.model).toBe("custom-choice-model");
+
+    // When choiceModel is empty
+    await BrowserChatEngine.generateChoices({
+      card: null,
+      session,
+      settings: { ...settings, model: "main-model", choiceModel: "" },
+      persona: null,
+    });
+    expect(sent.model).toBe("main-model");
+  });
 });

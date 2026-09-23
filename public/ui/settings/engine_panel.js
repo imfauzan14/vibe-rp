@@ -21,6 +21,7 @@
 import { qs } from "../dom.js";
 
 const MODEL_PLACEHOLDER = "Select a model after fetching models";
+const SAME_AS_MAIN = "Same as main model";
 
 /** Rebuilds a `<select>` from a model list, keeping `selected` if present. */
 function fillModels(select, models, selected, { placeholder = MODEL_PLACEHOLDER } = {}) {
@@ -35,6 +36,7 @@ function fillModels(select, models, selected, { placeholder = MODEL_PLACEHOLDER 
   const placeholderOption = document.createElement("option");
   placeholderOption.value = "";
   placeholderOption.textContent = placeholder;
+  placeholderOption.selected = !selected;
   select.appendChild(placeholderOption);
   for (const model of set) {
     const option = document.createElement("option");
@@ -53,6 +55,9 @@ export function mountEnginePanel(root, options = {}) {
   const apiKey = qs(root, "#popup-api-key");
   const modelSelect = qs(root, "#popup-model-select");
   const thoughts = qs(root, "#popup-enable-thoughts");
+  const thoughtWrap = qs(root, "#popup-thought-model-wrap");
+  const thoughtSelect = qs(root, "#popup-thought-model-select");
+  const choiceSelect = qs(root, "#popup-choice-model-select");
   const fetchBtn = qs(root, "#popup-fetch-models-btn");
   const saveBtn = qs(root, "#popup-save-engine-btn");
   const sessionWrap = qs(root, "#popup-import-session-wrap");
@@ -73,13 +78,26 @@ export function mountEnginePanel(root, options = {}) {
     if (tone === "danger") host?.toast?.(message, { tone: "danger" });
   }
 
+  function syncThoughtVisibility() {
+    if (thoughtWrap && thoughts) thoughtWrap.hidden = !thoughts.checked;
+  }
+
   function refresh() {
     const settings = getSettings?.() || {};
     if (endpoint) endpoint.value = settings.apiEndpoint || "";
     if (apiKey) apiKey.value = settings.apiKey || "";
     if (thoughts) thoughts.checked = Boolean(settings.enableSubagentThoughts);
+    syncThoughtVisibility();
     fillModels(modelSelect, settings.availableModels || [], settings.model || "");
+    fillModels(thoughtSelect, settings.availableModels || [], settings.thoughtModel || "", {
+      placeholder: SAME_AS_MAIN,
+    });
+    fillModels(choiceSelect, settings.availableModels || [], settings.choiceModel || "", {
+      placeholder: SAME_AS_MAIN,
+    });
   }
+
+  on(thoughts, "change", syncThoughtVisibility);
 
   on(fetchBtn, "click", async () => {
     if (!fetchBtn) return;
@@ -96,6 +114,12 @@ export function mountEnginePanel(root, options = {}) {
       saveSettings?.({ availableModels: list });
       const settings = getSettings?.() || {};
       fillModels(modelSelect, list, settings.model || "");
+      fillModels(thoughtSelect, list, settings.thoughtModel || "", {
+        placeholder: SAME_AS_MAIN,
+      });
+      fillModels(choiceSelect, list, settings.choiceModel || "", {
+        placeholder: SAME_AS_MAIN,
+      });
       announce(`Fetched ${list.length} ${list.length === 1 ? "model" : "models"}.`);
     } catch (error) {
       announce(`Could not fetch models: ${error.message}`, "danger");
@@ -112,6 +136,8 @@ export function mountEnginePanel(root, options = {}) {
       apiKey: apiKey?.value.trim() ?? "",
       model: modelSelect?.value ?? "",
       enableSubagentThoughts: Boolean(thoughts?.checked),
+      thoughtModel: thoughtSelect?.value ?? "",
+      choiceModel: choiceSelect?.value ?? "",
     });
     announce("Engine settings saved.");
   });
