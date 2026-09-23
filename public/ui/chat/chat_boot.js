@@ -287,7 +287,6 @@
       mount: choicePanelEl,
       onSelect: (id) => selectChoice(id),
       onRegenerate: () => requestChoices(),
-      onManual: () => revealManualInput(),
       onRetry: () => requestChoices(),
       // Never steal focus from a reader who is typing in the composer.
       autoFocus: () => document.activeElement !== authorInput,

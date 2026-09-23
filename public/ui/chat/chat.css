@@ -539,23 +539,48 @@ mark.rp-search-hit.is-current {
   padding-top: var(--space-1);
 }
 
-/* The mode selector: two chips in the composer's action row. Compact enough to
-   stay discoverable without competing with the prose. */
+/* The mode selector: a sleek segmented pill group in the composer's action row */
 .rp-mode-switch {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  background-color: var(--surface-subtle);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-full);
+  gap: 2px;
   flex: none;
 }
 
+.rp-mode-switch .rp-chip {
+  padding: var(--space-0-5) var(--space-2-5);
+  font-size: var(--text-2xs);
+  height: 1.625rem;
+  min-height: unset;
+  border-radius: var(--radius-full);
+  border: none;
+  background: transparent;
+  color: var(--ink-secondary);
+  font-weight: 500;
+  transition: all var(--duration-fast) ease;
+}
+
+.rp-mode-switch .rp-chip[aria-pressed="true"] {
+  background-color: var(--surface-raised);
+  color: var(--accent-annotation);
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+}
+
 @media (max-width: 720px) {
-  /* On a phone the panel is the primary input, so it stacks full width and the
-     mode switch drops to its own row above the composer controls. */
   .rp-choices {
-    padding: var(--space-2);
+    padding: var(--space-2) var(--space-2-5);
     border-radius: var(--radius-md);
     margin-bottom: var(--space-1);
+    box-shadow: var(--shadow-sm);
   }
 
   .rp-choices[data-collapsed="true"] {
-    padding: var(--space-1) var(--space-2-5);
+    padding: var(--space-1-5) var(--space-2-5);
   }
 
   .rp-choices__header {
@@ -567,38 +592,57 @@ mark.rp-search-hit.is-current {
   }
 
   .rp-choices__list {
-    max-height: min(44dvh, 260px);
+    max-height: min(42dvh, 250px);
     gap: var(--space-1-5);
   }
 
   .rp-choices__option {
     padding: var(--space-2) var(--space-2-5);
     font-size: var(--text-sm);
+    line-height: var(--leading-ui);
     min-height: 2.25rem;
   }
 
-  .rp-composer__actions {
-    flex-wrap: wrap;
+  .rp-choices__actions {
+    justify-content: flex-end;
+    padding-top: var(--space-0-5);
   }
 
+  /* In normal mode, actions align cleanly below the textarea */
+  .rp-composer__actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-1-5);
+  }
+
+  /* Mode switch stays compact and inline on mobile, never full-width */
   .rp-mode-switch {
-    order: -1;
-    width: 100%;
+    order: 0;
+    width: auto;
   }
 }
 
 /* When Choice Mode has active choices, the composer's textarea and send button
-   yield to the choices menu. The reader selects a choice or uses "Other..."
-   to reveal manual typing. The mode switch and identity bar stay visible. */
+   yield to the choices menu. The composer box loses its border so there is no
+   awkward empty container around the identity bar. */
 .rp-composer[data-mode="choice"][data-has-choices="true"] .rp-composer__input,
 .rp-composer[data-mode="choice"][data-has-choices="true"] #send-btn {
   display: none;
 }
 
 .rp-composer[data-mode="choice"][data-has-choices="true"] .rp-composer__box {
-  padding: var(--space-1) var(--space-3);
-  border-color: var(--border-hairline);
+  padding: var(--space-1) 0 0 0;
+  border: none;
   background-color: transparent;
+  box-shadow: none;
+}
+
+.rp-composer[data-mode="choice"][data-has-choices="true"] .rp-composer__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
 }
 
 @media (hover: hover) and (pointer: fine) {

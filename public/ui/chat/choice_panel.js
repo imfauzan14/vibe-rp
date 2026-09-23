@@ -41,7 +41,6 @@ export function createChoicePanel({
   mount,
   onSelect = () => {},
   onRegenerate = () => {},
-  onManual = () => {},
   onRetry = () => {},
   autoFocus = () => true,
 } = {}) {
@@ -77,9 +76,8 @@ export function createChoicePanel({
   const notice = el("p", { class: "rp-choices__notice" });
   const actions = el("div", { class: "rp-choices__actions" });
   const retryBtn = el("button", { type: "button", class: "rp-btn rp-btn--secondary rp-btn--sm", text: "Retry" });
-  const otherBtn = el("button", { type: "button", class: "rp-btn rp-btn--ghost rp-btn--sm", text: "Other…" });
   const regenBtn = el("button", { type: "button", class: "rp-btn rp-btn--ghost rp-btn--sm", text: "Regenerate choices" });
-  actions.append(retryBtn, otherBtn, regenBtn);
+  actions.append(retryBtn, regenBtn);
 
   const body = el("div", { class: "rp-choices__body", id: "choice-body" });
   body.append(status, notice, list, actions);
@@ -146,7 +144,6 @@ export function createChoicePanel({
   });
 
   retryBtn.addEventListener("click", () => onRetry());
-  otherBtn.addEventListener("click", () => onManual());
   regenBtn.addEventListener("click", () => onRegenerate());
 
   // Buttons are rebuilt per set, so selection is delegated to the list.
@@ -245,7 +242,6 @@ export function createChoicePanel({
     retryBtn.hidden = state.status !== "error";
     regenBtn.hidden = !ready;
     regenBtn.disabled = !ready;
-    otherBtn.hidden = submitting;
 
     const arrived = ready && lastStatus !== "ready";
     const entering = submitting && lastStatus !== "submitting";
