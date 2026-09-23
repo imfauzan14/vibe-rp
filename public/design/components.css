@@ -1512,7 +1512,12 @@ dialog.rp-dialog:not([open]) {
   font-size: var(--text-lg);
   line-height: var(--leading-prose);
   color: var(--ink);
-  hanging-punctuation: first last;
+}
+
+@supports (hanging-punctuation: first last) {
+  .rp-message__prose {
+    hanging-punctuation: first last;
+  }
 }
 
 .rp-message__prose p {

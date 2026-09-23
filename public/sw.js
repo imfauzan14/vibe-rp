@@ -63,7 +63,7 @@
 // brief window where a page loaded under the old worker is controlled by the new
 // one. `activate` deletes every other cache version, so no stale shell survives.
 
-const CACHE = "vibe-rp-shell-v16";
+const CACHE = "vibe-rp-shell-v17";
 const GEN_KEY = "./__sw_generation__";
 const PREV_KEY = "./__sw_previous__";
 const PIN_DIR = "/__sw_pin__/";
@@ -185,8 +185,20 @@ async function crawlShell() {
           const res = await fetch(url, { cache: "no-store" });
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const contentType = res.headers.get("Content-Type") || "";
-          const text = await res.text();
-          return { url, text, contentType };
+          const isDoc = /\.html?$/i.test(new URL(url).pathname);
+          const isCss = /\.css$/i.test(new URL(url).pathname);
+          const isJs = /\.js$/i.test(new URL(url).pathname);
+          const isText = isDoc || isCss || isJs || /html|css|javascript|json|xml/i.test(contentType);
+
+          let text = "";
+          let body;
+          if (isText) {
+            text = await res.text();
+            body = text;
+          } else {
+            body = await res.arrayBuffer();
+          }
+          return { url, text, body, isText, contentType };
         } catch (err) {
           failed.push(`${url} (${err.message})`);
           return null;
@@ -238,7 +250,7 @@ async function writeGeneration(entries) {
   const fingerprint = entries
     .slice()
     .sort((a, b) => (a.url < b.url ? -1 : 1))
-    .map((e) => `${e.url}\u0000${e.text.length}\u0000${e.text.slice(0, 256)}`)
+    .map((e) => `${e.url}\u0000${e.isText ? e.text.length : e.body.byteLength}\u0000${e.isText ? e.text.slice(0, 256) : ""}`)
     .join("\u0001");
   const gen = (await digest(fingerprint)).slice(0, 16);
 
@@ -250,7 +262,7 @@ async function writeGeneration(entries) {
       batch.map((e) =>
         cache.put(
           genKey(gen, e.url),
-          new Response(e.text, { headers: { "Content-Type": e.contentType || "application/octet-stream" } }),
+          new Response(e.body, { headers: { "Content-Type": e.contentType || "application/octet-stream" } }),
         ),
       ),
     );

@@ -8,3 +8,12 @@
 # served bytes differ from the reviewed bytes; the drift-guard test
 # (test/no_inline_scripts.test.ts) covers the CSP side of the same failure.
 * text=auto eol=lf
+*.woff2 binary
+*.woff binary
+*.ttf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary

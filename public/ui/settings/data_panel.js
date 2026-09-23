@@ -8,7 +8,7 @@
 //       onDataChanged()      -> callback when cards/sessions/presets change
 //   - Returns `{ refresh, destroy }`.
 
-import { el, qs, on } from "../dom.js";
+import { el, qs } from "../dom.js";
 import { LocalDb } from "../../local_db.js";
 import {
   readBrowserCookies,
