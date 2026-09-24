@@ -116,8 +116,49 @@ export function confirmAction({
  * Offers an undo window for a reversible action. Resolves `true` when the user
  * presses Undo, `false` when the window closes. `host` is a toast host from
  * `createToastHost`; pass the page host so the region is shared.
+ *
+ * Notifier form: pass `notifier` (from createNotifier) plus optional `commit`
+ * (deferred work when the window closes without Undo). The toast's lifetime IS
+ * the undo window, so there is no second clock. Returns `{ undone, settle }`.
  */
-export function runWithUndo({ message, undo, timeout = 8000, host } = {}) {
+export const UNDO_WINDOW_MS = 6000;
+
+export function runWithUndo({ message, undo, commit = null, timeout = UNDO_WINDOW_MS, host = null, notifier = null } = {}) {
+  if (notifier) {
+    let undone = false;
+    const handle = notifier.toast(message, {
+      tone: "info",
+      actionLabel: "Undo",
+      // The window the reader sees is exactly the window the caller asked for.
+      duration: timeout,
+      onAction: async () => {
+        undone = true;
+        try {
+          await undo();
+        } catch (err) {
+          notifier.toast(`Could not undo: ${err.message}`, { tone: "error" });
+        }
+      },
+      // Fires once, only when the window closes the toast. Pressing Undo removes
+      // the toast without expiring it, so the commit can never follow an undo.
+      onExpire: async () => {
+        if (undone) return;
+        try {
+          await commit?.();
+        } catch (err) {
+          notifier.toast(`Could not finish: ${err.message}`, { tone: "error" });
+        }
+      },
+    });
+    return {
+      get undone() {
+        return undone;
+      },
+      settle() {
+        handle?.dismiss?.();
+      },
+    };
+  }
   return new Promise((resolve) => {
     let settled = false;
     const finish = (value) => {

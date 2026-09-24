@@ -76,6 +76,21 @@ export function cardInitial(card) {
   return cardTitle(card).charAt(0).toUpperCase() || "?";
 }
 
+/**
+ * Avatar inner HTML for a portrait URL or a fallback letter. Accepts only
+ * `data:`/`http(s):` portrait URLs; anything else renders the fallback
+ * letter, escaped so it can never become markup.
+ */
+export function avatarInnerHtml(url, fallbackLetter) {
+  const src = String(url || "").trim();
+  const letter = String(fallbackLetter ?? "").trim().charAt(0).toUpperCase() || "?";
+  if (/^data:image\//i.test(src) || /^https?:\/\//i.test(src)) {
+    const safe = src.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    return `<img src="${safe}" alt="" style="width:100%;height:100%;object-fit:cover;">`;
+  }
+  return letter.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 /** The card's blurb, trimmed. May be empty; the view supplies its own copy. */
 export function cardDescription(card) {
   const { data } = fields(card);

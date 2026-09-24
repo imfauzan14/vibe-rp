@@ -19,13 +19,13 @@ import { qs } from "../dom.js";
 
 // sliderId -> { readoutId, key, format }
 export const PARAM_SPECS = [
-  { slider: "popup-slider-temp", readout: "popup-val-temp", key: "temperature", fallback: 0.85, decimals: 2 },
-  { slider: "popup-slider-topp", readout: "popup-val-topp", key: "topP", fallback: 0.95, decimals: 2 },
-  { slider: "popup-slider-minp", readout: "popup-val-minp", key: "minP", fallback: 0.05, decimals: 2 },
+  { slider: "popup-slider-temp", readout: "popup-val-temp", key: "temperature", fallback: 0.95, decimals: 2 },
+  { slider: "popup-slider-topp", readout: "popup-val-topp", key: "topP", fallback: 1, decimals: 2 },
+  { slider: "popup-slider-minp", readout: "popup-val-minp", key: "minP", fallback: 0, decimals: 2 },
   { slider: "popup-slider-tokens", readout: "popup-val-tokens", key: "maxTokens", fallback: 1200, decimals: 0 },
-  { slider: "popup-slider-freq", readout: "popup-val-freq", key: "frequencyPenalty", fallback: 0.25, decimals: 2 },
-  { slider: "popup-slider-pres", readout: "popup-val-pres", key: "presencePenalty", fallback: 0.15, decimals: 2 },
-  { slider: "popup-slider-context", readout: "popup-val-context", key: "maxContextTokens", fallback: 16384, decimals: 0 },
+  { slider: "popup-slider-freq", readout: "popup-val-freq", key: "frequencyPenalty", fallback: 0, decimals: 2 },
+  { slider: "popup-slider-pres", readout: "popup-val-pres", key: "presencePenalty", fallback: 0, decimals: 2 },
+  { slider: "popup-slider-context", readout: "popup-val-context", key: "maxContextTokens", fallback: 65536, decimals: 0 },
 ];
 
 function formatValue(value, decimals) {

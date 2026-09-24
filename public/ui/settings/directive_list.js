@@ -14,7 +14,8 @@
 // Exports
 //   mountDirectiveList(root, options) -> { refresh, destroy }
 
-import { el, renderKeyed } from "../dom.js";
+import { el } from "../dom.js";
+import { mountPresetList } from "./preset_list.js";
 
 function preview(directive) {
   const text = String(directive.description || directive.content || "").trim();
@@ -63,55 +64,12 @@ function buildRow(directive, handlers, existing) {
 }
 
 export function mountDirectiveList(root, options = {}) {
-  const { load, onEdit, onCreate, onDelete, onSetDefault, host } = options;
-  if (!root) return { refresh: async () => {}, destroy: () => {} };
-
-  const list = el("div", { class: "rp-directive-list" });
-  root.replaceChildren(list);
-
-  const handlers = {
-    onEdit: (directive) => onEdit?.(directive),
-    onSetDefault: async (directive) => {
-      await onSetDefault?.(directive);
-      await refresh();
-    },
-    onDelete: async (directive) => {
-      const removed = await onDelete?.(directive);
-      if (removed === false) return;
-      host?.toast?.(`Prompt "${directive.name}" deleted.`, { tone: "info" });
-      await refresh();
-    },
-  };
-
-  async function refresh() {
-    const directives = (await load?.()) || [];
-    if (directives.length === 0) {
-      list.replaceChildren(
-        el("div", { class: "rp-empty" }, [
-          el("p", { class: "rp-empty__title", text: "No system prompts yet" }),
-          el("p", {
-            class: "rp-empty__body",
-            text: "The system prompt is the craft contract every reply obeys. Create one to set the voice.",
-          }),
-        ])
-      );
-      return;
-    }
-    renderKeyed(
-      list,
-      directives,
-      (directive) => directive.id,
-      (directive, existing) => buildRow(directive, handlers, existing)
-    );
-  }
-
-  const createBtn = options.createButton;
-  if (createBtn) createBtn.addEventListener("click", () => onCreate?.());
-
-  return {
-    refresh,
-    destroy() {
-      root.replaceChildren();
-    },
-  };
+  return mountPresetList(root, {
+    ...options,
+    listClass: "rp-directive-list",
+    emptyTitle: "No system prompts yet",
+    emptyBody: "The system prompt is the craft contract every reply obeys. Create one to set the voice.",
+    deleteToast: (directive) => `Prompt "${directive.name}" deleted.`,
+    buildRow,
+  });
 }

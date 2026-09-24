@@ -1,12 +1,14 @@
 // Choice Mode: the choice-generation instruction and its resilient parser.
 //
-// Pure and dependency-free. No DOM, no network, no engine import: this module
+// Pure and DOM-free. No network, no engine import: this module
 // answers exactly two questions, "what do we ask the model for?" and "what did
 // the model actually give us?". Keeping the parser here means the untrusted
 // model output is normalised in one testable place, before any UI code sees it.
 //
 // Choice Mode changes how the reader picks the next turn. It never changes how
 // the conversation is stored: a selected choice is an ordinary user message.
+
+import { stripThoughtBlocks } from "./text.js";
 
 // A choice is one line the reader can scan. Beyond this it stops being a menu
 // item and becomes a paragraph, so the parser rejects rather than truncates.
@@ -159,9 +161,7 @@ function entryItem(entry) {
  */
 function extractItems(raw) {
   // Strip internal <thought>, <think>, and <reasoning> scratchpad blocks before extracting choices
-  const clean = typeof raw === "string"
-    ? raw.replace(/<(thought|think|reasoning)[^>]*>[\s\S]*?<\/\1>/gi, "").replace(/<(thought|think|reasoning)[^>]*>[\s\S]*$/gi, "").trim()
-    : "";
+  const clean = typeof raw === "string" ? stripThoughtBlocks(raw) : "";
   const slice = firstJsonSlice(clean);
   if (slice) {
     let parsed = null;

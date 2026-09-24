@@ -17,83 +17,95 @@ import {
   BrowserChatEngine,
   planChoiceRequest,
   estimateTokens,
-  stripThoughtBlocks,
   cleanPromptText,
 } from "../public/browser_engine.js";
-
-const words = (n) => "word ".repeat(n).trim();
+import { stripThoughtBlocks } from "../public/text.js";
+import { words } from "./helpers.js";
 
 describe("choice parser - the instructed shape", () => {
-  test("parses the compact JSON object into id/text pairs", () => {
+  test.each([
+    [
+      "compact JSON object",
+      '{"choices":[{"id":"c1","text":"Press her about the letter."},{"text":"Stay silent."},{"text":"Change the subject."},{"text":"Leave."}]}',
+      ["Press her about the letter.", "Stay silent.", "Change the subject.", "Leave."],
+    ],
+    [
+      "code fence and surrounding prose",
+      'Sure!\n```json\n{"choices":[{"text":"Open the door."},{"text":"Wait."},{"text":"Call out."}]}\n```\nHope that helps.',
+      ["Open the door.", "Wait.", "Call out."],
+    ],
+    [
+      "bare array",
+      '["Ask about it.","Leave."]',
+      ["Ask about it.", "Leave."],
+    ],
+    [
+      "common key aliases",
+      '{"choices":[{"label":"Ask."},{"choice":"Leave."}]}',
+      ["Ask.", "Leave."],
+    ],
+    [
+      "brace inside a quoted choice",
+      '{"choices":[{"text":"Say \\"a { brace } thing\\"."},{"text":"Leave."}]}',
+      ['Say "a { brace } thing".', "Leave."],
+    ],
+    [
+      "line-list fallback",
+      "1. Ask about the letter\n2. Stay silent\n3. Leave",
+      ["Ask about the letter", "Stay silent", "Leave"],
+    ],
+  ])("parses %s", (_name, input, expected) => {
+    expect(parseChoices(input).choices.map((c) => c.text)).toEqual(expected);
+  });
+
+  test("normalises ids instead of trusting them", () => {
     const { choices } = parseChoices(
-      '{"choices":[{"id":"c1","text":"Press her about the letter."},{"text":"Stay silent."},{"text":"Change the subject."},{"text":"Leave."}]}'
+      '{"choices":[{"id":"c1","text":"Press her about the letter."},{"text":"Stay silent."}]}'
     );
-    expect(choices.length).toBe(4);
     expect(choices[0]).toEqual({ id: "c1", text: "Press her about the letter." });
-    expect(choices[1].id).toBe("c2"); // ids are normalised, not trusted
-  });
-
-  test("tolerates a code fence and surrounding prose", () => {
-    const { choices } = parseChoices(
-      'Sure!\n```json\n{"choices":[{"text":"Open the door."},{"text":"Wait."},{"text":"Call out."}]}\n```\nHope that helps.'
-    );
-    expect(choices.map((c) => c.text)).toEqual(["Open the door.", "Wait.", "Call out."]);
-  });
-
-  test("accepts a bare array and common key aliases", () => {
-    expect(parseChoices('["Ask about it.","Leave."]').choices.length).toBe(2);
-    expect(parseChoices('{"choices":[{"label":"Ask."},{"choice":"Leave."}]}').choices.map((c) => c.text)).toEqual(["Ask.", "Leave."]);
+    expect(choices[1].id).toBe("c2");
   });
 
   test("parses label for menu display alongside full roleplay text", () => {
     const raw = JSON.stringify({
       choices: [
-        { label: "Refuse demand", text: "Menahan beban gravitasi sambil menatap lurus matanya, menolak permintaannya." },
-        { label: "Step back", text: "Melangkah mundur tanpa sepatah kata pun menuju loker." },
+        { label: "Refuse demand", text: "Bracing against the crushing weight, meeting her gaze, refusing her demand." },
+        { label: "Step back", text: "Stepping back toward the lockers without a word." },
       ],
     });
     const { choices } = parseChoices(raw);
     expect(choices.length).toBe(2);
     expect(choices[0].label).toBe("Refuse demand");
-    expect(choices[0].text).toBe("Menahan beban gravitasi sambil menatap lurus matanya, menolak permintaannya.");
+    expect(choices[0].text).toBe("Bracing against the crushing weight, meeting her gaze, refusing her demand.");
     expect(choices[1].label).toBe("Step back");
-    expect(choices[1].text).toBe("Melangkah mundur tanpa sepatah kata pun menuju loker.");
-  });
-
-  test("a brace inside a quoted choice does not close the object early", () => {
-    const { choices } = parseChoices('{"choices":[{"text":"Say \\"a { brace } thing\\"."},{"text":"Leave."}]}');
-    expect(choices.map((c) => c.text)).toEqual(['Say "a { brace } thing".', "Leave."]);
-  });
-
-  test("falls back to a line list only when it yields a real menu", () => {
-    const { choices } = parseChoices("1. Ask about the letter\n2. Stay silent\n3. Leave");
-    expect(choices.map((c) => c.text)).toEqual(["Ask about the letter", "Stay silent", "Leave"]);
+    expect(choices[1].text).toBe("Stepping back toward the lockers without a word.");
   });
 });
 
 describe("choice parser - validation and sanitation", () => {
-  test("drops duplicates case- and punctuation-insensitively", () => {
-    const { choices } = parseChoices(
-      '{"choices":[{"text":"Ask about the letter."},{"text":"ask about the LETTER"},{"text":"Leave."}]}'
-    );
-    expect(choices.map((c) => c.text)).toEqual(["Ask about the letter.", "Leave."]);
-  });
-
-  test("strips list markers and wrapping quotes", () => {
-    const { choices } = parseChoices(
-      '{"choices":[{"text":"- Do the thing"},{"text":"\\u2022 Another thing"},{"text":"[2] Bracket thing"},{"text":"\\"Quoted thing\\""}]}'
-    );
-    expect(choices.map((c) => c.text)).toEqual(["Do the thing", "Another thing", "Bracket thing", "Quoted thing"]);
-  });
-
-  test("collapses a multi-line entry into one line", () => {
-    const { choices } = parseChoices('{"choices":[{"text":"Ask her\\n\\nabout   the letter."},{"text":"Leave."}]}');
-    expect(choices[0].text).toBe("Ask her about the letter.");
-  });
-
-  test("removes control, zero-width and bidi-override characters", () => {
-    const { choices } = parseChoices('{"choices":[{"text":"A\\u0007 b\\u202Ec\\u200Bd"},{"text":"Leave."}]}');
-    expect(choices[0].text).toBe("A bcd");
+  test.each([
+    [
+      "drops duplicates case- and punctuation-insensitively",
+      '{"choices":[{"text":"Ask about the letter."},{"text":"ask about the LETTER"},{"text":"Leave."}]}',
+      ["Ask about the letter.", "Leave."],
+    ],
+    [
+      "strips list markers and wrapping quotes",
+      '{"choices":[{"text":"- Do the thing"},{"text":"\\u2022 Another thing"},{"text":"[2] Bracket thing"},{"text":"\\"Quoted thing\\""}]}',
+      ["Do the thing", "Another thing", "Bracket thing", "Quoted thing"],
+    ],
+    [
+      "collapses a multi-line entry into one line",
+      '{"choices":[{"text":"Ask her\\n\\nabout   the letter."},{"text":"Leave."}]}',
+      ["Ask her about the letter.", "Leave."],
+    ],
+    [
+      "removes control, zero-width and bidi-override characters",
+      '{"choices":[{"text":"A\\u0007 b\\u202Ec\\u200Bd"},{"text":"Leave."}]}',
+      ["A bcd", "Leave."],
+    ],
+  ])("%s", (_name, input, expected) => {
+    expect(parseChoices(input).choices.map((c) => c.text)).toEqual(expected);
   });
 
   test("rejects empty, whitespace and single-character entries", () => {
@@ -249,7 +261,7 @@ describe("planChoiceRequest", () => {
   });
 
   test("carries agentsContract into the system prompt for choice generation", () => {
-    const customContract = "Bahasa Indonesia contract: tulis dalam bahasa Indonesia.";
+    const customContract = "Custom contract: write in a clipped, watchful register.";
     const req = planChoiceRequest({
       card,
       session: { messages: [{ id: "g", role: "assistant", content: "The greeting." }] },
@@ -258,7 +270,7 @@ describe("planChoiceRequest", () => {
       count: 4,
     });
     const systemMessage = req.payload.find((m) => m.role === "system");
-    expect(systemMessage?.content).toContain("Bahasa Indonesia contract");
+    expect(systemMessage?.content).toContain("Custom contract");
   });
 });
 
@@ -427,7 +439,8 @@ describe("stripThoughtBlocks and cleanPromptText", () => {
 });
 
 describe("Universal & Adaptive Choice Mode Prompt Contract", () => {
-  test("CHOICE_SYSTEM_PROMPT contains Language Lock, Narrative Perspective, and 4 dramatic archetypes", () => {
+  test("CHOICE_SYSTEM_PROMPT establishes the full operational contract (language lock, craft, precedence)", () => {
+    // Language lock, perspective, agency and the 4 dramatic archetypes.
     expect(CHOICE_SYSTEM_PROMPT).toContain("Language Lock");
     expect(CHOICE_SYSTEM_PROMPT).toContain("Narrative Perspective");
     expect(CHOICE_SYSTEM_PROMPT).toContain("Direct / Assertive");
@@ -435,6 +448,16 @@ describe("Universal & Adaptive Choice Mode Prompt Contract", () => {
     expect(CHOICE_SYSTEM_PROMPT).toContain("Cautious / Observant");
     expect(CHOICE_SYSTEM_PROMPT).toContain("Unconventional / Intuitive");
     expect(CHOICE_SYSTEM_PROMPT).toContain("Strict Agency");
+    // Scene craft: beats, subtext, anti-echo.
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Scene Beats & Physical Grounding");
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Subtext over Exposition");
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Anti-Echo Rule");
+    // Operational precedence for mismatched presets.
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Language Lock & Register Adaptation");
+    expect(CHOICE_SYSTEM_PROMPT).toContain("active operational authority");
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Never default to the preset's source language");
+    const promptText = choicePrompt(4, { charName: "Vance", playerName: "Rowan" });
+    expect(promptText).toContain("Operational Precedence: If the character preset was created in a different language, override it to match Rowan's active language, persona, and directives.");
   });
 
   test("planChoiceRequest shakes thought blocks from assistant turns in history", () => {
@@ -460,8 +483,7 @@ describe("Universal & Adaptive Choice Mode Prompt Contract", () => {
     });
 
     const assistantMsg = req.payload.find((m) => m.role === "assistant");
-    expect(assistantMsg).toBeDefined();
-    expect(assistantMsg.content).toBe("The horizon is dark with heavy clouds.");
+    expect(assistantMsg).toMatchObject({ role: "assistant", content: "The horizon is dark with heavy clouds." });
     expect(assistantMsg.content).not.toContain("<think>");
     expect(assistantMsg.content).not.toContain("heighten dramatic tension");
 
@@ -469,40 +491,25 @@ describe("Universal & Adaptive Choice Mode Prompt Contract", () => {
     expect(req.payload[0].content).toContain("Scenario: On the high ramparts at sunset.");
   });
 
-  test("CHOICE_SYSTEM_PROMPT contains Scene Beats, Subtext over Exposition, and Anti-Echo Rule", () => {
-    expect(CHOICE_SYSTEM_PROMPT).toContain("Scene Beats & Physical Grounding");
-    expect(CHOICE_SYSTEM_PROMPT).toContain("Subtext over Exposition");
-    expect(CHOICE_SYSTEM_PROMPT).toContain("Anti-Echo Rule");
-  });
-
-  test("stripThoughtBlocks removes reasoning tags from 2026 router models", () => {
-    const raw = "<reasoning>Internal router or DeepSeek R1 trace</reasoning>Visible character dialogue.";
+  test("stripThoughtBlocks removes provider reasoning tags", () => {
+    const raw = "<reasoning>Internal trace</reasoning>Visible character dialogue.";
     expect(stripThoughtBlocks(raw)).toBe("Visible character dialogue.");
-  });
-
-  test("CHOICE_SYSTEM_PROMPT and choicePrompt establish operational precedence for cross-lingual presets", () => {
-    expect(CHOICE_SYSTEM_PROMPT).toContain("Language Lock & Register Adaptation");
-    expect(CHOICE_SYSTEM_PROMPT).toContain("active operational authority");
-    expect(CHOICE_SYSTEM_PROMPT).toContain("Never default to the preset's source language");
-
-    const promptText = choicePrompt(4, { charName: "Aria", playerName: "Budi" });
-    expect(promptText).toContain("Operational Precedence: If the character preset was created in a different language, override it to match Budi's active language, persona, and directives.");
   });
 
   test("planChoiceRequest adapts seamlessly to user persona, character context, and system directives", () => {
     const session = {
       messages: [
-        { id: "u1", role: "user", content: "Kenapa kamu ada di sini?" },
-        { id: "a1", role: "assistant", content: "Aku sedang mencari dokumen rahasia itu." },
+        { id: "u1", role: "user", content: "Why are you here?" },
+        { id: "a1", role: "assistant", content: "I am looking for the missing manifest." },
       ],
       ledger: "",
       consumed: 1,
     };
     const card = {
       data: {
-        name: "Siti",
-        personality: "Dingin, waspada, agen intelijen berpengalaman.",
-        scenario: "Di sebuah kafe tua di Jakarta Pusat.",
+        name: "Vance",
+        personality: "Cold, watchful, veteran investigator.",
+        scenario: "In an old interrogation room under a buzzing lamp.",
       },
     };
     const req = planChoiceRequest({
@@ -511,26 +518,26 @@ describe("Universal & Adaptive Choice Mode Prompt Contract", () => {
       settings: {
         maxContextTokens: 4096,
         maxTokens: 1000,
-        agentsContract: "Directives: Gunakan bahasa Indonesia santai dengan latar Jakarta.",
+        agentsContract: "Directives: Use a clipped, watchful register with a dockside backdrop.",
       },
       persona: {
-        name: "Budi",
-        description: "Detektif swasta sinis yang selalu curiga dan berbicara dengan bahasa santai.",
+        name: "Rowan",
+        description: "Cynical private scout who stays suspicious and speaks in clipped cadence.",
       },
       count: 4,
     });
 
     const sysMsg = req.payload[0];
     expect(sysMsg.role).toBe("system");
-    expect(sysMsg.content).toContain("User Persona (Budi): Detektif swasta sinis");
-    expect(sysMsg.content).toContain("Character Context (Siti): Dingin, waspada");
-    expect(sysMsg.content).toContain("Scenario: Di sebuah kafe tua di Jakarta Pusat.");
-    expect(sysMsg.content).toContain("System & Craft Directives:\nDirectives: Gunakan bahasa Indonesia santai");
+    expect(sysMsg.content).toContain("User Persona (Rowan): Cynical private scout");
+    expect(sysMsg.content).toContain("Character Context (Vance): Cold, watchful");
+    expect(sysMsg.content).toContain("Scenario: In an old interrogation room under a buzzing lamp.");
+    expect(sysMsg.content).toContain("System & Craft Directives:\nDirectives: Use a clipped, watchful register");
     expect(sysMsg.content).toContain("Language Lock & Register Adaptation");
 
     const userPromptMsg = req.payload[req.payload.length - 1];
     expect(userPromptMsg.role).toBe("user");
-    expect(userPromptMsg.content).toContain("Embody Budi's persona, speech habits, and narrative perspective.");
+    expect(userPromptMsg.content).toContain("Embody Rowan's persona, speech habits, and narrative perspective.");
     expect(userPromptMsg.content).toContain("Seamlessly match the active language, dialect, and tone established in the scene and directives.");
   });
 });

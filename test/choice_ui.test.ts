@@ -13,63 +13,101 @@ const ROOT = path.join(import.meta.dir, "..");
 const PUBLIC = path.join(ROOT, "public");
 const read = (rel) => fs.readFileSync(path.join(PUBLIC, rel), "utf8");
 
-describe("choice panel structure", () => {
+describe("choice UI drift-guard", () => {
+  // SOURCE-TEXT guard (not behavior): pins call-site shape so refactors stay in sync.
   const panel = read("ui/chat/choice_panel.js");
+  const boot = read("ui/chat/chat_boot.js");
+  const engine = read("browser_engine.js");
 
-  test("a choice is a real button, not a clickable div", () => {
-    expect(panel).toContain('el("button"');
-    expect(panel).not.toMatch(/createElement\(["']div["']\)[^;]*data-choice-id/);
-    // The option class is applied to a button element.
-    expect(panel).toMatch(/el\(\s*"button",\s*\{[\s\S]*?rp-choices__option/);
-  });
-
-  test("model choice text lands as a text node, never as HTML", () => {
-    // The text is passed through `text:`, which dom.js assigns to textContent.
-    expect(panel).toMatch(/el\(\s*"span",\s*\{\s*class:\s*"rp-choices__text",\s*text:\s*choice\.text/);
-    expect(panel).not.toContain("innerHTML");
-    expect(panel).not.toContain("insertAdjacentHTML");
-  });
-
-  test("disabled and selected states are expressed on the button", () => {
-    expect(panel).toContain("btn.disabled = true");
-    expect(panel).toContain("is-selected");
-    expect(panel).toContain("aria-disabled");
-  });
-
-  test("a live region announces that choices arrived", () => {
-    expect(panel).toMatch(/role:\s*"status"/);
-    expect(panel).toMatch(/aria-live":\s*"polite"/);
-  });
-
-  test("numeric shortcuts are suppressed while a field has focus", () => {
-    expect(panel).toContain("isEditableTarget");
-    expect(panel).toMatch(/isEditableTarget\(event\.target\)/);
-  });
-
-  test("regenerate is an explicit action, not a render side effect", () => {
-    expect(panel).toContain("onRegenerate");
-    expect(panel).toMatch(/regenBtn\.addEventListener\("click",\s*\(\)\s*=>\s*onRegenerate\(\)\)/);
-  });
-
-  test("the panel provides a collapse/expand affordance with accessible attributes", () => {
-    expect(panel).toContain("rp-choices__collapse-btn");
-    expect(panel).toContain('"aria-expanded"');
-    expect(panel).toContain('"aria-controls"');
-    expect(panel).toMatch(/collapseBtn\.addEventListener\("click"/);
-  });
-
-  test("the header displays a status badge and dynamic collapsed state", () => {
-    expect(panel).toContain("rp-choices__badge");
-    expect(panel).toContain("is-generating");
-    expect(panel).toContain("is-ready");
-    expect(panel).toContain("is-submitting");
-    expect(panel).toContain("is-error");
-    expect(panel).toContain("isMobileViewport");
-  });
-
-  test("shortcuts and escape handle collapse state cleanly", () => {
-    expect(panel).toMatch(/event\.key === "Escape"/);
-    expect(panel).toMatch(/if \(isCollapsed\) return/);
+  test("panel, boot and engine call-sites keep their pinned shape", () => {
+    // a choice is a real button, not a clickable div
+    {
+      expect(panel).toContain('el("button"');
+      expect(panel).not.toMatch(/createElement\(["']div["']\)[^;]*data-choice-id/);
+      // The option class is applied to a button element.
+      expect(panel).toMatch(/el\(\s*"button",\s*\{[\s\S]*?rp-choices__option/);
+    }
+    // model choice text lands as a text node, never as HTML
+    {
+      // The text is passed through `text:`, which dom.js assigns to textContent.
+      expect(panel).toMatch(/el\(\s*"span",\s*\{\s*class:\s*"rp-choices__text",\s*text:\s*choice\.text/);
+      expect(panel).not.toContain("innerHTML");
+      expect(panel).not.toContain("insertAdjacentHTML");
+    }
+    // disabled and selected states are expressed on the button
+    {
+      expect(panel).toContain("btn.disabled = true");
+      expect(panel).toContain("is-selected");
+      expect(panel).toContain("aria-disabled");
+    }
+    // a live region announces that choices arrived
+    {
+      expect(panel).toMatch(/role:\s*"status"/);
+      expect(panel).toMatch(/aria-live":\s*"polite"/);
+    }
+    // numeric shortcuts are suppressed while a field has focus
+    {
+      expect(panel).toContain("isEditableTarget");
+      expect(panel).toMatch(/isEditableTarget\(event\.target\)/);
+    }
+    // regenerate is an explicit action, not a render side effect
+    {
+      expect(panel).toContain("onRegenerate");
+      expect(panel).toMatch(/regenBtn\.addEventListener\("click",\s*\(\)\s*=>\s*onRegenerate\(\)\)/);
+    }
+    // the panel provides a collapse/expand affordance with accessible attributes
+    {
+      expect(panel).toContain("rp-choices__collapse-btn");
+      expect(panel).toContain('"aria-expanded"');
+      expect(panel).toContain('"aria-controls"');
+      expect(panel).toMatch(/collapseBtn\.addEventListener\("click"/);
+    }
+    // the header displays a status badge and dynamic collapsed state
+    {
+      expect(panel).toContain("rp-choices__badge");
+      expect(panel).toContain("is-generating");
+      expect(panel).toContain("is-ready");
+      expect(panel).toContain("is-submitting");
+      expect(panel).toContain("is-error");
+      expect(panel).toContain("isMobileViewport");
+    }
+    // shortcuts and escape handle collapse state cleanly
+    {
+      expect(panel).toMatch(/event\.key === "Escape"/);
+      expect(panel).toMatch(/if \(isCollapsed\) return/);
+    }
+    // choice generation is requested only after a settled turn or explicitly
+    {
+      // One call site after a settled turn, plus the panel's own regenerate/retry.
+      const afterTurn = boot.match(/if \(settledOk && mode === "choice"\)/g) || [];
+      expect(afterTurn.length).toBe(1);
+      // No request is issued from a render helper.
+      expect(boot).not.toMatch(/function renderChoices\(\)[\s\S]{0,400}?requestChoices\(\)/);
+    }
+    // the panel is repainted after a failed turn so it cannot sit disabled
+    {
+      const body = boot.slice(boot.indexOf("async function streamTurn"), boot.indexOf("async function submitTurn"));
+      expect(body).toMatch(/catch \(err\)[\s\S]*?if \(mode === "choice"\) renderChoices\(\)/);
+    }
+    // choice generation is a separate, non-streaming request
+    {
+      expect(engine).toMatch(/static async generateChoices/);
+      expect(engine).toMatch(/stream:\s*false/);
+    }
+    // choice generation never touches the transcript or the ledger
+    {
+      const body = engine.slice(engine.indexOf("static async generateChoices"), engine.indexOf("static #providerContextWindow"));
+      expect(body).not.toMatch(/session\.messages\s*=/);
+      expect(body).not.toMatch(/session\.ledger\s*=/);
+      expect(body).not.toMatch(/session\.consumed\s*=/);
+    }
+    // the choice prompt is not part of the RP system prompt
+    {
+      // The RP prefix is built by buildSystemSections; the choice instruction must
+      // never appear there.
+      const sections = engine.slice(engine.indexOf("export function buildSystemSections"), engine.indexOf("export function allocateContext"));
+      expect(sections).not.toContain("CHOICE_SYSTEM_PROMPT");
+    }
   });
 });
 
@@ -101,14 +139,6 @@ describe("chat surface wiring", () => {
     // create an assistant message or a special choice turn.
     expect(boot).toMatch(/async function selectChoice[\s\S]*?submitTurn\(choice\.text\)/);
     expect(boot).toMatch(/controller\.appendMessage\(\{\s*role:\s*"user"/);
-  });
-
-  test("choice generation is requested only after a settled turn or explicitly", () => {
-    // One call site after a settled turn, plus the panel's own regenerate/retry.
-    const afterTurn = boot.match(/if \(settledOk && mode === "choice"\)/g) || [];
-    expect(afterTurn.length).toBe(1);
-    // No request is issued from a render helper.
-    expect(boot).not.toMatch(/function renderChoices\(\)[\s\S]{0,400}?requestChoices\(\)/);
   });
 
   test("leaving Choice Mode preserves the pending set for return without token waste", () => {
@@ -171,33 +201,5 @@ describe("failed-generation recovery affordance", () => {
     expect(body).toContain("streamTurn(pending.content)");
     expect(body).not.toMatch(/appendMessage/);
     expect(body).not.toMatch(/submitTurn/);
-  });
-
-  test("the panel is repainted after a failed turn so it cannot sit disabled", () => {
-    const body = boot.slice(boot.indexOf("async function streamTurn"), boot.indexOf("async function submitTurn"));
-    expect(body).toMatch(/catch \(err\)[\s\S]*?if \(mode === "choice"\) renderChoices\(\)/);
-  });
-});
-
-describe("engine choice seam", () => {
-  const engine = read("browser_engine.js");
-
-  test("choice generation is a separate, non-streaming request", () => {
-    expect(engine).toMatch(/static async generateChoices/);
-    expect(engine).toMatch(/stream:\s*false/);
-  });
-
-  test("choice generation never touches the transcript or the ledger", () => {
-    const body = engine.slice(engine.indexOf("static async generateChoices"), engine.indexOf("static #providerContextWindow"));
-    expect(body).not.toMatch(/session\.messages\s*=/);
-    expect(body).not.toMatch(/session\.ledger\s*=/);
-    expect(body).not.toMatch(/session\.consumed\s*=/);
-  });
-
-  test("the choice prompt is not part of the RP system prompt", () => {
-    // The RP prefix is built by buildSystemSections; the choice instruction must
-    // never appear there.
-    const sections = engine.slice(engine.indexOf("export function buildSystemSections"), engine.indexOf("export function allocateContext"));
-    expect(sections).not.toContain("CHOICE_SYSTEM_PROMPT");
   });
 });

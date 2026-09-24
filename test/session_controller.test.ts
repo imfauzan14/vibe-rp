@@ -1,45 +1,9 @@
 import { describe, test, expect } from "bun:test";
 import { SessionController } from "../public/session_controller.js";
+import { makeControllerDb as makeDb, makeControllerEngine as makeEngine, makeControllerFake } from "./helpers.ts";
 
-function makeCard(id = "card_1") {
-  return {
-    id,
-    name: "Test Char",
-    data: { name: "Test Char", first_mes: "Hello there." },
-  };
-}
-
-function makeDb({ cards = [makeCard()], sessions = [] } = {}) {
-  const savedSessions = [];
-  return {
-    savedSessions,
-    getSettings: () => ({ temperature: 0.5, agentsContract: "contract" }),
-    getAllCards: async () => cards,
-    getSessionsForCard: async () => sessions,
-    saveSession: async (s) => { savedSessions.push(s); },
-    saveCard: async () => {},
-    resolvePersonaForCard: async () => ({ name: "User" }),
-    resolveDirectiveForCard: async () => ({ name: "D", content: "do" }),
-  };
-}
-
-function makeEngine() {
-  return {
-    calls: [],
-    async streamTurn({ userPrompt, onChunk }) {
-      this.calls.push(userPrompt);
-      for (const chunk of ["Hello", " world", "!"]) onChunk(chunk);
-      return "Hello world!";
-    },
-  };
-}
-
-async function makeController({ db, engine } = {}) {
-  db = db || makeDb();
-  engine = engine || makeEngine();
-  const ctl = new SessionController({ db, engine });
-  await ctl.init("card_1", null);
-  return { ctl, db, engine };
+async function makeController({ db, engine }: { db?: unknown; engine?: unknown } = {}) {
+  return makeControllerFake(SessionController as unknown as new (deps: { db: unknown; engine: unknown }) => { init: (cardId: string, sessionId: null) => Promise<void> }, { db, engine });
 }
 
 describe("SessionController - message transitions", () => {

@@ -18,15 +18,53 @@ import {
   parseChoices,
   CHOICE_COUNT_DEFAULT,
 } from "./choice_format.js";
-
-const byteLenCache = new Map();
-const BYTE_CACHE_MAX = 4096;
-const textEncoder = new TextEncoder();
-const textDecoder = new TextDecoder();
-
+import { substitutePlaceholders, stripThoughtBlocks, utf8Decoder } from "./text.js";
+export {
+  estimateTokens,
+  countMessages,
+  cleanPromptText,
+  SUMMARY_MIN_TOKENS,
+  SUMMARY_DEFAULT_TOKENS,
+  SUMMARY_MAX_TOKENS,
+  SUMMARY_REASONING_HEADROOM,
+  SUMMARY_FLOOR_TOKENS,
+  TOKEN_SAFETY_MARGIN,
+  MIN_INPUT_HEADROOM,
+  MIN_OUTPUT_TOKENS,
+  resolveSafetyMargin,
+  SUMMARY_TARGET_WORDS,
+  SUMMARY_UPDATE_TARGET_WORDS,
+  LEDGER_HARD_MAX_TOKENS,
+  clipLedgerToTokens,
+  resolveSummaryBudget,
+  fitFoldLedgerTokens,
+  resolveContextBudgets,
+} from "./context_plan.js";
+import {
+  estimateTokens,
+  countMessages,
+  cleanPromptText,
+  SUMMARY_MIN_TOKENS,
+  SUMMARY_DEFAULT_TOKENS,
+  SUMMARY_MAX_TOKENS,
+  SUMMARY_REASONING_HEADROOM,
+  SUMMARY_FLOOR_TOKENS,
+  TOKEN_SAFETY_MARGIN,
+  MIN_INPUT_HEADROOM,
+  MIN_OUTPUT_TOKENS,
+  resolveSafetyMargin,
+  SUMMARY_TARGET_WORDS,
+  SUMMARY_UPDATE_TARGET_WORDS,
+  LEDGER_HARD_MAX_TOKENS,
+  clipLedgerToTokens,
+  resolveSummaryBudget,
+  fitFoldLedgerTokens,
+  resolveContextBudgets,
+  allocateContext as rawAllocateContext,
+} from "./context_plan.js";
 // Dynamic registry of learned endpoint/model capabilities.
-// Populated when providers or gateways (9router, OpenRouter, local servers, direct APIs)
-// indicate parameter support or rejection via standard responses or HTTP 400.
+// Populated when any OpenAI-compatible provider, gateway, or local server
+// indicates parameter support or rejection via standard responses or HTTP 400.
 const modelCapabilities = new Map();
 
 export function getModelCapability(endpoint, model) {
@@ -45,8 +83,8 @@ export function clearModelCapabilities() {
 }
 
 /**
- * Detects HTTP 400 parameter rejection errors returned by providers,
- * routers (such as 9router, OpenRouter), and local inference engines.
+ * Detects HTTP 400 parameter rejection errors returned by OpenAI-compatible
+ * providers, routers, gateways, and local inference engines.
  */
 export function detectParameterRejection(err) {
   const msg = String(err?.message || "").toLowerCase();
@@ -72,166 +110,6 @@ export function detectParameterRejection(err) {
   return null;
 }
 
-/**
- * Token estimate: UTF-8 bytes / 4 with safe multilingual calibration.
- *
- * Byte-based rather than `String.length`, which counts UTF-16 code units and so
- * undercounts CJK and emoji by ~3x. Multilingual non-ASCII text compresses to
- * fewer bytes per token in BPE tokenizers, so multiByteExtra protects against
- * undercounting in non-English dialogue.
- */
-export function estimateTokens(text) {
-  if (!text) return 0;
-  const str = typeof text === "string" ? text : String(text);
-  let bytes = byteLenCache.get(str);
-  if (bytes === undefined) {
-    bytes = textEncoder.encode(str).length;
-    if (byteLenCache.size >= BYTE_CACHE_MAX) byteLenCache.clear();
-    byteLenCache.set(str, bytes);
-  }
-  return (bytes + 3) >> 2;
-}
-
-/** Tokens for a message array, including per-message framing overhead. */
-export function countMessages(messages) {
-  let total = 0;
-  for (const m of messages || []) {
-    if (!m || !m.content) continue;
-    total += estimateTokens(m.content) + 4;
-  }
-  return total;
-}
-
-/**
- * Strips internal `<thought>`, `<think>`, and `<reasoning>` scratchpad blocks from text.
- * Reasoning models emit internal reasoning traces that are irrelevant to
- * auxiliary tasks like Choice Mode and subsequent turns.
- */
-export function stripThoughtBlocks(text) {
-  if (typeof text !== "string") return "";
-  let clean = text.replace(/<(thought|think|reasoning)[^>]*>[\s\S]*?<\/\1>/gi, "");
-  clean = clean.replace(/<(thought|think|reasoning)[^>]*>[\s\S]*$/gi, "");
-  return clean.trim();
-}
-
-/**
- * Trims zero-width characters, excessive blank lines, and invisible tokens (RTK).
- */
-export function cleanPromptText(text) {
-  if (typeof text !== "string") return "";
-  return text
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g, "")
-    .replace(/\r\n?/g, "\n")
-    .replace(/[ \t]+$/gm, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-/**
- * Ledger format. A continuity ledger rather than a task handoff: it must survive
- * being folded into itself indefinitely without shedding canon.
- */
-
-// Summarizer output budget. A fold is a reasoning-heavy extraction task: the
-// model must read a long transcript (often with a prior ledger), decide what is
-// canon, and compress it without dropping a fact. A permanently fixed ceiling
-// left no room for that work on reasoning models, whose hidden tokens are
-// charged against the same output allowance, so a fold could settle at
-// `finish_reason: "length"` with an empty or half-written ledger and silently
-// fall back. The budget is therefore adaptive and bounded: it scales with the
-// work the fold actually represents, never with the context window alone.
-export const SUMMARY_MIN_TOKENS = 1536; // floor for a normal fold on an adequate window
-export const SUMMARY_DEFAULT_TOKENS = 2048; // completion headroom for a normal fold
-export const SUMMARY_MAX_TOKENS = 4096; // absolute ceiling
-export const SUMMARY_REASONING_HEADROOM = 512; // extra when a prior ledger must be merged
-export const SUMMARY_FLOOR_TOKENS = 512; // hard viable floor when the window is tight
-// Allowance for the gap between the local byte/4 estimate and the provider's
-// real tokenizer. Applied to fold requests, whose input is a known, bounded
-// size.
-export const TOKEN_SAFETY_MARGIN = 512;
-
-// Minimum input headroom the planner always tries to leave: enough for a
-// system prompt and the current user turn even when the user asks for an
-// output ceiling close to the whole window.
-export const MIN_INPUT_HEADROOM = 512;
-
-// The smallest reply the engine will ever request. Below this a turn is not
-// worth sending; the request is reported as impossible instead. This is a floor
-// on the *output allowance only* — it is never a floor on the input, which is
-// what required content actually needs.
-export const MIN_OUTPUT_TOKENS = 256;
-
-/**
- * Adaptive estimator safety allowance for a generation request.
- *
- * The allowance exists to absorb the gap between `estimateTokens` (UTF-8
- * bytes / 4) and the provider's real tokenizer, plus per-message framing. That
- * error grows with the *input* the request actually sends, so a margin may
- * legitimately scale with the window — but it must never consume a large,
- * fixed fraction of it. A percentage-only rule (`8% of the window`) made a
- * larger configured context buy a proportionally larger reserve instead of
- * more usable space: at 64K it withheld ~5.1K tokens, more than four times a
- * typical reply ceiling, purely as headroom.
- *
- * This allowance is sub-linear and bounded: ~2% of the window, floored at 256
- * and capped at 4096. A small window keeps the floor; a large window gets a
- * margin that grows far slower than the space it is protecting.
- */
-export function resolveSafetyMargin(contextWindow) {
-  const window = Math.max(0, Number(contextWindow) || 0);
-  if (window <= 0) return 256;
-  return Math.max(256, Math.min(4096, Math.floor(window * 0.02)));
-}
-
-// The ledger's visible size is deliberately independent of the context window:
-// a larger window buys completion headroom, not a larger ledger. These are the
-// single source of truth for the word targets quoted in the prompts below.
-export const SUMMARY_TARGET_WORDS = 700;
-export const SUMMARY_UPDATE_TARGET_WORDS = 900;
-
-// The stored ledger is *derived* data: `session.messages` is the canonical
-// transcript and compaction never modifies it. The ledger is still bounded so
-// that a provider which ignores `max_tokens`, or a long run of degraded folds,
-// cannot inflate the payload until assembling a request exhausts memory. Above
-// the adaptive ceiling the ledger is first *compressed* (facts kept); the hard
-// maximum is a last-resort clip so the failure mode is a lossy ledger rather
-// than a crash. Both are far above any compliant fold's output.
-export const LEDGER_HARD_MAX_TOKENS = 16384;
-
-/**
- * Clips a ledger to a token ceiling at a line boundary, so a fact is never cut
- * mid-sentence, and appends a marker naming what happened. Pure and exported so
- * the last-resort bound is directly testable. The canonical transcript is not
- * involved: only this derived string is shortened.
- */
-export function clipLedgerToTokens(text, maxTokens, marker = "\n- [older ledger material omitted at the size ceiling; the full transcript is preserved]") {
-  const str = typeof text === "string" ? text : String(text ?? "");
-  const limit = Math.max(0, Math.floor(Number(maxTokens) || 0));
-  if (!str) return "";
-  if (limit <= 0) return marker.trim();
-  if (estimateTokens(str) <= limit) return str;
-  // `estimateTokens` is `(utf8Bytes + 3) >> 2`, so a byte budget of `4 * tokens`
-  // guarantees the kept prefix never exceeds its token allowance. Byte-slicing
-  // (rather than line-slicing) is what makes this bound hold for a ledger that
-  // is a single enormous line, which is exactly what a model ignoring the word
-  // target tends to produce.
-  const markerTokens = estimateTokens(marker);
-  const byteBudget = Math.max(0, (limit - markerTokens) * 4);
-  const bytes = textEncoder.encode(str);
-  let kept;
-  if (bytes.length <= byteBudget) {
-    kept = str;
-  } else {
-    // `stream: true` withholds any trailing partial multi-byte sequence, so a
-    // CJK or emoji character is never cut in half.
-    kept = textDecoder.decode(bytes.subarray(0, byteBudget), { stream: true });
-    const nl = kept.lastIndexOf("\n");
-    const sp = kept.lastIndexOf(" ");
-    const cut = nl > kept.length * 0.5 ? nl : sp > kept.length * 0.5 ? sp : -1;
-    if (cut > 0) kept = kept.slice(0, cut);
-  }
-  return `${kept}${marker}`;
-}
 
 export const LEDGER_COMPRESS_PROMPT = `The continuity ledger above has grown too large. Compress it into a smaller continuity ledger.
 
@@ -243,108 +121,6 @@ Rules:
 - Anything you do not carry forward is lost forever.
 - Keep it under ${SUMMARY_TARGET_WORDS} words.`;
 
-/**
- * Piecewise-linear *workload target* for a fold (estimated tokens of material
- * to compress). A tiny fold gets the floor, a fold the size of the default
- * budget gets the default, and anything larger scales toward the ceiling over
- * one further budget's worth of input.
- *
- * This target is monotonic non-decreasing in the workload and bounded. It is
- * not the final budget: `resolveSummaryBudget` clamps it to the request's
- * available context headroom, which shrinks as the input grows, so the final
- * budget can fall when headroom becomes the limiting term.
- */
-function scaleSummaryBudget(workload) {
-  if (!(workload > 0)) return SUMMARY_MIN_TOKENS;
-  if (workload < SUMMARY_DEFAULT_TOKENS) {
-    const t = workload / SUMMARY_DEFAULT_TOKENS;
-    return Math.round(SUMMARY_MIN_TOKENS + (SUMMARY_DEFAULT_TOKENS - SUMMARY_MIN_TOKENS) * t);
-  }
-  const t = Math.min(1, (workload - SUMMARY_DEFAULT_TOKENS) / SUMMARY_DEFAULT_TOKENS);
-  return Math.round(SUMMARY_DEFAULT_TOKENS + (SUMMARY_MAX_TOKENS - SUMMARY_DEFAULT_TOKENS) * t);
-}
-
-/**
- * Maximum output tokens for one fold request.
- *
- * Pure and dependency-free so the policy is testable in isolation. The
- * *workload target* grows with the work the fold must read and compress, not
- * with the context window: a 64k window does not want a four-times-larger
- * ledger, it wants enough completion headroom that a reasoning model can finish
- * the extraction instead of being cut off at `finish_reason: "length"`.
- *
- * Two distinct quantities are involved, and only the first is monotonic:
- *   - the workload-derived target = monotonic non-decreasing in the workload;
- *   - the final budget = that target clamped by the request's available context
- *     headroom. Headroom shrinks as the input grows, so the final budget may
- *     *decrease* when headroom becomes the limiting term. More input can
- *     therefore yield a smaller request ceiling — the window responding to a
- *     larger request, not a policy regression.
- *
- * The result is always clamped to the fold request's own context headroom
- * (`contextWindow` minus its whole input minus a tokenizer safety margin),
- * because the fold request shares one window between input and output.
- *
- * `promptTokens` is the *fixed* instruction overhead (system prompt plus the
- * fold instructions); the transcript and prior ledger are added on top, so a
- * caller that passes all three never double-counts the transcript. When even
- * the floor cannot fit, the floor wins and the overflow is accepted: refusing
- * to fold would lose continuity outright, which is worse than a bounded overage.
- */
-export function resolveSummaryBudget({
-  transcriptTokens = 0,
-  ledgerTokens = 0,
-  promptTokens = 0,
-  contextWindow = 0,
-  hasPriorLedger = false,
-  extraTokens = 0,
-} = {}) {
-  const transcript = Math.max(0, Number(transcriptTokens) || 0);
-  const ledger = Math.max(0, Number(ledgerTokens) || 0);
-  const overhead = Math.max(0, Number(promptTokens) || 0);
-  // A prior ledger is dense, already-compressed material, so it weighs half.
-  const workload = transcript + Math.floor(ledger * 0.5);
-  let budget = scaleSummaryBudget(workload) + Math.max(0, Number(extraTokens) || 0);
-  // Merging two documents is the reasoning-heavy case, not writing one.
-  if (hasPriorLedger) budget = Math.min(SUMMARY_MAX_TOKENS, budget + SUMMARY_REASONING_HEADROOM);
-  const window = Math.max(0, Number(contextWindow) || 0);
-  if (window > 0) {
-    const headroom = window - (overhead + transcript + ledger) - TOKEN_SAFETY_MARGIN;
-    budget = Math.max(SUMMARY_FLOOR_TOKENS, Math.min(budget, headroom));
-  }
-  return Math.max(SUMMARY_FLOOR_TOKENS, Math.min(SUMMARY_MAX_TOKENS, budget));
-}
-
-/**
- * The prior ledger a fold may actually send, in tokens.
- *
- * A fold request shares one window between its input and its output, and the
- * output has a floor below which folding is pointless. The *stored* ledger can
- * legitimately be far larger than a small window — it is bounded by
- * `LEDGER_HARD_MAX_TOKENS`, not by the window — so passing it whole made the
- * fold request exceed the model's window before a single transcript token was
- * counted. The provider then rejected it outright and the fold silently
- * degraded to the extractive digest, i.e. the summarizer became unreachable
- * exactly when the ledger was largest and continuity mattered most.
- *
- * The ledger is *derived* data that this request is about to rewrite, so the
- * copy sent to the summarizer is clipped to what fits. Clipping it is not a
- * loss of canon: the stored ledger is untouched, and the summarizer's output
- * replaces this input anyway. Only the transcript is treated as irreducible —
- * when even the floor cannot fit beside it, the floor still wins (refusing to
- * fold would lose continuity outright), which is the bounded overage the
- * budget policy already accepts.
- */
-export function fitFoldLedgerTokens({ contextWindow = 0, promptTokens = 0, transcriptTokens = 0, ledgerTokens = 0 } = {}) {
-  const window = Math.max(0, Number(contextWindow) || 0);
-  const ledger = Math.max(0, Number(ledgerTokens) || 0);
-  if (window <= 0 || ledger <= 0) return ledger;
-  const overhead = Math.max(0, Number(promptTokens) || 0);
-  const transcript = Math.max(0, Number(transcriptTokens) || 0);
-  const forLedger = window - overhead - transcript - SUMMARY_FLOOR_TOKENS - TOKEN_SAFETY_MARGIN;
-  if (forLedger >= ledger) return ledger;
-  return Math.max(0, forLedger);
-}
 
 export const SUMMARY_SYSTEM_PROMPT =
   "You maintain a running continuity ledger for a work of serial fiction. " +
@@ -406,57 +182,17 @@ export const LEDGER_CLOSE = "\n</ledger>";
 // planner, the truncator and the allocator all count the same bytes.
 export const LEDGER_FRAMING_TOKENS = estimateTokens(LEDGER_OPEN + LEDGER_CLOSE) + 4;
 
-/**
- * The one implementation of the configured-budget split.
- *
- * `maxContextTokens` is the total capacity of one request; `maxTokens` is a
- * *ceiling* on the reply, not a share of the window. This reserves the reply up
- * to a minimum input floor and hands the rest to the prompt, so a larger window
- * buys usable input rather than a proportionally larger reserve. It is
- * module-level (not a class static) so the section builder and the public
- * `BrowserChatEngine.resolveBudgets` seam share exactly one formula.
- */
-export function resolveContextBudgets(settings = {}) {
-  const contextWindow = Math.max(2048, Number(settings.maxContextTokens) || 16384);
-  const maxOutput = Math.max(MIN_OUTPUT_TOKENS, Number(settings.maxTokens) || 1200);
-  const safetyMargin = resolveSafetyMargin(contextWindow);
-  // The output allowance may take everything above a minimal input floor; it
-  // is never halved merely because the window is large.
-  const reservedOutput = Math.max(
-    MIN_OUTPUT_TOKENS,
-    Math.min(maxOutput, contextWindow - safetyMargin - MIN_INPUT_HEADROOM)
-  );
-  const promptBudget = Math.max(512, contextWindow - reservedOutput - safetyMargin);
-  const loreBudget = Math.min(4000, Math.max(512, Math.floor(promptBudget * 0.12)));
-  // The degraded digest's size scales with the prompt budget, so a fallback
-  // ledger can never be larger than the transcript space it replaces — not
-  // even on a tiny window, where the old 3500-char floor alone could exceed
-  // the whole prompt budget. It is an extractive, lossy digest: it clips
-  // messages and the total, and the stored transcript is never touched.
-  const fallbackMaxChars = Math.min(16000, Math.max(1200, Math.floor(promptBudget * 3.5)));
-  return {
-    contextWindow,
-    maxOutput,
-    reservedOutput,
-    safetyMargin,
-    promptBudget,
-    loreBudget,
-    fallbackMaxChars,
-  };
-}
 
 /**
- * Substitutes card-local placeholders in user-authored card text. Supports
- * `{{char}}`/`{{user}}` case-insensitively plus single-bracket and angle-bracket
- * aliases, mirroring `substitutePlaceholders` in message_format.js.
+ * Substitutes card-local placeholders in user-authored card text. Thin wrapper
+ * over `substitutePlaceholders` in ./text.js with Character/User
+ * defaults when the card or persona name is missing.
  */
 export function substituteCardPlaceholders(text, card, persona) {
   if (!text) return "";
-  const cName = card ? card.data?.name || card.name || "Character" : "Character";
-  const uName = persona && persona.name ? persona.name : "User";
-  return String(text)
-    .replace(/(?:\{\{|\{|<)\s*(?:char|bot)(?:_?name)?\s*(?:\}\}|\}|>)/gi, () => cName)
-    .replace(/(?:\{\{|\{|<)\s*user(?:_?name)?\s*(?:\}\}|\}|>)/gi, () => uName);
+  const cName = card ? card.data?.name || card.name : "";
+  const uName = persona && persona.name ? persona.name : "";
+  return substitutePlaceholders(text, { user: uName || "User", char: cName || "Character" });
 }
 
 /**
@@ -586,70 +322,11 @@ export function buildSystemSections(card, persona, settings = {}) {
 }
 
 /**
- * The one allocation decision for a request.
- *
- * Everything the request must send is classified before anything is sized:
- * `requiredTokens` is the irreducible content (protected static sections plus
- * the current turn and any always-sent guidance), and `optionalItems` are the
- * degradable sections, each already measured.
- *
- * The reply is a ceiling, not a reservation. It is granted in full whenever the
- * window leaves room for it above the required content and the safety margin,
- * and it is reduced only down to `minOutput` when the required content crowds
- * it out. Optional content is then fitted by descending priority into whatever
- * input capacity remains. `feasible` is the true impossibility test: the
- * required content plus the smallest viable reply plus the margin cannot fit
- * the window at all.
- *
- * Pure and dependency-free, so the policy is testable in isolation and the same
- * decision is reachable from the planner and the final-request validator.
+ * allocateContext re-exported from ./context_plan.js.
  */
-export function allocateContext({
-  contextWindow = 0,
-  desiredOutput = MIN_OUTPUT_TOKENS,
-  safetyMargin = 0,
-  minOutput = MIN_OUTPUT_TOKENS,
-  requiredTokens = 0,
-  optionalItems = [],
-} = {}) {
-  const window = Math.max(0, Number(contextWindow) || 0);
-  const margin = Math.max(0, Number(safetyMargin) || 0);
-  const floor = Math.max(1, Number(minOutput) || MIN_OUTPUT_TOKENS);
-  const desired = Math.max(floor, Number(desiredOutput) || floor);
-  const required = Math.max(0, Number(requiredTokens) || 0);
-
-  const outputCeiling = window - margin - required;
-  const output = Math.max(floor, Math.min(desired, outputCeiling));
-  const inputBudget = Math.max(0, window - margin - output);
-  const feasible = required + floor + margin <= window;
-
-  let remaining = Math.max(0, inputBudget - required);
-  const ordered = [...optionalItems].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
-  const included = [];
-  const excluded = [];
-  for (const item of ordered) {
-    const tokens = Math.max(0, Number(item.tokens) || 0);
-    if (tokens <= remaining) {
-      included.push(item);
-      remaining -= tokens;
-    } else {
-      excluded.push(item);
-    }
-  }
-
-  const optionalTokens = included.reduce((n, i) => n + Math.max(0, Number(i.tokens) || 0), 0);
-  return {
-    output,
-    inputBudget,
-    requiredTokens: required,
-    optionalTokens,
-    historyBudget: remaining,
-    included,
-    excluded,
-    feasible,
-  };
+export function allocateContext(...args) {
+  return rawAllocateContext(...args);
 }
-
 // Choice Mode output ceiling: enough for a small JSON object of four to five
 // short lines, with headroom for a reasoning model that spends tokens before
 // its visible output. It is a ceiling, not a reservation, and the allocator
@@ -1139,6 +816,21 @@ export class BrowserChatEngine {
   }
 
   /**
+   * Single POST of a JSON chat-completions body. Throws nothing itself:
+   * network failures reject to the caller, and every HTTP-status path stays
+   * at the call site, where capability updates, context-overflow adaptation,
+   * and provider-error parsing differ per site.
+   */
+  static #postChat(base, headers, body, signal) {
+    return fetch(`${base}/chat/completions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal,
+    });
+  }
+
+  /**
    * Adaptive output budget for one fold request, given its serialized input.
    * Shared by the request builder and the retry decision so both agree on the
    * exact ceiling the window will allow.
@@ -1263,12 +955,7 @@ export class BrowserChatEngine {
   /** One fold request. Reports whether a larger-budget retry is warranted. */
   static async #summaryAttempt({ base, headers, settings, transcript, previousLedger, signal, extraTokens = 0 }) {
     let { body, budget } = this.#buildSummaryRequest({ settings, transcript, previousLedger, extraTokens });
-    let res = await fetch(`${base}/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal,
-    });
+    let res = await this.#postChat(base, headers, body, signal);
     if (!res.ok) {
       const errText = await res.text();
       const rejection = detectParameterRejection({ message: `HTTP ${res.status}: ${errText}` });
@@ -1280,12 +967,7 @@ export class BrowserChatEngine {
 
         const rebuilt = this.#buildSummaryRequest({ settings, transcript, previousLedger, extraTokens });
         body = rebuilt.body;
-        res = await fetch(`${base}/chat/completions`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(body),
-          signal,
-        });
+        res = await this.#postChat(base, headers, body, signal);
       }
       if (!res.ok) throw new Error(`Summarizer error (${res.status}): ${errText}`);
     }
@@ -1380,12 +1062,7 @@ export class BrowserChatEngine {
 
     // The abort signal is threaded through every network path so a Stop button
     // can cancel the turn at any point, generation included.
-    let res = await fetch(`${base}/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal,
-    });
+    let res = await this.#postChat(base, headers, body, signal);
     if (!res.ok) {
       const httpErr = await this.#generationHttpError(res);
       const rejection = detectParameterRejection(httpErr);
@@ -1396,12 +1073,7 @@ export class BrowserChatEngine {
         if (rejection.unsupportedReasoningEffort) updateModelCapability(settings?.apiEndpoint, settings?.model, { supportsReasoningEffort: false });
 
         body = this.buildRequestBody(settings, messages, outputCeiling);
-        res = await fetch(`${base}/chat/completions`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(body),
-          signal,
-        });
+        res = await this.#postChat(base, headers, body, signal);
         if (!res.ok) throw await this.#generationHttpError(res);
       } else {
         throw httpErr;
@@ -1415,7 +1087,7 @@ export class BrowserChatEngine {
     const contentType = (res.headers?.get?.("content-type") || "").toLowerCase();
     const isJsonBody = contentType.includes("application/json");
 
-    const decoder = new TextDecoder();
+    const decoder = utf8Decoder;
     let buffer = "";
     let usage = null;
     let finishReason = null;
@@ -1470,7 +1142,7 @@ export class BrowserChatEngine {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        buffer += decoder.decode(value, { stream: true });
+        buffer += utf8Decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() || "";
         for (const line of lines) {
@@ -1583,7 +1255,7 @@ export class BrowserChatEngine {
 
   /**
    * Normalises a provider error payload into a descriptive Error. The `error`
-   * object shape varies by provider (OpenAI, OpenRouter, Anthropic-compatible),
+   * object shape varies by provider over the OpenAI-compatible API,
    * so the message and code are extracted defensively.
    */
   static #providerError(error) {
@@ -2055,12 +1727,7 @@ export class BrowserChatEngine {
       body.reasoning_effort = activeSettings.reasoningEffort;
     }
 
-    let res = await fetch(`${base}/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-      signal,
-    });
+    let res = await this.#postChat(base, headers, body, signal);
     if (!res.ok) {
       const httpErr = await this.#generationHttpError(res);
       const rejection = detectParameterRejection(httpErr);
@@ -2084,12 +1751,7 @@ export class BrowserChatEngine {
         if (activeSettings?.reasoningEffort && updatedCap.supportsReasoningEffort !== false) {
           body.reasoning_effort = activeSettings.reasoningEffort;
         }
-        res = await fetch(`${base}/chat/completions`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(body),
-          signal,
-        });
+        res = await this.#postChat(base, headers, body, signal);
         if (!res.ok) throw await this.#generationHttpError(res);
       } else {
         throw httpErr;
@@ -2118,11 +1780,10 @@ export class BrowserChatEngine {
    *
    * A context-length rejection is the only portable signal of the model's true
    * window over an OpenAI-compatible API, so it is worth recovering. The
-   * patterns cover the common providers (OpenAI/OpenRouter "maximum context
-   * length is N tokens", Anthropic "prompt is too long: N tokens > M maximum",
-   * llama.cpp/vLLM "exceeds the available context size"). Returns null when the
-   * error is not a context overflow or names no usable number, so the caller
-   * never retries on an unrelated failure.
+   * patterns cover the common phrasings ("maximum context length is N tokens",
+   * "prompt is too long: N tokens > M maximum", "exceeds the available
+   * context size"). Returns null when the error is not a context overflow or
+   * names no usable number, so the caller never retries on an unrelated failure.
    */
   static #providerContextWindow(err) {
     const message = String(err?.message || "");
@@ -2310,12 +1971,7 @@ export class BrowserChatEngine {
       if (settings?.reasoningEffort && cap.supportsReasoningEffort !== false) {
         body.reasoning_effort = settings.reasoningEffort;
       }
-      const res = await fetch(`${base}/chat/completions`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal,
-      });
+      const res = await this.#postChat(base, headers, body, signal);
       if (res.ok) {
         const data = await res.json();
         const text = data?.choices?.[0]?.message?.content;

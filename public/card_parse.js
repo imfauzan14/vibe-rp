@@ -1,3 +1,5 @@
+import { utf8Decoder } from "./text.js";
+
 // Character-card import parsing (JSON/JSONC + chub V2 PNG + legacy V1 WebP).
 // No DOM/window/document references: pure byte/JSON parsing helpers.
 
@@ -134,7 +136,6 @@ export function parseJsonLoose(text) {
 }
 
 const latin1Decoder = new TextDecoder("latin1");
-const utf8Decoder = new TextDecoder("utf-8");
 
 export async function inflateDecompress(u8) {
   const ds = new DecompressionStream("deflate");

@@ -6,12 +6,10 @@
 // cancellation-safe.
 import { describe, test, expect, afterEach } from "bun:test";
 import { BrowserChatEngine, estimateTokens, countMessages, LEDGER_HARD_MAX_TOKENS } from "../public/browser_engine.js";
-
-const SSE_OK = 'data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n';
-const words = (n) => "word ".repeat(n).trim();
+import { words, SSE_OK, resetFetch } from "./helpers.js";
 
 afterEach(() => {
-  globalThis.fetch = undefined;
+  resetFetch();
 });
 
 const BASE = { apiEndpoint: "https://x.test/v1", model: "m", maxContextTokens: 8192, maxTokens: 1200 };
@@ -171,7 +169,7 @@ describe("Provider context-overflow adaptation", () => {
     const session = { messages: [{ role: "assistant", content: "greeting" }, { role: "user", content: words(150) }], ledger: "", consumed: 1 };
     await expect(
       BrowserChatEngine.streamTurn({ card: null, session, settings: BASE, persona: null, agentsContract: "", signal: controller.signal })
-    ).rejects.toThrow();
+    ).rejects.toThrow(/abort/i);
     expect(calls).toBe(1);
   });
 
@@ -202,7 +200,7 @@ describe("Provider context-overflow adaptation", () => {
     } catch (e) {
       threw = e.message;
     }
-    expect(threw).toBeTruthy();
+    expect(threw).toMatch(/maximum context|400/i);
     expect(chunks.join("")).toBe("partial");
     expect(calls).toBe(1);
   });

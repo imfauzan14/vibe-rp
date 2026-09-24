@@ -1,76 +1,27 @@
-// Choice Mode: the controller's choice state machine and its interaction with
-// the existing session/generation flow.
-//
-// These are behavioural: they drive the public controller seam with fake
-// engine/db and assert what the reader would observe — how many user turns, how
-// many generations, whether a stale set can still submit. No DOM is used.
 import { describe, test, expect } from "bun:test";
 import { SessionController, CHOICE_STATUS, choiceSourceSignature } from "../public/session_controller.js";
+import { makeControllerDb, makeControllerEngine, makeControllerFake } from "./helpers.ts";
 
 function makeCard(id = "card_1") {
   return { id, name: "Elena", data: { name: "Elena", first_mes: "The door closes behind you." } };
 }
 
-function makeDb({ cards = [makeCard()], sessions = [] } = {}) {
-  const saved = [];
-  // A real database hands back a structured clone, not the live object. Keeping
-  // that property here is what makes the persistence tests meaningful: state
-  // that was never written is genuinely absent after a reload.
-  const store = {};
-  for (const s of sessions) store[s.id] = JSON.parse(JSON.stringify(s));
-  let settings = { maxContextTokens: 8192, maxTokens: 1200, agentsContract: "contract" };
-  return {
-    saved,
-    getSettings: () => ({ ...settings }),
-    saveSettings: (patch) => { settings = { ...settings, ...patch }; },
-    getAllCards: async () => cards,
-    getSessionsForCard: async () => Object.values(store).map((s) => JSON.parse(JSON.stringify(s))),
-    saveSession: async (s) => {
-      saved.push(JSON.parse(JSON.stringify(s)));
-      store[s.id] = JSON.parse(JSON.stringify(s));
-    },
-    saveCard: async () => {},
-    resolvePersonaForCard: async () => ({ name: "Rowan" }),
-    resolveDirectiveForCard: async () => ({ name: "D", content: "do" }),
-  };
+type Ctor = new (deps: { db: unknown; engine: unknown }) => { init: (cardId: string, sessionId: null) => Promise<void> };
+const Ctl = SessionController as unknown as Ctor;
+
+function makeDb({ cards = [makeCard()], sessions = [] }: { cards?: Array<Record<string, unknown>>; sessions?: Array<Record<string, unknown>> } = {}) {
+  const db = makeControllerDb({ cards, sessions });
+  db.resolvePersonaForCard = async () => ({ name: "Rowan" });
+  return db;
 }
 
-/** A fake engine that records every call and can be made to fail on demand. */
-function makeEngine({ choices = ["Ask about the letter.", "Stay silent.", "Leave the room."], choiceError = null, streamError = null } = {}) {
-  const engine = {
-    streamCalls: 0,
-    choiceCalls: 0,
-    lastChoiceArgs: null,
-    async streamTurn({ onChunk }) {
-      engine.streamCalls += 1;
-      if (streamError) throw streamError;
-      for (const chunk of ["The ", "reply."]) onChunk(chunk);
-      return "The reply.";
-    },
-    async generateChoices(args) {
-      engine.choiceCalls += 1;
-      engine.lastChoiceArgs = args;
-      if (choiceError) throw choiceError;
-      return {
-        choices: choices.map((c, i) => (
-          typeof c === "string"
-            ? { id: `c${i + 1}`, text: c, label: `Label ${i + 1}` }
-            : { id: c.id || `c${i + 1}`, text: c.text, label: c.label || "" }
-        )),
-        usage: null,
-        request: {},
-      };
-    },
-  };
-  return engine;
+/** Choice tests stream "The reply."; the shared engine defaults to "Hello world!". */
+function makeEngine({ streamText = "The reply.", ...rest }: { streamText?: string; choices?: Array<string | { id?: string; text: string; label?: string }>; choiceError?: unknown; streamError?: unknown } = {}) {
+  return makeControllerEngine({ streamText, ...rest });
 }
 
-async function makeController({ db, engine } = {}) {
-  db = db || makeDb();
-  engine = engine || makeEngine();
-  const ctl = new SessionController({ db, engine });
-  await ctl.init("card_1", null);
-  return { ctl, db, engine };
+async function makeController({ db, engine }: { db?: unknown; engine?: unknown } = {}) {
+  return makeControllerFake(Ctl, { db: db ?? makeDb(), engine: engine ?? makeEngine() });
 }
 
 describe("Choice Mode - the core loop", () => {
@@ -371,8 +322,7 @@ describe("Choice Mode - persistence and restoration", () => {
     await ctl.send("Hello.");
     await ctl.requestChoices();
     const sess = ctl.activeSession;
-    expect(sess.choiceSet).toBeTruthy();
-    expect(sess.choiceSet.sourceId).toBe(ctl.choiceState.sourceId);
+    expect(sess.choiceSet).toMatchObject({ sourceId: ctl.choiceState.sourceId });
     expect(sess.choiceSet.choices.length).toBe(3);
     // The transcript holds only user/assistant turns.
     expect(sess.messages.every((m) => m.role === "user" || m.role === "assistant")).toBe(true);

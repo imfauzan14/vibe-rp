@@ -246,14 +246,20 @@ bun test test/
 
 ### Stats
 
-487 tests, 8933 expect() calls, 31 files (measured with `bun test test/`).
+518 tests, 10625 expect() calls, 26 files (measured with `bun test test/`).
 
 ### Existing Test Files
 
-- `test/browser_engine.test.ts`: engine behavior
 - `test/card_parse.test.ts`: HTML-to-markup converter (entity decoding, attribute stripping, idempotence)
-- `test/compaction_fixes.test.ts`: fold headroom, boundary alignment, shake bounds
+- `test/choice_format.test.ts`: the Choice Mode parser (malformed/aliased/line-list output, sanitation, dedupe, clamping) and the auxiliary choice request planner
+- `test/choice_mode.test.ts`: the choice state machine (double-click, staleness, scene-awaiting-player guard, failure recovery, persistence without a refetch)
+- `test/choice_ui.test.ts`: presentation guards (real buttons, text-not-markup, durable retry affordance, the engine choice seam stays non-streaming and transcript-free)
+- `test/compaction.test.ts`: long-run compaction, adaptive summary budget, and fold boundary/stress invariants
+- `test/context.test.ts`: context planning, allocation, Inspector alignment, large presets, and seams
+- `test/context_longrun.test.ts`: long-run context compaction monotonicity
+- `test/context_property.test.ts`: randomized allocator properties and invariants through the engine seam
 - `test/core_hardening.test.ts`: null-chunk suppression, degraded-fold notices, provider errors in a 200 body
+- `test/data_management.test.ts`: export/import lifecycle, persona/directive data operations
 - `test/detail_modal_close.test.ts`: detail modal close behavior and cleanup
 - `test/engine_interface.test.ts`: engine interface contract
 - `test/library_card_actions.test.ts`: library card interactions and action dispatch
@@ -264,20 +270,12 @@ bun test test/
 - `test/presets_resolution.test.ts`: settings resolution
 - `test/presets_store.test.ts`: preset stores
 - `test/remote_import.test.ts`: URL import against a mocked `globalThis.fetch`
-- `test/seams.test.ts`: module boundary tests
+- `test/responsive_layout.test.ts`: phone-width CSS guards (library filter bar stays inline, preset-row badge atomicity, message speaker truncation)
 - `test/session_controller.test.ts`: controller behavior against injected fakes (no DOM)
 - `test/session_refresh.test.ts`: JWT decode, expiry skew, rotation, single-flight, no token leak
-- `test/stream_robustness.test.ts`: the OpenAI-compatible streaming contract (delta/message content, `data:` framing, non-streaming bodies, max_tokens forwarding)
-- `test/compaction_stress.test.ts`: long-run compaction (100-fold drift, fold-coverage monotonicity, ledger hard bound, degraded-fold accumulation, per-window prompt/output invariant)
-- `test/summary_budget.test.ts`: the adaptive summarizer budget, its context-headroom clamp, the bounded single retry, and the generation output clamp
-- `test/large_preset_context.test.ts`: the full-context invariant through the real `streamTurn` seam (large static presets, dynamic-lore/post-history accounting, output preservation vs reduction, no premature compaction, observable impossible-prompt case)
-- `test/responsive_layout.test.ts`: phone-width CSS guards (library filter bar stays inline, preset-row badge atomicity, message speaker truncation)
 - `test/settings_unification.test.ts`: one settings surface for both pages (shared modal import, cache-key read/write, session-import gating, no chat-only panel or markup)
+- `test/stream_robustness.test.ts`: the OpenAI-compatible streaming contract (delta/message content, `data:` framing, non-streaming bodies, max_tokens forwarding)
 - `test/unified_modules.test.ts`: single escapeHtml/toast/theme implementations, sw.js shell hygiene
-- `test/choice_format.test.ts`: the Choice Mode parser (malformed/aliased/line-list output, sanitation, dedupe, clamping) and the auxiliary choice request planner
-- `test/choice_mode.test.ts`: the choice state machine (double-click, staleness, scene-awaiting-player guard, failure recovery, persistence without a refetch)
-- `test/choice_ui.test.ts`: presentation guards (real buttons, text-not-markup, durable retry affordance, the engine choice seam stays non-streaming and transcript-free)
-
 ### When to Add Tests
 
 - New context management logic (cache stability, summarization)

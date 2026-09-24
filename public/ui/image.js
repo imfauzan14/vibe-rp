@@ -5,11 +5,10 @@
 //     `data:` URL no larger than `maxSize` on its long edge. It falls back to
 //     the raw data URL when the image cannot be decoded, so a caller never
 //     loses the user's choice to a canvas failure.
-//   - `blobToDataUrl(blob)` is the same for an already-fetched blob.
-//
+//   - The original bytes are read once internally for that fallback.
+
 // Exports
 //   compressImage(file, maxSize) -> Promise<string>
-//   blobToDataUrl(blob) -> Promise<string>
 
 const DEFAULT_MAX = 384;
 const QUALITY = 0.85;
@@ -23,10 +22,7 @@ function readAsDataUrl(blob) {
   });
 }
 
-/** The original bytes as a data URL, with no re-encoding. */
-export function blobToDataUrl(blob) {
-  return readAsDataUrl(blob);
-}
+
 
 /**
  * Scales the image so its long edge is at most `maxSize` and re-encodes it as

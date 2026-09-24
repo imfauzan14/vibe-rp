@@ -44,13 +44,13 @@ function sliderRow({ id, valueId, label, hint, min, max, step, value }) {
 }
 
 const PARAM_FIELDS = [
-  sliderRow({ id: "popup-slider-temp", valueId: "popup-val-temp", label: "Temperature", hint: "Lower is focused and deterministic; higher is creative and descriptive.", min: 0.1, max: 2, step: 0.05, value: 0.85 }),
-  sliderRow({ id: "popup-slider-topp", valueId: "popup-val-topp", label: "Top P", hint: "Nucleus sampling: considers only the top P probability mass.", min: 0.1, max: 1, step: 0.05, value: 0.95 }),
-  sliderRow({ id: "popup-slider-minp", valueId: "popup-val-minp", label: "Min P", hint: "Trims low-probability noise without truncating creative tails.", min: 0, max: 0.5, step: 0.01, value: 0.05 }),
-  sliderRow({ id: "popup-slider-tokens", valueId: "popup-val-tokens", label: "Max response tokens", hint: "Token ceiling per turn. 1500 tokens is roughly four rich paragraphs.", min: 200, max: 4096, step: 50, value: 1500 }),
-  sliderRow({ id: "popup-slider-freq", valueId: "popup-val-freq", label: "Frequency penalty", hint: "Higher values reduce repetitive verbal tics.", min: -2, max: 2, step: 0.05, value: 0.25 }),
-  sliderRow({ id: "popup-slider-pres", valueId: "popup-val-pres", label: "Presence penalty", hint: "Encourages new topics and vocabulary.", min: -2, max: 2, step: 0.05, value: 0.15 }),
-  sliderRow({ id: "popup-slider-context", valueId: "popup-val-context", label: "Max context budget", hint: "Folds the continuity ledger when history approaches this budget.", min: 2048, max: 131072, step: 2048, value: 32768 }),
+  sliderRow({ id: "popup-slider-temp", valueId: "popup-val-temp", label: "Temperature", hint: "Lower is focused and deterministic; higher is creative and descriptive.", min: 0.1, max: 2, step: 0.05, value: 0.95 }),
+  sliderRow({ id: "popup-slider-topp", valueId: "popup-val-topp", label: "Top P", hint: "Nucleus sampling: considers only the top P probability mass. 1 sends the provider default.", min: 0.1, max: 1, step: 0.05, value: 1 }),
+  sliderRow({ id: "popup-slider-minp", valueId: "popup-val-minp", label: "Min P", hint: "Trims low-probability noise without truncating creative tails. 0 sends the provider default.", min: 0, max: 0.5, step: 0.01, value: 0 }),
+  sliderRow({ id: "popup-slider-tokens", valueId: "popup-val-tokens", label: "Max response tokens", hint: "Token ceiling per turn. 1200 tokens leaves room for reasoning plus a full reply.", min: 200, max: 4096, step: 50, value: 1200 }),
+  sliderRow({ id: "popup-slider-freq", valueId: "popup-val-freq", label: "Frequency penalty", hint: "Higher values reduce repetitive verbal tics. 0 sends the provider default.", min: -2, max: 2, step: 0.05, value: 0 }),
+  sliderRow({ id: "popup-slider-pres", valueId: "popup-val-pres", label: "Presence penalty", hint: "Encourages new topics and vocabulary. 0 sends the provider default.", min: -2, max: 2, step: 0.05, value: 0 }),
+  sliderRow({ id: "popup-slider-context", valueId: "popup-val-context", label: "Max context budget", hint: "Folds the continuity ledger when history approaches this budget.", min: 2048, max: 131072, step: 2048, value: 65536 }),
 ];
 
 const TABS = [
@@ -84,7 +84,7 @@ export function openSettingsModal(options = {}) {
   const enginePanel = el("div", { class: "rp-tabpanel rp-settings__panel", id: "settings-engine-tab" }, [
     guidance(
       "Inference engine and models",
-      "Connect any OpenAI-compatible completions API such as OpenRouter, vLLM, Ollama or LM Studio. Settings stay in this browser."
+      "Connect any OpenAI-compatible completions API. The base URL, key, and model are yours to fill in; settings stay in this browser."
     ),
     el("div", { class: "rp-field" }, [
       el("label", { class: "rp-label", for: "popup-api-endpoint", text: "API base URL" }),

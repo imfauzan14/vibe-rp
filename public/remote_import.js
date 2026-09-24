@@ -3,6 +3,7 @@
 
 import { parseJsonLoose, normalizeCard, stripJsonComments, parsePngChara, parseWebpChara, htmlToAppMarkup } from "./card_parse.js";
 import { ensureFreshSession, refreshSession, maybeAutoStartProactiveRefresh } from "./session_refresh.js";
+import { utf8Decoder } from "./text.js";
 
 // Fetch is injectable so callers (and tests) can supply one; default is global.
 function resolveFetch(options) {
@@ -43,7 +44,6 @@ export function extractSessionToken(input) {
       }
       return s;
     };
-    const utf8Decoder = new TextDecoder();
     const b64Text = (s) => {
       let b64 = s.startsWith("base64-") ? s.slice(7) : s;
       b64 = b64.replace(/-/g, "+").replace(/_/g, "/");
@@ -235,8 +235,7 @@ export async function parseCardUrl(url, sessionToken, options) {
   if (contentType.includes("image/png") || contentType.includes("image/webp")) {
     return sniffImage(ab);
   }
-
-  const text = new TextDecoder().decode(ab);
+  const text = utf8Decoder.decode(ab);
   const json = parseJsonLoose(stripJsonComments(text));
   if (json) {
     try {

@@ -215,9 +215,9 @@ describe("Unified settings surface", () => {
       let saved: Record<string, unknown> | null = null;
       const panel = mountEnginePanel(root as unknown as HTMLElement, {
         getSettings: () => ({
-          model: "claude-3-5-sonnet",
-          choiceModel: "gpt-4o-mini",
-          availableModels: ["claude-3-5-sonnet", "gpt-4o-mini"],
+          model: "primary-story-model",
+          choiceModel: "choice-menu-model",
+          availableModels: ["primary-story-model", "choice-menu-model"],
         }),
         saveSettings: (patch: Record<string, unknown>) => { saved = patch; },
       });
@@ -225,12 +225,12 @@ describe("Unified settings surface", () => {
       panel.refresh();
 
       // Save settings
-      nodes["#popup-model-select"].value = "claude-3-5-sonnet";
-      nodes["#popup-choice-model-select"].value = "gpt-4o-mini";
+      nodes["#popup-model-select"].value = "primary-story-model";
+      nodes["#popup-choice-model-select"].value = "choice-menu-model";
       nodes["#popup-save-engine-btn"].dispatchEvent("click");
 
-      expect(saved?.model).toBe("claude-3-5-sonnet");
-      expect(saved?.choiceModel).toBe("gpt-4o-mini");
+      expect(saved?.model).toBe("primary-story-model");
+      expect(saved?.choiceModel).toBe("choice-menu-model");
     } finally {
       if (origDoc === undefined) {
         delete globalHost.document;

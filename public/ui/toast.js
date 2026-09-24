@@ -32,6 +32,20 @@ function prefersReducedMotion() {
 }
 
 /**
+ * Normalises every toast entry point to one `showToast(message, tone)` shape.
+ * Accepts a notifier (`{ toast }`), a toast host (`{ toast }`), or a legacy
+ * bare function `(msg, tone)`, so callers never branch on which they were
+ * handed.
+ */
+export function toastAdapter(source) {
+  return (message, tone = "info") => {
+    if (typeof source === "function") return source(message, tone);
+    if (source && typeof source.toast === "function") return source.toast(message, { tone });
+    return undefined;
+  };
+}
+
+/**
  * Mounts the toast region inside `root` (defaults to document.body).
  * Returns an object with `toast`, `dismiss` and `destroy`.
  */

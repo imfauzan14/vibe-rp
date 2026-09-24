@@ -4,22 +4,8 @@
 import { estimateTokens } from "./browser_engine.js";
 import { htmlToAppMarkup } from "./card_parse.js";
 import { escapeHtml } from "./safe_html.js";
-
-/**
- * Resolves card placeholders in user-facing text. Pure: the result depends only
- * on the text and the two names, so it stays byte-stable for a given session.
- * Supports `{{user}}`/`{{char}}` case-insensitively plus the common
- * `{{user_name}}`/`{{UserName}}`/`{{char_name}}` aliases. Unknown placeholders
- * (`{{random}}`, `{{time}}`) and a placeholder with no replacement available are
- * left as literal text rather than deleted.
- */
-export function substitutePlaceholders(text, { user, char } = {}) {
-  if (!text) return "";
-  let s = String(text);
-  if (user) s = s.replace(/(?:\{\{|\{|<)\s*user(?:_?name)?\s*(?:\}\}|\}|>)/gi, () => user);
-  if (char) s = s.replace(/(?:\{\{|\{|<)\s*(?:char|bot)(?:_?name)?\s*(?:\}\}|\}|>)/gi, () => char);
-  return s;
-}
+import { avatarInnerHtml } from "./ui/character_card.js";
+import { substitutePlaceholders, stripThoughtBlocks } from "./text.js";
 
 export function formatProse(text) {
   if (!text) return "";
@@ -141,17 +127,9 @@ export function formatMessages({ messages, card, persona, charName, initialLette
     let avatarHtml = "";
     if (isUser) {
       const uAvatar = persona?.avatar;
-      if (uAvatar && (uAvatar.startsWith("data:") || uAvatar.startsWith("http"))) {
-        avatarHtml = `<img src="${escapeHtml(uAvatar)}" alt="${escapeHtml(userSpeaker)}" style="width:100%;height:100%;object-fit:cover;border-radius:6px;">`;
-      } else {
-        avatarHtml = escapeHtml(persona?.name ? persona.name.charAt(0).toUpperCase() : "U");
-      }
+      avatarHtml = avatarInnerHtml(uAvatar, persona?.name ? persona.name.charAt(0) : "U");
     } else {
-      if (cardAvatar && (cardAvatar.startsWith("data:") || cardAvatar.startsWith("http"))) {
-        avatarHtml = `<img src="${escapeHtml(cardAvatar)}" alt="${escapeHtml(charName)}" style="width:100%;height:100%;object-fit:cover;border-radius:6px;">`;
-      } else {
-        avatarHtml = escapeHtml(initialLetter);
-      }
+      avatarHtml = avatarInnerHtml(cardAvatar, initialLetter);
     }
 
     const msgTokens = estimateTokens(msg.content);
@@ -161,7 +139,7 @@ export function formatMessages({ messages, card, persona, charName, initialLette
     // greetings and any echoed assistant output must never show `{{user}}` /
     // `{{char}}` on screen.
     let content = substitutePlaceholders(msg.content, { user: userSpeaker, char: charName });
-    content = content.replace(/<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi, "").trim();
+    content = stripThoughtBlocks(content);
 
     return {
       id: msg.id,

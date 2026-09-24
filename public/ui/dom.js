@@ -8,12 +8,9 @@
 // Exports
 //   el(tag, props, children)   create an element; props.text sets textContent
 //   qs(root, selector)         first match, or null
-//   qsa(root, selector)        array of matches (never a live NodeList)
 //   on(node, type, handler, options)  attach listener; returns remover
-//   delegate(root, type, selector, handler, options)  one listener per root
 //   renderKeyed(container, items, keyOf, renderItem)  reuse nodes by key
-//   isVisible(node)            true when the node has layout boxes
-
+//   focusables(root)           elements that can hold focus, in tab order
 /**
  * Creates an element.
  * `props` supports `class`, `text`, `html` (trusted markup only), `dataset`,
@@ -49,8 +46,8 @@ export function qs(root, selector) {
   return root ? root.querySelector(selector) : null;
 }
 
-/** Every match inside `root`, as an array. */
-export function qsa(root, selector) {
+/** Every match inside `root`, as an array (internal to focusables). */
+function qsa(root, selector) {
   return root ? Array.from(root.querySelectorAll(selector)) : [];
 }
 
@@ -63,22 +60,10 @@ export function on(node, type, handler, options) {
   return () => node.removeEventListener(type, handler, options);
 }
 
-/**
- * One listener on `root` for every match of `selector`, including matches that
- * are added later. Returns a function that removes the listener.
- */
-export function delegate(root, type, selector, handler, options) {
-  if (!root) return () => {};
-  const listener = (event) => {
-    const target = event.target instanceof Element ? event.target.closest(selector) : null;
-    if (target && root.contains(target)) handler(event, target);
-  };
-  root.addEventListener(type, listener, options);
-  return () => root.removeEventListener(type, listener, options);
-}
 
-/** True when the node currently has layout boxes (so it can take focus). */
-export function isVisible(node) {
+
+/** True when the node currently has layout boxes (internal to focusables). */
+function isVisible(node) {
   return Boolean(node && node.getClientRects().length);
 }
 

@@ -1,13 +1,14 @@
     import { BrowserChatEngine, estimateTokens as estimateTokensModule } from "../../browser_engine.js";
     import { SessionController, CHOICE_STATUS } from "../../session_controller.js";
-    import { formatProse, substitutePlaceholders } from "../../message_format.js";
+    import { formatProse } from "../../message_format.js";
+    import { substitutePlaceholders } from "../../text.js";
     import { escapeHtml, escapeAttr } from "../../safe_html.js";
     import { LocalDbQuotaError, LocalDbBlockedError } from "../../local_db.js";
 
     import { initTheme, getTheme, toggleTheme } from "../theme.js";
-    import { createNotifier } from "../toast.js";
+    import { createNotifier, toastAdapter } from "../toast.js";
     import { openModal, closeTopModal, topModal, bindDismissable } from "../modal.js";
-    import { confirmAction, runWithUndo } from "./confirm.js";
+    import { confirmAction, runWithUndo } from "../confirm.js";
     import { createMessageFeed } from "./message_feed.js";
     import { createComposer } from "./composer.js";
     import { createChoicePanel } from "./choice_panel.js";
@@ -20,7 +21,7 @@
     const estimateTokens = estimateTokensModule;
 
     const notifier = createNotifier({ region: $("toast-region"), status: $("turn-status") });
-    const showToast = (msg, tone = "info") => notifier.toast(msg, { tone: tone === "error" ? "error" : tone });
+    const showToast = toastAdapter(notifier);
     window.showToast = showToast;
 
     const urlParams = new URLSearchParams(window.location.search);

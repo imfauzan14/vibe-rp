@@ -18,6 +18,7 @@ import {
   readBackupFile,
 } from "../data_transfer.js";
 import { confirmAction } from "../confirm.js";
+import { toastAdapter } from "../toast.js";
 
 function formatBytes(bytes) {
   if (!bytes || bytes <= 0) return "0 B";
@@ -34,7 +35,7 @@ export function mountDataPanel(root, options = {}) {
       : typeof options.confirm === "function" && options.confirm.length <= 1
         ? options.confirm
         : confirmAction;
-  const showToast = (msg, tone = "info") => host?.toast?.(msg, { tone }) || host?.(msg, tone);
+  const showToast = toastAdapter(host);
 
   if (!root) return { refresh: () => {}, destroy: () => {} };
 

@@ -12,6 +12,7 @@
 import { describe, test, expect, afterEach } from "bun:test";
 import { BrowserChatEngine } from "../public/browser_engine.js";
 import { SessionController } from "../public/session_controller.js";
+import { sseResponse, jsonResponse, resetFetch } from "./helpers.js";
 
 const settings = { apiEndpoint: "https://x.test/v1", model: "m", maxContextTokens: 4096, maxTokens: 512 };
 
@@ -19,13 +20,9 @@ function session() {
   return { messages: [{ role: "user", content: "hi" }], ledger: "", consumed: 1 };
 }
 
-function sse(body) {
-  return new Response(body, { headers: { "Content-Type": "text/event-stream" } });
-}
-
-function json(body) {
-  return new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" } });
-}
+afterEach(() => {
+  resetFetch();
+});
 
 function run() {
   return BrowserChatEngine.streamTurn({
@@ -37,19 +34,15 @@ function run() {
   });
 }
 
-afterEach(() => {
-  globalThis.fetch = undefined;
-});
-
 describe("Streaming contract - visible content", () => {
   test("1. a single normal delta chunk streams through", async () => {
-    globalThis.fetch = async () => sse('data: {"choices":[{"delta":{"content":"Hello"}}]}\n\ndata: [DONE]\n\n');
+    globalThis.fetch = async () => sseResponse('data: {"choices":[{"delta":{"content":"Hello"}}]}\n\ndata: [DONE]\n\n');
     expect(await run()).toBe("Hello");
   });
 
   test("2. multiple content chunks concatenate in order", async () => {
     globalThis.fetch = async () =>
-      sse(
+      sseResponse(
         'data: {"choices":[{"delta":{"content":"Hel"}}]}\n\n' +
           'data: {"choices":[{"delta":{"content":"lo "}}]}\n\n' +
           'data: {"choices":[{"delta":{"content":"world"}}]}\n\n' +
@@ -60,7 +53,7 @@ describe("Streaming contract - visible content", () => {
 
   test("preserves em-dashes and formatting without programmatic string mutation", async () => {
     globalThis.fetch = async () =>
-      sse(
+      sseResponse(
         'data: {"choices":[{"delta":{"content":"She paused — then turned -- slowly."}}]}\n\n' +
           "data: [DONE]\n\n"
       );
@@ -69,7 +62,7 @@ describe("Streaming contract - visible content", () => {
 
   test("reasoning before visible content keeps only the visible text", async () => {
     globalThis.fetch = async () =>
-      sse(
+      sseResponse(
         'data: {"choices":[{"delta":{"reasoning_content":"thinking hard"}}]}\n\n' +
           'data: {"choices":[{"delta":{"content":"Answer"}}]}\n\n' +
           "data: [DONE]\n\n"
@@ -78,7 +71,7 @@ describe("Streaming contract - visible content", () => {
   });
 
   test("`data:` without the optional space is still parsed", async () => {
-    globalThis.fetch = async () => sse('data:{"choices":[{"delta":{"content":"tight"}}]}\n\ndata:[DONE]\n\n');
+    globalThis.fetch = async () => sseResponse('data:{"choices":[{"delta":{"content":"tight"}}]}\n\ndata:[DONE]\n\n');
     expect(await run()).toBe("tight");
   });
 
@@ -102,7 +95,7 @@ describe("Streaming contract - visible content", () => {
 describe("Streaming contract - terminators and usage", () => {
   test("4. finish_reason stop with content is a normal success", async () => {
     globalThis.fetch = async () =>
-      sse(
+      sseResponse(
         'data: {"choices":[{"delta":{"content":"done"},"finish_reason":"stop"}]}\n\n' +
           "data: [DONE]\n\n"
       );
@@ -111,7 +104,7 @@ describe("Streaming contract - terminators and usage", () => {
 
   test("5. finish_reason length with no content rejects with a descriptive error", async () => {
     globalThis.fetch = async () =>
-      sse(
+      sseResponse(
         'data: {"choices":[{"delta":{},"finish_reason":"length"}],"usage":{"completion_tokens":1200}}\n\n' +
           "data: [DONE]\n\n"
       );
@@ -120,7 +113,7 @@ describe("Streaming contract - terminators and usage", () => {
 
   test("6. a usage-only chunk after content is recorded, not treated as the reply", async () => {
     globalThis.fetch = async () =>
-      sse(
+      sseResponse(
         'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n' +
           'data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}}\n\n' +
           "data: [DONE]\n\n"
@@ -130,14 +123,14 @@ describe("Streaming contract - terminators and usage", () => {
 
   test("7. duplicate [DONE] markers are harmless", async () => {
     globalThis.fetch = async () =>
-      sse('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\ndata: [DONE]\n\n');
+      sseResponse('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\ndata: [DONE]\n\n');
     expect(await run()).toBe("ok");
   });
 
   test("the captured real-world response (reasoning-only + length + 1200) rejects descriptively", async () => {
-    // Reproduces the reported 9router SSE body verbatim.
+    // Reproduces a reported provider SSE body verbatim.
     globalThis.fetch = async () =>
-      sse(
+      sseResponse(
         ": keepalive\n\n" +
           'data: {"choices":[{"delta":{},"finish_reason":"length","index":0}],"created":1790088829,"id":"8077a059af26130f","model":"knr/muse-spark-1-3-contributor:free","object":"chat.completion.chunk","usage":{"prompt_tokens":9797,"completion_tokens":1200,"total_tokens":10997,"cached_tokens":113}}\n\n' +
           "data: [DONE]\n\n" +
@@ -150,7 +143,7 @@ describe("Streaming contract - terminators and usage", () => {
 describe("Streaming contract - non-streaming providers", () => {
   test("8. a JSON completion document is accepted as the reply", async () => {
     globalThis.fetch = async () =>
-      json({ choices: [{ message: { role: "assistant", content: "Whole body" }, finish_reason: "stop" }] });
+      jsonResponse({ choices: [{ message: { role: "assistant", content: "Whole body" }, finish_reason: "stop" }] });
     expect(await run()).toBe("Whole body");
   });
 
@@ -168,7 +161,7 @@ describe("Streaming contract - max_tokens forwarding", () => {
     let body = null;
     globalThis.fetch = async (url, opts) => {
       body = JSON.parse(opts.body);
-      return sse('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n');
+      return sseResponse('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n');
     };
     await BrowserChatEngine.streamTurn({
       card: null,
@@ -184,7 +177,7 @@ describe("Streaming contract - max_tokens forwarding", () => {
     let body = null;
     globalThis.fetch = async (url, opts) => {
       body = JSON.parse(opts.body);
-      return sse('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n');
+      return sseResponse('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n');
     };
     const { maxTokens, ...withoutMax } = settings;
     await BrowserChatEngine.streamTurn({
@@ -210,7 +203,7 @@ describe("Streaming contract - max_tokens forwarding", () => {
           headers: { "Content-Type": "application/json" },
         });
       }
-      return sse('data: {"choices":[{"delta":{"content":"Adapted reply."}}]}\n\ndata: [DONE]\n\n');
+      return sseResponse('data: {"choices":[{"delta":{"content":"Adapted reply."}}]}\n\ndata: [DONE]\n\n');
     };
 
     const targetSettings = {

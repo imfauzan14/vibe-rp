@@ -22,6 +22,8 @@ import {
 // right 500, bottom 350.
 const PANEL = { left: 100, top: 50, right: 500, bottom: 350 };
 
+/** openModal with no element must never touch the dialog stack. */
+
 describe("isPointOutsideRect", () => {
   test("a point well inside the panel is not outside", () => {
     expect(isPointOutsideRect(PANEL, 300, 200)).toBe(false);
@@ -62,11 +64,13 @@ describe("modal.js dismissal contract", () => {
   });
 
   test("openModal without an element is a no-op that still returns a closer", () => {
+    const topBefore = typeof document === "undefined" ? null : topModal();
     const close = openModal({});
     expect(typeof close).toBe("function");
     expect(() => close()).not.toThrow();
+    expect(isOpen(undefined)).toBe(false);
+    if (typeof document !== "undefined") expect(topModal()).toBe(topBefore);
   });
-
   test("bindBackdropDismiss and bindDismissable tolerate a missing element", () => {
     expect(typeof bindBackdropDismiss(null, () => {})).toBe("function");
     expect(typeof bindBackdropDismiss(undefined, null)).toBe("function");

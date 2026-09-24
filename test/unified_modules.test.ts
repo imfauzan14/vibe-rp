@@ -16,7 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { escapeHtml as canonicalEscapeHtml } from "../public/safe_html.js";
 import { createToastHost, createNotifier } from "../public/ui/toast.js";
-import { runWithUndo, UNDO_WINDOW_MS } from "../public/ui/chat/confirm.js";
+import { runWithUndo, UNDO_WINDOW_MS } from "../public/ui/confirm.js";
 import {
   THEMES,
   THEME_STORAGE_KEY,
@@ -30,73 +30,8 @@ import {
   onThemeChange,
 } from "../public/ui/theme.js";
 
-// ---------------------------------------------------------------------------
-// Minimal DOM
-// ---------------------------------------------------------------------------
-function classesOf(el) {
-  return new Set(String(el.className || "").split(/\s+/).filter(Boolean));
-}
 
-function makeElement(tag) {
-  const el = {
-    tagName: String(tag).toUpperCase(),
-    children: [],
-    attributes: {},
-    _listeners: {},
-    className: "",
-    textContent: "",
-    type: "",
-    parentNode: null,
-    classList: {
-      add: (...c) => {
-        const set = classesOf(el);
-        c.forEach((x) => set.add(x));
-        el.className = [...set].join(" ");
-      },
-      remove: (...c) => {
-        const set = classesOf(el);
-        c.forEach((x) => set.delete(x));
-        el.className = [...set].join(" ");
-      },
-      contains: (c) => classesOf(el).has(c),
-    },
-    setAttribute(k, v) {
-      el.attributes[k] = String(v);
-    },
-    getAttribute(k) {
-      return Object.prototype.hasOwnProperty.call(el.attributes, k) ? el.attributes[k] : null;
-    },
-    removeAttribute(k) {
-      delete el.attributes[k];
-    },
-    appendChild(child) {
-      el.children.push(child);
-      child.parentNode = el;
-      return child;
-    },
-    remove() {
-      if (el.parentNode) {
-        const i = el.parentNode.children.indexOf(el);
-        if (i >= 0) el.parentNode.children.splice(i, 1);
-      }
-    },
-    addEventListener(type, fn) {
-      (el._listeners[type] ||= []).push(fn);
-    },
-    dispatch(type) {
-      for (const fn of el._listeners[type] || []) fn({ type, target: el });
-    },
-    querySelector(sel) {
-      const cls = String(sel).split(".").pop();
-      return el.children.find((c) => classesOf(c).has(cls)) || null;
-    },
-    querySelectorAll() {
-      return [];
-    },
-  };
-  return el;
-}
-
+import { makeFakeElement as makeElement } from "./helpers.ts";
 const realGlobals = {};
 function installDom() {
   for (const k of ["document", "window", "localStorage", "requestAnimationFrame"]) {
@@ -219,6 +154,7 @@ describe("ui/theme.js contract", () => {
     onThemeChange((t) => seen.push(t));
     expect(() => applyTheme("paper")).not.toThrow();
     expect(seen).toContain("paper");
+    expect(globalThis.document.documentElement.getAttribute("data-theme")).toBe("paper");
   });
 });
 
@@ -256,6 +192,7 @@ describe("ui/toast.js contract", () => {
     expect(node.classList.contains("rp-toast--danger")).toBe(true);
     expect(node.getAttribute("role")).toBe("alert");
     expect(dismiss).not.toThrow();
+    expect(region.children.length).toBe(0);
   });
 
   test("an action renders an inline control wired to onSelect", () => {

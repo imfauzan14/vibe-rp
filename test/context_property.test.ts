@@ -13,34 +13,13 @@
 //   5. Effective output never exceeds remaining capacity.
 //   6. No false impossibility notice is emitted for a request that fits.
 import { describe, test, expect, afterEach } from "bun:test";
-import { BrowserChatEngine, allocateContext, estimateTokens, countMessages, MIN_OUTPUT_TOKENS } from "../public/browser_engine.js";
-
-const SSE_OK = 'data: {"choices":[{"delta":{"content":"reply"}}]}\n\ndata: [DONE]\n\n';
-const words = (n) => "word ".repeat(n).trim();
-const CHUNK =
-  "## Character Sheet\n\nElena Voss is a cartographer of dead cities. " +
-  "```json\n{\"name\":\"Elena Voss\",\"notes\":\"Härte über alles.\"}\n```\n" +
-  "| stat | value |\n|---|---|\n| resolve | 8/10 |\n";
-const presetOfTokens = (t) => CHUNK.repeat(Math.max(1, Math.ceil(t / estimateTokens(CHUNK))));
+import { BrowserChatEngine, allocateContext, countMessages, MIN_OUTPUT_TOKENS } from "../public/browser_engine.js";
+import { words, presetOfTokens, captureGeneration, resetFetch } from "./helpers.js";
 
 afterEach(() => {
-  globalThis.fetch = undefined;
+  resetFetch();
 });
 
-function capture() {
-  const gen = [];
-  globalThis.fetch = async (url, init) => {
-    const body = JSON.parse(init.body);
-    if (body.stream === false) {
-      return new Response(JSON.stringify({ choices: [{ message: { content: "ledger" }, finish_reason: "stop" }] }), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-    gen.push(body);
-    return new Response(SSE_OK, { headers: { "Content-Type": "text/event-stream" } });
-  };
-  return gen;
-}
 
 /** A deterministic PRNG so a failing case is reproducible from its seed. */
 function rng(seed) {
@@ -80,7 +59,7 @@ async function randomTurn(rand) {
   for (let i = 0; i < historyTurns; i++) session.messages.push({ role: i % 2 ? "user" : "assistant", content: words(historyWords) });
   session.messages.push({ role: "user", content: words(150) });
   const notices = [];
-  const gen = capture();
+  const { gen } = captureGeneration();
   await BrowserChatEngine.streamTurn({ card, session, settings, persona: null, agentsContract: "", onNotice: (n) => notices.push(n) });
   const body = gen[gen.length - 1];
   const input = countMessages(body.messages);
@@ -118,7 +97,7 @@ describe("Allocator - randomized invariants through the real seam", () => {
       const settings = { apiEndpoint: "https://x.test/v1", model: "m", maxContextTokens: window, maxTokens: 1200 };
       const card = { data: { name: "Elena", description: presetOfTokens(desc), personality: "", scenario: "", mes_example: presetOfTokens(ex), system_prompt: "", post_history_instructions: "", character_book: null } };
       const session = { messages: [{ role: "assistant", content: "greeting" }, { role: "user", content: words(150) }], ledger: "", consumed: 1 };
-      const gen = capture();
+      const { gen } = captureGeneration();
       await BrowserChatEngine.streamTurn({ card, session, settings, persona: null, agentsContract: "" });
       const system = gen[gen.length - 1].messages[0].content;
       // The description is required and survives; the examples are the first to

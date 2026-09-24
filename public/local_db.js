@@ -30,8 +30,8 @@ export const DEFAULT_SETTINGS = {
   // Tuned for modern instruct-tuned chat models; adjust if targeting
   // base completions models or reasoning models instead.
   temperature: 0.95, // 0.8-1.1 creative-prose sweet spot; pairs with min_p (when set) as the tail control since top_p is left at provider default
-  topP: 1, // omitted from request body (buildRequestBody skips >=1): modern provider guidance is temperature OR top_p, not both
-  minP: 0, // omitted from request body (buildRequestBody skips <=0): OpenAI/Anthropic silently ignore min_p (llama.cpp/vLLM-ism), so 0 = cross-provider "send provider default"
+  topP: 1, // omitted from request body (buildRequestBody skips >=1): standard guidance is temperature OR top_p, not both
+  minP: 0, // omitted from request body (buildRequestBody skips <=0): some providers silently ignore min_p, so 0 = cross-provider "send provider default"
   frequencyPenalty: 0, // not sent: anti-slop is enforced by the AGENTS contract; penalties degrade instruct-tuned coherence and punish legitimately repeated story vocabulary (names, refrains)
   presencePenalty: 0, // not sent: same rationale as frequencyPenalty
   maxTokens: 1200, // <thought> blocks eat ~200-600 before visible prose; 1200 leaves 600-1000 visible tokens (typical RP reply 300-800) without truncating mid-scene

@@ -234,53 +234,15 @@ describe("Defect 4 - the whole turn honours the abort signal", () => {
         agentsContract: "",
         signal: controller.signal,
       })
-    ).rejects.toThrow();
+    ).rejects.toThrow(/abort/i);
     expect(generated).toBe(false);
   });
 });
-
 import { SessionController } from "../public/session_controller.js";
+import { makeControllerDb as makeDb, makeControllerEngine as makeEngine, makeControllerFake } from "./helpers.ts";
 
-function makeCard(id = "card_1") {
-  return { id, name: "Test Char", data: { name: "Test Char", first_mes: "Hello there." } };
-}
-
-function makeDb({ cards = [makeCard()], sessions = [] } = {}) {
-  const savedSessions = [];
-  return {
-    savedSessions,
-    getSettings: () => ({ temperature: 0.5, agentsContract: "contract" }),
-    getAllCards: async () => cards,
-    getSessionsForCard: async () => sessions,
-    saveSession: async (s) => {
-      savedSessions.push(s);
-    },
-    saveCard: async () => {},
-    resolvePersonaForCard: async () => ({ name: "User" }),
-    resolveDirectiveForCard: async () => ({ name: "D", content: "do" }),
-  };
-}
-
-function makeEngine({ onStream } = {}) {
-  return {
-    calls: [],
-    lastArgs: null,
-    async streamTurn(args) {
-      this.calls.push(args.userPrompt);
-      this.lastArgs = args;
-      if (onStream) return onStream(args);
-      for (const chunk of ["Hello", " world", "!"]) args.onChunk(chunk);
-      return "Hello world!";
-    },
-  };
-}
-
-async function makeController({ db, engine } = {}) {
-  db = db || makeDb();
-  engine = engine || makeEngine();
-  const ctl = new SessionController({ db, engine });
-  await ctl.init("card_1", null);
-  return { ctl, db, engine };
+async function makeController({ db, engine }: { db?: unknown; engine?: unknown } = {}) {
+  return makeControllerFake(SessionController as unknown as new (deps: { db: unknown; engine: unknown }) => { init: (cardId: string, sessionId: null) => Promise<void> }, { db, engine });
 }
 
 describe("Defect 1 - controller ignores null chunks but keeps the notice", () => {
@@ -388,7 +350,7 @@ describe("Defect 4 - controller cancellation", () => {
     await Promise.resolve();
     expect(captured.signal).toBeInstanceOf(AbortSignal);
     ctl.cancel();
-    await expect(pending).rejects.toThrow();
+    await expect(pending).rejects.toThrow(/abort/i);
     expect(captured.signal.aborted).toBe(true);
   });
 

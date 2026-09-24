@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
-import { formatProse, formatMessages, substitutePlaceholders } from "../public/message_format.js";
-import { stripThoughts } from "../public/ui/chat/message_feed.js";
+import { formatProse, formatMessages } from "../public/message_format.js";
+import { substitutePlaceholders } from "../public/text.js";
+import { stripThoughtBlocks as stripThoughts } from "../public/text.js";
 import { escapeHtml } from "../public/safe_html.js";
 
 describe("formatProse", () => {

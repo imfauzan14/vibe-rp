@@ -1,3 +1,5 @@
+import { utf8Decoder } from "./text.js";
+
 // Session refresh for imported character-page sessions.
 //
 // Access tokens live roughly three hours; the refresh token stored alongside
@@ -13,7 +15,6 @@
 
 export const SESSION_STORAGE_KEY = "vibe_rp_import_session";
 export const DEFAULT_SKEW_SECONDS = 300;
-
 const REFRESH_LOCK_NAME = "vibe_rp_import_session_refresh";
 const STORAGE_LOCK_KEY = "vibe_rp_import_session_refresh_lock";
 const STORAGE_LOCK_TTL_MS = 15000;
@@ -34,8 +35,6 @@ const DEFAULT_AUTH_BASE_URL = "https://auth.janitorai.com/auth/v1";
 const PUBLIC_CLIENT_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1jbXp4dHpvbW1wbnhreW5kZGJvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjgzNzA3NDAsImV4cCI6MjA0Mzk0Njc0MH0.UfRPni4ga9Lmin8j0JjV5ouuK9bXp8tsqPJ8pMTDDAI";
 
 // JWT and session metadata (never throws)
-
-const utf8Decoder = new TextDecoder();
 
 function base64UrlToText(segment) {
   let s = String(segment).replace(/-/g, "+").replace(/_/g, "/");

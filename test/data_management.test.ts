@@ -9,171 +9,11 @@ import {
   restoreBrowserCookies,
   clearBrowserCookies,
 } from "../public/ui/data_transfer.js";
+import { createFakeIndexedDB } from "./helpers.ts";
 
 const ROOT = path.join(import.meta.dir, "..");
 const PUBLIC = path.join(ROOT, "public");
 const read = (rel: string) => fs.readFileSync(path.join(PUBLIC, rel), "utf8");
-
-// Helpers for in-memory IndexedDB fake for Bun tests
-function makeStringList(names: string[]) {
-  return {
-    contains: (n: string) => names.includes(n),
-    length: names.length,
-    [Symbol.iterator]: () => names[Symbol.iterator](),
-  };
-}
-
-function makeStore(name: string, keyPath: string) {
-  return { name, keyPath, records: new Map<any, any>(), indexes: new Map<string, string>() };
-}
-
-function createFakeIndexedDB() {
-  const dbs = new Map<string, any>();
-
-  const makeRequest = () => ({ result: undefined as any, error: null as any, onsuccess: null as any, onerror: null as any });
-
-  function makeStoreHandle(rec: any, name: string, tx: any) {
-    const store = rec.stores.get(name);
-    if (!store) throw new Error(`NotFoundError: ${name}`);
-    const handle = {
-      get keyPath() {
-        return store.keyPath;
-      },
-      get indexNames() {
-        return makeStringList([...store.indexes.keys()]);
-      },
-      createIndex(ixName: string, keyPath: string) {
-        if (!store.indexes.has(ixName)) store.indexes.set(ixName, keyPath);
-        return handle.index(ixName);
-      },
-      index(ixName: string) {
-        const keyPath = store.indexes.get(ixName);
-        if (!keyPath) throw new Error(`NotFoundError: index ${ixName}`);
-        return {
-          getAll(value: any) {
-            const req = makeRequest();
-            tx._ops.push(() => {
-              req.result = [...store.records.values()]
-                .filter((r) => r[keyPath] === value)
-                .map((r) => structuredClone(r));
-              if (req.onsuccess) req.onsuccess({ target: req });
-            });
-            return req;
-          },
-        };
-      },
-      getAll() {
-        const req = makeRequest();
-        tx._ops.push(() => {
-          req.result = [...store.records.values()].map((r) => structuredClone(r));
-          if (req.onsuccess) req.onsuccess({ target: req });
-        });
-        return req;
-      },
-      put(value: any) {
-        const req = makeRequest();
-        tx._ops.push(() => {
-          store.records.set(value[store.keyPath], structuredClone(value));
-          req.result = value[store.keyPath];
-          if (req.onsuccess) req.onsuccess({ target: req });
-        });
-        return req;
-      },
-      delete(key: any) {
-        const req = makeRequest();
-        tx._ops.push(() => {
-          store.records.delete(key);
-          if (req.onsuccess) req.onsuccess({ target: req });
-        });
-        return req;
-      },
-      clear() {
-        const req = makeRequest();
-        tx._ops.push(() => {
-          store.records.clear();
-          if (req.onsuccess) req.onsuccess({ target: req });
-        });
-        return req;
-      },
-    };
-    return handle;
-  }
-
-  function makeVersionChangeTx(rec: any) {
-    const dummy = { _ops: [] };
-    return { objectStore: (n: string) => makeStoreHandle(rec, n, dummy), abort() {} };
-  }
-
-  function makeDbHandle(rec: any) {
-    return {
-      name: rec.name,
-      get version() {
-        return rec.version;
-      },
-      get objectStoreNames() {
-        return makeStringList([...rec.stores.keys()]);
-      },
-      createObjectStore(name: string, opts: any) {
-        rec.stores.set(name, makeStore(name, opts && opts.keyPath));
-        return makeStoreHandle(rec, name, { _ops: [] });
-      },
-      transaction(names: string | string[]) {
-        const list = Array.isArray(names) ? names : [names];
-        for (const n of list) if (!rec.stores.has(n)) throw new Error(`NotFoundError: ${n}`);
-        const tx = { error: null, oncomplete: null as any, onerror: null as any, onabort: null as any, _ops: [] as Function[], _drained: false };
-        tx.objectStore = (n: string) => makeStoreHandle(rec, n, tx);
-        tx.abort = () => {
-          tx.error = tx.error || new Error("AbortError");
-          queueMicrotask(() => tx.onabort && tx.onabort({ target: tx }));
-        };
-        queueMicrotask(() => {
-          if (tx._drained) return;
-          tx._drained = true;
-          try {
-            while (tx._ops.length) tx._ops.shift()!();
-          } catch (err) {
-            tx.error = err as any;
-            if (tx.onabort) tx.onabort({ target: tx });
-            if (tx.onerror) tx.onerror({ target: tx });
-            return;
-          }
-          if (tx.oncomplete) tx.oncomplete({ target: tx });
-        });
-        return tx;
-      },
-      close() {},
-    };
-  }
-
-  return {
-    open(name: string, version: number) {
-      const req = { result: undefined as any, error: null as any, onsuccess: null as any, onerror: null as any, onupgradeneeded: null as any };
-      queueMicrotask(() => {
-        let rec = dbs.get(name);
-        if (!rec) {
-          rec = { name, version: 0, stores: new Map() };
-          dbs.set(name, rec);
-        }
-        if (version > rec.version) {
-          const oldVersion = rec.version;
-          rec.version = version;
-          if (req.onupgradeneeded) {
-            req.result = makeDbHandle(rec);
-            req.transaction = makeVersionChangeTx(rec);
-            req.onupgradeneeded({
-              target: req,
-              oldVersion,
-              newVersion: version,
-            });
-          }
-        }
-        req.result = makeDbHandle(rec);
-        if (req.onsuccess) req.onsuccess({ target: req });
-      });
-      return req;
-    },
-  };
-}
 
 describe("Redundancy cleanup and legacy export removal", () => {
   test("public/ui/chat/export.js is completely removed", () => {
@@ -301,7 +141,9 @@ describe("Redundancy cleanup and legacy export removal", () => {
       expect(panel).toBeDefined();
       expect(typeof panel.refresh).toBe("function");
       expect(typeof panel.destroy).toBe("function");
+      expect(listeners["click"]?.length ?? 0).toBeGreaterThan(0);
       expect(panel.destroy).not.toThrow();
+      expect(listeners["click"]?.length ?? 0).toBe(0);
     } finally {
       if (orig === undefined) {
         delete (globalThis as any).document;

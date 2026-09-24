@@ -17,7 +17,8 @@
 // Exports
 //   mountPersonaList(root, options) -> { refresh, destroy }
 
-import { el, renderKeyed } from "../dom.js";
+import { el } from "../dom.js";
+import { mountPresetList } from "./preset_list.js";
 
 function avatarUrl(persona) {
   const value = String(persona.avatar || "");
@@ -85,55 +86,12 @@ function buildRow(persona, handlers, existing) {
 }
 
 export function mountPersonaList(root, options = {}) {
-  const { load, onEdit, onCreate, onDelete, onSetDefault, host } = options;
-  if (!root) return { refresh: async () => {}, destroy: () => {} };
-
-  const list = el("div", { class: "rp-persona-list" });
-  root.replaceChildren(list);
-
-  const handlers = {
-    onEdit: (persona) => onEdit?.(persona),
-    onSetDefault: async (persona) => {
-      await onSetDefault?.(persona);
-      await refresh();
-    },
-    onDelete: async (persona) => {
-      const removed = await onDelete?.(persona);
-      if (removed === false) return;
-      host?.toast?.(`Persona "${persona.name}" deleted.`, { tone: "info" });
-      await refresh();
-    },
-  };
-
-  async function refresh() {
-    const personas = (await load?.()) || [];
-    if (personas.length === 0) {
-      list.replaceChildren(
-        el("div", { class: "rp-empty" }, [
-          el("p", { class: "rp-empty__title", text: "No personas yet" }),
-          el("p", {
-            class: "rp-empty__body",
-            text: "A persona is the voice you write in. Create one to be recognised across chats.",
-          }),
-        ])
-      );
-      return;
-    }
-    renderKeyed(
-      list,
-      personas,
-      (persona) => persona.id,
-      (persona, existing) => buildRow(persona, handlers, existing)
-    );
-  }
-
-  const createBtn = options.createButton;
-  if (createBtn) createBtn.addEventListener("click", () => onCreate?.());
-
-  return {
-    refresh,
-    destroy() {
-      root.replaceChildren();
-    },
-  };
+  return mountPresetList(root, {
+    ...options,
+    listClass: "rp-persona-list",
+    emptyTitle: "No personas yet",
+    emptyBody: "A persona is the voice you write in. Create one to be recognised across chats.",
+    deleteToast: (persona) => `Persona "${persona.name}" deleted.`,
+    buildRow,
+  });
 }

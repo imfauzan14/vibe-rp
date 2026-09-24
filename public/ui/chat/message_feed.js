@@ -13,17 +13,11 @@
 // is bounded by one paragraph regardless of how long the reply gets.
 
 import { escapeHtml, escapeAttr } from "../../safe_html.js";
+import { stripThoughtBlocks as stripThoughts } from "../../text.js";
+import { avatarInnerHtml } from "../character_card.js";
 
 const MAX_RENDERED = 60;
 const RENDER_STEP = 40;
-
-export function stripThoughts(content) {
-  if (!content) return "";
-  return content
-    .replace(/<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi, "")
-    .replace(/<(thought|think)[^>]*>[\s\S]*$/gi, "")
-    .trim();
-}
 
 export function createMessageFeed({
   mount,
@@ -50,11 +44,8 @@ export function createMessageFeed({
     const persona = context.persona;
     const card = context.card;
     const url = isUser ? persona?.avatar : card?.avatar || card?.data?.avatar;
-    if (url && (url.startsWith("data:") || url.startsWith("http"))) {
-      return `<img src="${escapeAttr(url)}" alt="" style="width:100%;height:100%;object-fit:cover;">`;
-    }
-    if (isUser) return escapeHtml(persona?.name ? persona.name.charAt(0).toUpperCase() : "U");
-    return escapeHtml(context.initialLetter);
+    const fallback = isUser ? (persona?.name ? persona.name.charAt(0) : "U") : context.initialLetter;
+    return avatarInnerHtml(url, fallback);
   }
 
   function speakerName(isUser) {
@@ -289,9 +280,7 @@ export function createMessageFeed({
     if (!stream || !chunk) return;
     stream.buffer += chunk;
 
-    const stripped = stream.buffer
-      .replace(/<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi, "")
-      .replace(/<(thought|think)[^>]*>[\s\S]*$/i, "");
+    const stripped = stripThoughts(stream.buffer);
 
     const boundary = stripped.lastIndexOf("\n\n");
     if (boundary > stream.settledAt) {
