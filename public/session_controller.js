@@ -541,7 +541,7 @@ export class SessionController {
       status: CHOICE_STATUS.READY,
       sourceId: saved.sourceId,
       sourceSig: saved.sourceSig,
-      choices: saved.choices.map((c) => ({ id: c.id, text: c.text, label: c.label || "" })),
+      choices: saved.choices.map((c) => ({ id: c.id, text: c.text, label: c.label || "", type: c.type || "" })),
       error: null,
     };
     return this.choiceState;
@@ -671,14 +671,19 @@ export class SessionController {
       this.choiceState = { ...this.choiceState, status: CHOICE_STATUS.ERROR, choices: [], error: "The model returned no usable choices." };
       return true;
     }
-    this.choiceState = { ...this.choiceState, status: CHOICE_STATUS.READY, choices: choices.map((c) => ({ id: c.id, text: c.text, label: c.label || "" })), error: null };
+    this.choiceState = {
+      ...this.choiceState,
+      status: CHOICE_STATUS.READY,
+      choices: choices.map((c) => ({ id: c.id, text: c.text, label: c.label || "", type: c.type || "" })),
+      error: null,
+    };
     // Persist the minimum needed to restore this set without another request.
     if (this.activeSession) {
       this.activeSession.choiceSet = {
         id: `cs_${Date.now()}`,
         sourceId: this.choiceState.sourceId,
         sourceSig: this.choiceState.sourceSig,
-        choices: this.choiceState.choices.map((c) => ({ id: c.id, text: c.text, label: c.label || "" })),
+        choices: this.choiceState.choices.map((c) => ({ id: c.id, text: c.text, label: c.label || "", type: c.type || "" })),
         generatedAt: Date.now(),
       };
     }

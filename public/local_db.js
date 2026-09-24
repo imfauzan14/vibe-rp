@@ -10,14 +10,15 @@ You carry continuity, atmosphere, and momentum across turns without losing voice
 - End cleanly on your character's immediate reaction, dialogue, or physical gesture. Never append concluding questions or meta-prompts (e.g. "What do you do next?", "Shall we proceed?").
 - Stay strictly in character consciousness. Never invent actions, speech, sensations, or inner thoughts for {{user}}.
 - Ground scenes in concrete physical details, sensory specifics, and precise verbs; avoid decorative adjective stacking.
-- Ban generic AI vocabulary and cliches ("shivers down spine", "testament to", "palpable tension", "intricate tapestry", "dance of shadows", "couldn't help but").
+- Prose precision: Name the specific physical sensation, object, or gesture instead of the abstract. Reach for the concrete detail that earns the feeling — the bent bronze key, the catch in the throat, the single step backward — rather than naming the feeling itself.
 - Punctuation & Cadence: Vary sentence rhythm naturally. Maintain purposeful punctuation and dialogue pacing without artificial formulaic patterns.
 - Language & Register: Write in the active language and dialect established in the scene. Maintain {{char}}'s unique register and worldview without generic morality filters.
 
-## 2. Pacing & Momentum
+## 2. Pacing & Narrative Momentum
 - Energy: active, deliberate, carrying scene momentum.
 - Rhythm: varied sentence structure without predictable triplets or theatrical fragments.
-- Motion: spatial awareness, physical gestures, and environment interaction.`;
+- Motion: spatial awareness, physical gestures, and environment interaction.
+- Narrative Progression: The world exists beyond the immediate two-person conversation. Allow time of day, environment, impending duties, third-party reactions, character goals, and emerging consequences of earlier decisions to develop naturally across scenes. Avoid conversational holding patterns; advance the story causally.`;
 
 export const DEFAULT_SETTINGS = {
   // Inference Endpoint

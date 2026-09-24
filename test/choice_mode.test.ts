@@ -373,3 +373,34 @@ describe("Choice Mode - mode switching does not modify the transcript", () => {
     expect(JSON.stringify(ctl.messages)).toBe(before);
   });
 });
+
+describe("Choice Mode - agency and continuation type preservation", () => {
+  test("preserves choice type through generation, selection, and restoration", async () => {
+    const { ctl, db } = await makeController();
+    ctl.engine.generateChoices = async () => ({
+      choices: [
+        { id: "c1", label: "Wait quietly", text: "Time passes as footsteps fade down the corridor.", type: "continuation" },
+        { id: "c2", label: "Listen", text: "Faint whispers echo from beyond the wooden door.", type: "story" },
+      ],
+      usage: null,
+      request: {},
+    });
+    await ctl.send("I fall unconscious from the potion.");
+    await ctl.requestChoices();
+    expect(ctl.choiceState.status).toBe(CHOICE_STATUS.READY);
+    expect(ctl.choiceState.choices[0].type).toBe("continuation");
+    expect(ctl.choiceState.choices[1].type).toBe("story");
+
+    // Restoration retains type
+    const reloaded = new SessionController({ db, engine: ctl.engine });
+    await reloaded.init("card_1", ctl.activeSession.id);
+    const restored = reloaded.restoreChoices();
+    expect(restored.status).toBe(CHOICE_STATUS.READY);
+    expect(restored.choices[0].type).toBe("continuation");
+    expect(restored.choices[1].type).toBe("story");
+
+    // Selection works seamlessly without corrupting perspective
+    const pick = ctl.selectChoice("c1");
+    expect(pick.text).toBe("Time passes as footsteps fade down the corridor.");
+  });
+});

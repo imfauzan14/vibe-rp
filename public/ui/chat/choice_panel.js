@@ -51,7 +51,7 @@ export function createChoicePanel({
   let isCollapsed = false;
 
   const header = el("div", { class: "rp-choices__header" });
-  const heading = el("h2", { class: "rp-choices__title", id: "choice-title", text: "What do you do?" });
+  const heading = el("h2", { class: "rp-choices__title", id: "choice-title", text: "Next moves" });
   const badge = el("span", { class: "rp-choices__badge" });
   const headTitleWrap = el("div", { class: "rp-choices__header-title" }, [heading, badge]);
   const collapseBtn = el("button", {
@@ -88,7 +88,9 @@ export function createChoicePanel({
     badge.className = "rp-choices__badge";
     if (state.status === "generating") {
       badge.classList.add("is-generating");
-      badge.textContent = "Generating…";
+      // Only display the badge in the header when collapsed; when expanded,
+      // the body notice ("Generating choices…") is the single clear indicator.
+      badge.textContent = isCollapsed ? "Generating…" : "";
     } else if (state.status === "ready") {
       badge.classList.add("is-ready");
       badge.textContent = `${state.choices.length} ready`;
@@ -180,11 +182,18 @@ export function createChoicePanel({
     });
     // The number key is a quiet affordance, hidden from the accessible name so
     // the button reads as the action itself.
-    btn.append(
-      el("span", { class: "rp-choices__key rp-tnum", attrs: { "aria-hidden": "true" }, text: CHOICE_LABELS[index] ?? "" }),
-      // Model text as a text node: it can never become markup.
-      el("span", { class: "rp-choices__text", text: choice.text && choice.label ? choice.label : choice.text })
-    );
+    const keyEl = el("span", { class: "rp-choices__key rp-tnum", attrs: { "aria-hidden": "true" }, text: CHOICE_LABELS[index] ?? "" });
+    const textEl = el("span", { class: "rp-choices__text", text: choice.text && choice.label ? choice.label : choice.text });
+    btn.append(keyEl, textEl);
+    if (choice.type === "continuation" || choice.type === "story" || choice.type === "narrative") {
+      const kindBadge = el("span", {
+        class: "rp-badge rp-badge--ghost",
+        attrs: { "aria-hidden": "true" },
+        text: "Story",
+      });
+      kindBadge.style.cssText = "font-size: var(--text-2xs); margin-left: auto; align-self: center; opacity: 0.75;";
+      btn.append(kindBadge);
+    }
     if (disabled) btn.disabled = true;
     if (selected) btn.classList.add("is-selected");
     return btn;
@@ -214,10 +223,15 @@ export function createChoicePanel({
    */
   function render(next) {
     state = { ...state, ...next };
-    // Visible while Choice Mode is on and there is something to say: generating,
-    // a ready menu, an error, or a submitted pick. An idle machine in Choice
-    // Mode (the escape hatch just used, or a scene with no assistant turn yet)
-    // shows nothing, so the composer is the only next-turn input in view.
+    // Adapt heading if scene indicates continuation rather than player action
+    if (state.heading) {
+      heading.textContent = state.heading;
+    } else if (state.isContinuation) {
+      heading.textContent = "What happens next?";
+    } else {
+      heading.textContent = "Next moves";
+    }
+
     const visible = state.mode === "choice" && state.status !== "idle";
     mount.hidden = !visible;
     mount.dataset.status = state.status;

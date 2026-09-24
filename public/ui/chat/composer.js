@@ -62,11 +62,16 @@ export function createComposer({
     if (busy) return;
     const text = input.value.trim();
     if (!text) return;
-    input.value = "";
-    resize();
-    updateStats();
-    updateSendState();
     onSend(text);
+  }
+
+  function clearIfMatched(submittedText) {
+    if (typeof submittedText === "string" && input.value.trim() === submittedText.trim()) {
+      input.value = "";
+      resize();
+      updateStats();
+      updateSendState();
+    }
   }
 
   function setPersona({ name = "You", avatar = null } = {}) {
@@ -133,6 +138,7 @@ export function createComposer({
       updateStats();
       updateSendState();
     },
+    clearIfMatched,
     get busy() {
       return busy;
     },

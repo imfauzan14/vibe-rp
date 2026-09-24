@@ -37,43 +37,70 @@ const WRAPPING_QUOTES = [
 
 export const CHOICE_SYSTEM_PROMPT =
   "You generate the next moves available to the player in an ongoing roleplay scene.\n\n" +
-  "You write exclusively from the player's perspective, proposing a menu of distinct actions they may take next.\n\n" +
+  "You write from the player's perspective (or narrative continuation perspective if incapacitated), proposing distinct next moves.\n\n" +
   "Core Process & Adaptive Principles:\n" +
-  "- Persona & Narrative Perspective: Deeply align choices with the User Persona (background, traits, worldview, flaws, and voice). Match the player's established narrative point of view (1st person 'I' vs 3rd person) and speech cadence. If the persona specifies anxiety, hesitation, timidity, awkwardness, or specific insecurities, choices MUST realistically embody those emotional barriers and speech quirks (e.g., nervous pauses, averted eyes, awkward hesitation, or second-guessing). Never make the player artificially confident, fearless, or articulate when their persona dictates otherwise.\n" +
-  "- Language Lock & Register Adaptation: The User Persona, System Directives, and ongoing player dialogue are the active operational authority. If the imported character preset or scene context is in a different language than the user persona or dialogue, you MUST generate all choices strictly in the player's active language, dialect, and register. Never default to the preset's source language or drift into an unrequested language.\n" +
-  "- Dramatic Variety: Offer genuinely distinct dramatic archetypes across the choices, always filtered through the player's persona and psychological state:\n" +
-  "  1. Direct / Assertive (stepping forward or speaking up, expressed through the player's authentic confidence or nervousness)\n" +
-  "  2. Inquisitive / Diplomatic (probing questions or conversation, shaped by the player's true speech habits)\n" +
-  "  3. Cautious / Observant (tactical awareness, guarded retreat, hesitant pause, or keeping safe distance)\n" +
-  "  4. Unconventional / Intuitive (creative alternative, emotional vulnerability, awkward attempt, or unexpected pivot)\n" +
-  "- Scene Beats & Physical Grounding: Ground choices in concrete physical actions, posture, movement, and sensory details rather than disembodied dialogue. Weave gestures, expressions, or physical beats with spoken words to drive scene momentum.\n" +
-  "- Subtext over Exposition: Prioritize subtext, tension, and unsaid motives over literal explanations. Avoid on-the-nose exposition and polite conversational filler.\n" +
-  "- Anti-Echo Rule: Never echo, mirror, or repeat the other character's previous words. Every choice must respond with fresh momentum and an asymmetric viewpoint.\n" +
-  "- Strict Agency: Express each choice strictly as what the player says or attempts in the immediate beat. Never godmode character reactions, never dictate other characters' thoughts or answers, and never narrate future outcomes.\n" +
-  "- Information Boundary: Restrict choices to what the player already perceives in the current scene; never invent off-screen facts.\n" +
+  "- Persona & Narrative Perspective: Align choices with User Persona (traits, voice, flaws). Match the player's established point of view ('I' vs 3rd person) and speech cadence. If the persona specifies anxiety, hesitation, or timidity, embody those emotional barriers and speech quirks. Never make the player artificially fearless or articulate when their persona dictates otherwise.\n" +
+  "- Language Lock & Register Adaptation: User Persona, Directives, and player dialogue are the active operational authority. If the imported character preset is in a different language than the user persona or dialogue, generate choices strictly in the player's active language and register. Never default to the preset's source language or drift into an unrequested language.\n" +
+  "- Dramatic Variety: Offer distinct dramatic archetypes filtered through the player's persona:\n" +
+  "  1. Direct / Assertive (stepping forward or speaking up)\n" +
+  "  2. Inquisitive / Diplomatic (probing questions or conversation)\n" +
+  "  3. Cautious / Observant (tactical awareness, guarded retreat, hesitant pause)\n" +
+  "  4. Unconventional / Intuitive (creative alternative, emotional vulnerability, unexpected pivot)\n" +
+  "- Scene Beats & Physical Grounding: Ground choices in concrete physical actions, posture, movement, and sensory details rather than disembodied dialogue.\n" +
+  "- Subtext over Exposition: Prioritize subtext, tension, and unsaid motives over literal explanations. Avoid conversational filler.\n" +
+  "- Anti-Echo Rule: Never echo or repeat the other character's previous words. Every choice responds with fresh momentum.\n" +
+  "- Strict Agency: Express each choice as what the player says or attempts in the immediate beat. Never godmode character reactions, never dictate other characters' thoughts or answers, and never narrate future outcomes.\n" +
+  "- Player Agency vs. Story Continuation:\n" +
+  "  * Condition Assessment: Do NOT offer player-action choices that contradict physical condition. If dead, unconscious, bound, or asleep, do NOT offer choices where they speak or act as if unaffected.\n" +
+  "  * Story Continuation: If the player cannot act, offer story-continuation choices (external scene progression, environmental shifts, or passage of time). Clearly distinguish continuation from player action.\n" +
+  "  * No Disguised NPC Control: Never present an NPC's autonomous actions or decisions as though they are the player's action. Choices must not puppeteer NPCs.\n" +
+  "  * Plausible Recovery: When condition changes allow action (waking, bonds cut), return to player-action choices. If death is permanent, acknowledge the conclusion rather than looping fake recoveries.\n" +
+  "- Information Boundary: Restrict choices to what the player perceives in the current scene; never invent off-screen facts.\n" +
   "- Register & Tone: Preserve the established atmospheric tone, genre boundaries, and scene tension.\n" +
-  "- Return ONLY the JSON described below, with no commentary, no code fences, and no extra text.";
+  "- Internal Ranking (self-consistency): Before emitting JSON, mentally generate more candidates than needed, then select only the most distinct and scene-appropriate ones. Every emitted choice must differ in dramatic archetype, not just wording.\n" +
+  "- Plain Prose Only: Each choice \"text\" must be plain prose — no markdown, no asterisks, no code fences, no nested JSON. Formatting characters corrupt the UI.\n" +
+  // Q7: Canonical few-shot example in the system prompt (static cached prefix).
+  // Placing it here rather than in choicePrompt keeps the per-turn user message
+  // lean so it does not shrink the history window on tight context budgets.
+  "- Output format example (do not copy these choices — generate fresh ones for the actual scene):\n" +
+  '  {"choices":[\n' +
+  '    {"label":"Step closer","text":"I move toward the door, hand hovering near the latch.","type":"action"},\n' +
+  '    {"label":"Stay silent","text":"I press my back against the wall and wait, watching the shadow under the door.","type":"action"},\n' +
+  '    {"label":"Call out","text":"Is anyone there? I keep my voice flat, not giving away the shake in my chest.","type":"action"}\n' +
+  "  ]}\n" +
+  // Q11: Enum pinned in system prompt alongside the schema, not buried in the task line.
+  '  "type" must be exactly one of: "action" (player can act), "continuation" (scene progresses without player action), "story" (external narrative beat). Omit the key if none applies.\n' +
+  "- Return ONLY the JSON described above, with no commentary, no code fences, and no extra text.";
 
 /**
  * The task line for one choice request. The target count is interpolated rather
  * than left as a placeholder token, so nothing in the prompt can be mistaken for
  * a card placeholder (`{{char}}` / `{{user}}`) and rewritten by substitution.
+ *
+ * charName and playerName come from user-controlled card fields. They are
+ * bracket-wrapped and length-clamped before interpolation (Q17: injection
+ * hardening) — a model that receives instructions inside those fields cannot
+ * escape the bracketed scope into the instruction text.
  */
 export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the character", playerName = "the player" } = {}) {
   const target = Math.max(CHOICE_COUNT_MIN, Math.min(CHOICE_COUNT_MAX, Math.floor(Number(count) || CHOICE_COUNT_DEFAULT)));
+  // Clamp and strip literal newlines so injected card text cannot break out of
+  // the label position and append new prompt lines.
+  const safeChar = String(charName).replace(/[\r\n]+/g, " ").slice(0, 80);
+  const safePlayer = String(playerName).replace(/[\r\n]+/g, " ").slice(0, 80);
   return (
-    `Propose the next moves for ${playerName} in the scene above, opposite ${charName}.\n\n` +
+    `Propose the next moves for [${safePlayer}] in the scene above, opposite [${safeChar}].\n\n` +
     "Adaptive Guidance:\n" +
-    `- Embody ${playerName}'s persona, speech habits, and narrative perspective. Reflect their psychological traits, insecurities, or awkwardness rather than making them artificially confident.\n` +
+    `- Embody [${safePlayer}]'s persona, speech habits, and narrative perspective.\n` +
     "- Seamlessly match the active language, dialect, and tone established in the scene and directives.\n" +
-    `- Operational Precedence: If the character preset was created in a different language, override it to match ${playerName}'s active language, persona, and directives.\n` +
-    "- Propel the scene with physically grounded actions and distinct dramatic intentions.\n\n" +
-    "Return exactly one JSON object and nothing else, in this shape:\n" +
-    '{"choices":[{"label":"Short main point","text":"Full roleplay dialogue or action."}]}\n\n' +
+    `- Operational Precedence: If the character preset was created in a different language, override it to match [${safePlayer}]'s active language, persona, and directives.\n` +
+    "- Propel the scene with physically grounded actions and distinct dramatic intentions.\n" +
+    `- Agency & Scene State: Respect [${safePlayer}]'s condition. Propose player actions if able to act; propose scene continuation beats if incapacitated or deceased rather than impossible actions or disguised NPC puppeteering.\n\n` +
     `Provide ${target} choices. For each choice:\n` +
-    `- "label": A brief, punchy summary of the intent or main point (3 to 6 words, under ${CHOICE_LABEL_MAX_CHARS} characters) displayed in the menu, in ${playerName}'s active language.\n` +
-    `- "text": The complete, immersive roleplay action or spoken dialogue to send when chosen (under ${CHOICE_TEXT_MAX_CHARS} characters), in ${playerName}'s active language.\n` +
-    `Phrased from ${playerName}'s perspective.`
+    `- "label": A brief summary of intent (3 to 6 words, under ${CHOICE_LABEL_MAX_CHARS} characters) in [${safePlayer}]'s active language.\n` +
+    `- "text": Full roleplay action or dialogue to send (under ${CHOICE_TEXT_MAX_CHARS} characters), plain prose only, in [${safePlayer}]'s active language.\n` +
+    `- "type": one of "action", "continuation", "story" — or omit the key.\n` +
+    `Phrased from [${safePlayer}]'s perspective (or narrative continuation perspective if [${safePlayer}] cannot act).`
   );
 }
 
@@ -148,10 +175,12 @@ function entryItem(entry) {
     ? (entry.text ?? entry.action ?? entry.detail ?? entry.value ?? entry.choice ?? "")
     : (entry.label ?? entry.title ?? entry.summary ?? entry.tldr ?? "");
   const rawLabel = hasText ? (entry.label ?? entry.title ?? entry.summary ?? entry.tldr ?? "") : "";
+  const rawType = entry.type ?? entry.kind ?? entry.category ?? "";
   const text = typeof rawText === "string" ? rawText : String(rawText || "");
   const label = typeof rawLabel === "string" ? rawLabel : String(rawLabel || "");
+  const type = typeof rawType === "string" ? rawType.toLowerCase().trim() : "";
   if (!text && !label) return null;
-  return { label, text: text || label };
+  return { label, text: text || label, type };
 }
 
 /**
@@ -206,7 +235,7 @@ export function parseChoices(raw, { max = CHOICE_COUNT_MAX, maxChars = CHOICE_TE
     const key = dedupeKey(text);
     if (!key || seen.has(key)) continue;
     seen.add(key);
-    unique.push({ label: rawLabel, text });
+    unique.push({ label: rawLabel, text, type: item?.type || "" });
   }
 
   // Prefer choices that already fit. Only when that would leave a useless menu
@@ -214,7 +243,7 @@ export function parseChoices(raw, { max = CHOICE_COUNT_MAX, maxChars = CHOICE_TE
   const withinLimit = unique.filter((c) => c.text.length <= maxChars);
   let chosen = withinLimit.length >= 2
     ? withinLimit
-    : unique.map((c) => ({ label: c.label, text: clampText(c.text, maxChars) }));
+    : unique.map((c) => ({ label: c.label, text: clampText(c.text, maxChars), type: c.type }));
 
   // Clamping can collapse two entries onto the same string; dedupe once more.
   const finalSeen = new Set();
@@ -231,6 +260,7 @@ export function parseChoices(raw, { max = CHOICE_COUNT_MAX, maxChars = CHOICE_TE
       if (c.label && c.label !== c.text) {
         res.label = c.label.length > CHOICE_LABEL_MAX_CHARS ? clampText(c.label, CHOICE_LABEL_MAX_CHARS) : c.label;
       }
+      if (c.type) res.type = c.type;
       return res;
     }),
   };

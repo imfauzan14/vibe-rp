@@ -70,8 +70,10 @@ describe("choice UI drift-guard", () => {
       expect(panel).toContain("is-submitting");
       expect(panel).toContain("is-error");
       expect(panel).toContain("isMobileViewport");
+      // Single clear loading indication: badge only shows text when collapsed;
+      // notice handles the expanded loading message.
+      expect(panel).toMatch(/badge\.textContent\s*=\s*isCollapsed\s*\?\s*"Generating…"\s*:\s*""/);
     }
-    // shortcuts and escape handle collapse state cleanly
     {
       expect(panel).toMatch(/event\.key === "Escape"/);
       expect(panel).toMatch(/if \(isCollapsed\) return/);
@@ -179,6 +181,13 @@ describe("chat surface wiring", () => {
 
   test("composer dock drops visible border while preserving layout bounds", () => {
     expect(css).toMatch(/\.rp-composer\[data-mode="choice"\]\[data-has-choices="true"\]\s+\.rp-composer__box\s*\{[\s\S]*?border:\s*var\(--border-width\)\s+solid\s+transparent/);
+  });
+
+  test("Normal RP composer clears input only on settled success matching submitted text", () => {
+    const composerSrc = read("ui/chat/composer.js");
+    expect(composerSrc).toContain("clearIfMatched");
+    expect(composerSrc).toMatch(/input\.value\.trim\(\)\s*===\s*submittedText\.trim\(\)/);
+    expect(boot).toMatch(/composer\.clearIfMatched\(promptHint\)/);
   });
 });
 

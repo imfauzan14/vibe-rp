@@ -302,19 +302,44 @@ export function buildSystemSections(card, persona, settings = {}) {
     sections.push({ id: "persona", text: `[User Persona: ${pName}]\n${pDesc}${template}`, required: true, priority: 950 });
   }
 
-  // Cross-lingual adaptation, operational precedence & epistemic boundaries:
-  // When user persona or custom system directives are defined, establish operational authority
-  // so an imported preset in a different language adapts naturally, and strictly enforce
-  // the character's epistemic knowledge boundary (preventing omniscience bleed of persona facts/name
-  // upon first meeting or when unrevealed).
+  // Cross-lingual adaptation & epistemic boundaries split into two sections:
+  //
+  // operationalPrecedence (Required, ~60 tok): The single language-authority
+  //   sentence. Undropable — without it a foreign-language preset silently
+  //   overrides the user's language on every turn. Short so additions cannot
+  //   silently inflate the Required budget (Q6/Q13).
+  //
+  // epistemicBoundary (Degradable, ~120 tok): Anti-omniscience + observable
+  //   demeanor. Important but gracefully degradable — the running ledger
+  //   tracks who knows what, so dropping it never breaks session state.
+  //   Priority 20: yields after mes_example under pressure.
   if (persona?.name || contract) {
     sections.push({
       id: "operationalPrecedence",
-      text: "[Operational Precedence & Epistemic Boundaries:\n" +
-        "1. Operational Precedence: The User Persona and System Directives are the active operational authority governing language, register, and narrative medium. The Character Preset defines character identity, traits, and memories. If the character preset is written in a different language than the user persona or dialogue, fluidly adapt the character's speech, prose, and reactions into the user's active language and register while preserving their core personality and demeanor. Dialogue examples illustrate personality only, not scene language or canon.\n" +
-        "2. Epistemic Boundary (Anti-Omniscience) & Observable Demeanor: The character does NOT possess telepathic or out-of-character knowledge of the user's unintroduced name, private backstory, or internal thoughts. Unless the scenario or dialogue history explicitly establishes a prior relationship or introduction, the character must treat the user as an unfamiliar person: they must NOT know or call the user by their persona name, cite their backstory, or presume unearned familiarity until the user introduces themselves or reveals that information in the active conversation. However, characters and bystanders DO realistically perceive and react to the user's visible demeanor, body language, vocal tension, hesitation, and observable quirks described in the user persona and dialogue (e.g. noticing nervousness, averted eyes, awkward pauses, or anxious posture), responding naturally to those physical cues.]",
+      text:
+        "[Operational Precedence: The User Persona and System Directives are the active " +
+        "operational authority governing language, register, and narrative medium. " +
+        "The Character Preset defines character identity; if it was written in a different " +
+        "language than the user persona or dialogue, fluidly adapt speech and prose into the " +
+        "user's active language while preserving the character's core personality. " +
+        "Dialogue examples illustrate personality only, not scene language or canon.]",
       required: true,
       priority: 960,
+    });
+    sections.push({
+      id: "epistemicBoundary",
+      text:
+        "[Epistemic Boundary (Anti-Omniscience) & Observable Demeanor: The character does NOT " +
+        "possess telepathic or out-of-character knowledge of the user's unintroduced name, " +
+        "private backstory, or internal thoughts. Unless the scenario or dialogue history " +
+        "explicitly establishes a prior relationship or introduction, the character must treat " +
+        "the user as an unfamiliar person and must NOT know or call them by their persona name, " +
+        "cite their backstory, or presume unearned familiarity until the user reveals it. " +
+        "However, characters and bystanders DO realistically perceive and react to the user's " +
+        "visible demeanor, body language, vocal tension, hesitation, and observable quirks " +
+        "described in the user persona and dialogue, responding naturally to those physical cues.]",
+      required: false,
+      priority: 20,
     });
   }
 
@@ -1831,24 +1856,41 @@ export class BrowserChatEngine {
   /**
    * Deterministic extractive digest used when the summarizer is unreachable.
    *
-   * This is a degraded continuity mechanism, not a lossless one: it clips each
-   * message toward a sentence boundary and stops once the character budget is
-   * spent, so later material can be reduced to a trailing marker. It never
-   * touches the stored transcript, so the canonical record is intact and the
-   * fold can be redone once the summarizer is reachable again.
+   * This is a degraded continuity mechanism, not a lossless one. It never
+   * touches the stored transcript; the canonical record is intact and the fold
+   * can be redone once the summarizer is reachable again.
+   *
+   * Fallback hierarchy (Q18):
+   *   Level 1 — LLM summarizer (primary, see #summarize).
+   *   Level 2 — This digest: narration-biased extractive clip. Assistant turns
+   *             get the full per-message budget because they carry scene facts
+   *             and world state. User turns are clipped to 40% — they're mostly
+   *             dialogue whose factual content is already reflected in the
+   *             assistant's next response.
+   *   Level 3 — AbortError propagates untouched; prior ledger returned as-is.
+   *
+   * Roleplay-specific failure mode of naive extractive: dialogue lines dominate
+   * by character length but carry the least factual density — "I love you"
+   * survives while the consequence (she moved in) gets dropped. The narration
+   * bias below inverts that priority so world-state changes are preserved first.
    */
   static #buildFallbackLedger(messages, card, persona, previousLedger = "", settings = {}) {
     const { fallbackMaxChars = 3500 } = this.resolveBudgets(settings);
-    // Per-message clip bound: a long turn is trimmed toward a sentence boundary
-    // rather than dropped. Lossy by design (see the note above).
-    const perMessage = Math.max(300, Math.min(1200, Math.floor(fallbackMaxChars / Math.max(1, (messages || []).length))));
+    const msgCount = Math.max(1, (messages || []).length);
+    // Base per-message budget. Narration turns (assistant) use it in full.
+    // User turns get 40%: facts live in the narrator response, not the prompt.
+    const basePerMsg = Math.max(300, Math.min(1200, Math.floor(fallbackMaxChars / msgCount)));
     const lines = [];
     for (const m of messages || []) {
       if (!m || !m.content) continue;
       const raw = typeof m.content === "string" ? m.content : String(m.content);
       const clean = raw.replace(/<(thought|think|reasoning)[^>]*>[\s\S]*?<\/\1>/gi, "").replace(/\s+/g, " ").trim();
       if (!clean) continue;
-      const who = m.role === "user" ? (persona && persona.name) || "User" : (card && (card.data?.name || card.name)) || "Character";
+      const isNarration = m.role === "assistant";
+      const perMessage = isNarration ? basePerMsg : Math.max(120, Math.floor(basePerMsg * 0.4));
+      const who = isNarration
+        ? (card && (card.data?.name || card.name)) || "Character"
+        : (persona && persona.name) || "User";
       let clipped = clean;
       if (clean.length > perMessage) {
         const slice = clean.slice(0, perMessage);

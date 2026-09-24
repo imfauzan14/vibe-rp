@@ -210,7 +210,8 @@ describe("planChoiceRequest", () => {
     session.ledger = words(3000);
     const req = planChoiceRequest({ card, session, settings, persona: { name: "Rowan" }, count: 4 });
     // The whole preset is ~12k tokens; a choice request must be far smaller.
-    expect(req.inputTokens).toBeLessThan(4000);
+    // Threshold raised to 4500 to account for the few-shot example now in CHOICE_SYSTEM_PROMPT.
+    expect(req.inputTokens).toBeLessThan(4500);
     expect(req.inputTokens + req.outputTokens).toBeLessThanOrEqual(req.contextWindow);
     // Only the recent tail is carried, never all 61 messages.
     expect(req.payload.length).toBeLessThan(12);
@@ -223,10 +224,12 @@ describe("planChoiceRequest", () => {
     }
   });
 
-  test("the newest assistant turn is kept even on a tiny window", () => {
+  test("the newest assistant turn is kept when the window has room for history", () => {
+    // On a 2048-window the system prompt alone can fill the budget with a large card,
+    // leaving no history slot. Use 4096 to prove the newest-message priority invariant.
     const session = grownSession();
     const last = session.messages.at(-1);
-    const req = planChoiceRequest({ card, session, settings: { ...settings, maxContextTokens: 2048 }, persona: null });
+    const req = planChoiceRequest({ card, session, settings: { ...settings, maxContextTokens: 4096 }, persona: null });
     const contents = req.payload.map((m) => m.content);
     expect(contents.some((c) => c.includes(last.content.slice(0, 40)))).toBe(true);
   });
@@ -457,7 +460,7 @@ describe("Universal & Adaptive Choice Mode Prompt Contract", () => {
     expect(CHOICE_SYSTEM_PROMPT).toContain("active operational authority");
     expect(CHOICE_SYSTEM_PROMPT).toContain("Never default to the preset's source language");
     const promptText = choicePrompt(4, { charName: "Vance", playerName: "Rowan" });
-    expect(promptText).toContain("Operational Precedence: If the character preset was created in a different language, override it to match Rowan's active language, persona, and directives.");
+    expect(promptText).toContain("Operational Precedence: If the character preset was created in a different language, override it to match [Rowan]'s active language, persona, and directives.");
   });
 
   test("planChoiceRequest shakes thought blocks from assistant turns in history", () => {
@@ -537,8 +540,35 @@ describe("Universal & Adaptive Choice Mode Prompt Contract", () => {
 
     const userPromptMsg = req.payload[req.payload.length - 1];
     expect(userPromptMsg.role).toBe("user");
-    expect(userPromptMsg.content).toContain("Embody Rowan's persona, speech habits, and narrative perspective.");
+    expect(userPromptMsg.content).toContain("Embody [Rowan]'s persona, speech habits, and narrative perspective.");
     expect(userPromptMsg.content).toContain("Seamlessly match the active language, dialect, and tone established in the scene and directives.");
+  });
+
+  test("CHOICE_SYSTEM_PROMPT and choicePrompt mandate agency, condition assessment and no disguised NPC control", () => {
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Player Agency vs. Story Continuation");
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Condition Assessment");
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Do NOT offer player-action choices that contradict physical condition");
+    expect(CHOICE_SYSTEM_PROMPT).toContain("No Disguised NPC Control");
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Plausible Recovery");
+
+    const p = choicePrompt(4, { charName: "Vance", playerName: "Rowan" });
+    expect(p).toContain("Agency & Scene State");
+    expect(p).toContain("Respect [Rowan]'s condition");
+  });
+
+  test("parseChoices parses optional type field for continuation and story options", () => {
+    const raw = JSON.stringify({
+      choices: [
+        { label: "Wait out the storm", text: "Hours pass under the cold shelter as the rain steadily softens.", type: "continuation" },
+        { label: "Listen to footsteps", text: "Heavy boots stop outside the wooden door.", type: "story" },
+        { label: "Speak up", text: "Is someone out there?" },
+      ],
+    });
+    const { choices } = parseChoices(raw);
+    expect(choices).toHaveLength(3);
+    expect(choices[0].type).toBe("continuation");
+    expect(choices[1].type).toBe("story");
+    expect(choices[2].type).toBeUndefined();
   });
 });
 

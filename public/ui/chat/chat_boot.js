@@ -325,12 +325,15 @@
       const st = controller.choiceState;
       const hasChoices = mode === "choice" && st.status !== "idle";
       $("composer").dataset.hasChoices = hasChoices ? "true" : "false";
+      const isContinuation = Array.isArray(st.choices) && st.choices.length > 0 &&
+        st.choices.every((c) => c.type === "continuation" || c.type === "story" || c.type === "narrative");
       const { focusTarget } = choicePanel.render({
         mode,
         status: st.status,
         choices: st.choices,
         error: st.error,
         selectedId: st.selectedId || null,
+        isContinuation,
       });
       // Focus only when the panel itself changed state (choices arrived, a turn
       // started) and the reader was not typing.
@@ -469,10 +472,10 @@
         // recomputed now that a reply exists.
         renderFeed();
         settledOk = true;
+        composer.clearIfMatched(promptHint);
       } catch (err) {
         feed.failStream(stream);
         if (turn.stopped) {
-          notifier.setStatus("Stopped.");
           showToast("Stopped.", "info");
         } else {
           const described = describeFailure(err);

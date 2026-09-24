@@ -512,10 +512,9 @@ describe("Context planners - history hygiene and lore selection", () => {
     });
     const sys = plan.systemPrompt;
     expect(sys).toContain("[User Persona: Fauzan]");
-    expect(sys).toContain("Operational Precedence & Epistemic Boundaries");
+    expect(sys).toContain("Operational Precedence:");
     expect(sys).toContain("Epistemic Boundary (Anti-Omniscience)");
-    expect(sys).toContain("The character does NOT possess telepathic or out-of-character knowledge of the user");
-    expect(sys).toContain("must NOT know or call the user by their persona name");
+    expect(sys).toContain("must NOT know or call them by their persona name");
   });
 });
 
