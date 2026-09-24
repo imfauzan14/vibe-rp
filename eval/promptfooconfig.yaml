@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+description: "Vibe RP Prompt, Choice & Ledger Evaluation Harness"
+
+prompts:
+  - file://eval/prompts/choice_prompt.json
+  - file://eval/prompts/ledger_compress.json
+
+# Providers:
+# Defaults to 'echo' provider for zero-cost, deterministic preview and structure verification.
+# To evaluate with live providers (e.g. 9router, OpenRouter, Anthropic, OpenAI):
+#   - id: openai:chat:deepseek-r1
+#     config:
+#       apiBaseUrl: http://localhost:3000/v1
+#       apiKey: env:OPENAI_API_KEY
+#   - id: anthropic:messages:claude-sonnet-4-6
+#     config:
+#       apiBaseUrl: https://api.9router.com/v1
+#       apiKey: env:ANTHROPIC_API_KEY
+providers:
+  - echo
+
+tests: file://eval/tests/cases.yaml
+
+# Concurrency control (under commandLineOptions per promptfoo-evaluation guidelines)
+commandLineOptions:
+  maxConcurrency: 1
+
+outputPath: eval/results/eval-results.json

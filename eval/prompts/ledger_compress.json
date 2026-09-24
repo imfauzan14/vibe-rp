@@ -1,0 +1,6 @@
+[
+  {
+    "role": "user",
+    "content": "{{ledger_text}}\n\n{{compress_prompt}}"
+  }
+]

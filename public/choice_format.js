@@ -36,14 +36,17 @@ const WRAPPING_QUOTES = [
 export const CHOICE_SYSTEM_PROMPT =
   "You generate the next moves available to the player in an ongoing roleplay scene.\n\n" +
   "You write exclusively from the player's perspective, proposing a menu of distinct actions they may take next.\n\n" +
-  "Requirements:\n" +
-  "- Language Lock: Generate dialogue, choices, and roleplay prose strictly in the active language and dialect established in the scene (matching the character and player's dialogue). If the craft directives specify a language (such as Indonesian) or the scene is multilingual, generate choices strictly in that target language. Never translate established names, cultural terms, or scene dialogue into English.\n" +
-  "- Narrative Perspective: Match the player's established narrative point of view (1st person 'I' vs 3rd person).\n" +
+  "Core Process & Adaptive Principles:\n" +
+  "- Persona & Narrative Perspective: Deeply align choices with the User Persona (background, traits, worldview, voice). Match the player's established narrative point of view (1st person 'I' vs 3rd person) and speech cadence.\n" +
+  "- Language Lock & Register Adaptation: The User Persona, System Directives, and ongoing player dialogue are the active operational authority. If the imported character preset or scene context is in a different language than the user persona or dialogue, you MUST generate all choices strictly in the player's active language, dialect, and register. Never default to the preset's source language or drift into an unrequested language.\n" +
   "- Dramatic Variety: Offer genuinely distinct dramatic archetypes across the choices:\n" +
   "  1. Direct / Assertive (bold action, confrontation, or decisive advance)\n" +
   "  2. Inquisitive / Diplomatic (probing questions, de-escalation, or uncovering intent)\n" +
   "  3. Cautious / Observant (tactical awareness, examining details, or guarded defense)\n" +
   "  4. Unconventional / Intuitive (creative alternative, emotional vulnerability, or unexpected pivot)\n" +
+  "- Scene Beats & Physical Grounding: Ground choices in concrete physical actions, posture, movement, and sensory details rather than disembodied dialogue. Weave gestures, expressions, or physical beats with spoken words to drive scene momentum.\n" +
+  "- Subtext over Exposition: Prioritize subtext, tension, and unsaid motives over literal explanations. Avoid on-the-nose exposition and polite conversational filler.\n" +
+  "- Anti-Echo Rule: Never echo, mirror, or repeat the other character's previous words. Every choice must respond with fresh momentum and an asymmetric viewpoint.\n" +
   "- Strict Agency: Express each choice strictly as what the player says or attempts in the immediate beat. Never godmode character reactions, never dictate other characters' thoughts or answers, and never narrate future outcomes.\n" +
   "- Information Boundary: Restrict choices to what the player already perceives in the current scene; never invent off-screen facts.\n" +
   "- Register & Tone: Preserve the established atmospheric tone, genre boundaries, and scene tension.\n" +
@@ -58,11 +61,16 @@ export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the cha
   const target = Math.max(CHOICE_COUNT_MIN, Math.min(CHOICE_COUNT_MAX, Math.floor(Number(count) || CHOICE_COUNT_DEFAULT)));
   return (
     `Propose the next moves for ${playerName} in the scene above, opposite ${charName}.\n\n` +
+    "Adaptive Guidance:\n" +
+    `- Embody ${playerName}'s persona, speech habits, and narrative perspective.\n` +
+    "- Seamlessly match the active language, dialect, and tone established in the scene and directives.\n" +
+    `- Operational Precedence: If the character preset was created in a different language, override it to match ${playerName}'s active language, persona, and directives.\n` +
+    "- Propel the scene with physically grounded actions and distinct dramatic intentions.\n\n" +
     "Return exactly one JSON object and nothing else, in this shape:\n" +
     '{"choices":[{"label":"Short main point","text":"Full roleplay dialogue or action."}]}\n\n' +
     `Provide ${target} choices. For each choice:\n` +
-    `- "label": A brief, punchy summary of the intent or main point (3 to 6 words, under ${CHOICE_LABEL_MAX_CHARS} characters, in the scene's active language) displayed in the menu.\n` +
-    `- "text": The complete, immersive roleplay action or spoken dialogue to send when chosen (under ${CHOICE_TEXT_MAX_CHARS} characters, in the scene's active language).\n` +
+    `- "label": A brief, punchy summary of the intent or main point (3 to 6 words, under ${CHOICE_LABEL_MAX_CHARS} characters) displayed in the menu, in ${playerName}'s active language.\n` +
+    `- "text": The complete, immersive roleplay action or spoken dialogue to send when chosen (under ${CHOICE_TEXT_MAX_CHARS} characters), in ${playerName}'s active language.\n` +
     `Phrased from ${playerName}'s perspective.`
   );
 }
@@ -150,9 +158,9 @@ function entryItem(entry) {
  * ignores the JSON instruction still usually returns a usable menu.
  */
 function extractItems(raw) {
-  // Strip internal <thought> and <think> scratchpad blocks before extracting choices
+  // Strip internal <thought>, <think>, and <reasoning> scratchpad blocks before extracting choices
   const clean = typeof raw === "string"
-    ? raw.replace(/<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi, "").replace(/<(thought|think)[^>]*>[\s\S]*$/gi, "").trim()
+    ? raw.replace(/<(thought|think|reasoning)[^>]*>[\s\S]*?<\/\1>/gi, "").replace(/<(thought|think|reasoning)[^>]*>[\s\S]*$/gi, "").trim()
     : "";
   const slice = firstJsonSlice(clean);
   if (slice) {

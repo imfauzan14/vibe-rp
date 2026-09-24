@@ -103,14 +103,14 @@ export function countMessages(messages) {
 }
 
 /**
- * Strips internal `<thought>` and `<think>` scratchpad blocks from text.
+ * Strips internal `<thought>`, `<think>`, and `<reasoning>` scratchpad blocks from text.
  * Reasoning models emit internal reasoning traces that are irrelevant to
- * auxiliary tasks like Choice Mode.
+ * auxiliary tasks like Choice Mode and subsequent turns.
  */
 export function stripThoughtBlocks(text) {
   if (typeof text !== "string") return "";
-  let clean = text.replace(/<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi, "");
-  clean = clean.replace(/<(thought|think)[^>]*>[\s\S]*$/gi, "");
+  let clean = text.replace(/<(thought|think|reasoning)[^>]*>[\s\S]*?<\/\1>/gi, "");
+  clean = clean.replace(/<(thought|think|reasoning)[^>]*>[\s\S]*$/gi, "");
   return clean.trim();
 }
 
@@ -374,7 +374,7 @@ Use exactly these sections, omitting any that would be empty:
 
 Rules to guarantee factual canon and zero hallucination:
 - Preserve verbatim: proper nouns, numbers, dates and time anchors, promises, inventory items, wounds, unresolved threads, and any text the character spoke verbatim. Never rename, merge, or drop a character.
-- Record facts, dialogue, and character details strictly in the active language of the story; never translate established terms or dialogue into English.
+- Record facts, dialogue, and character details strictly in the active language of the story; never translate established terms or dialogue into another language.
 - Record settled facts and physical truths only. Never infer unmentioned background, fabricate motivation, or invent facts outside the transcript.
 - Fold dialogue into objective outcomes: record what became true, not banter.
 - Prefer concrete specifics over abstractions: "bronze key, bent at the bow" over "a key".
@@ -389,7 +389,7 @@ Rules:
 - Move resolved threads out of Threads; record how they resolved in Timeline.
 - Add new cast, places, and objects. Never drop or rename an existing one.
 - Preserve verbatim: proper nouns, numbers, dates and time anchors, promises, inventory items, wounds, unresolved threads, and any text the character spoke verbatim.
-- Record facts, dialogue, and character details strictly in the active language of the story; never translate established terms or dialogue into English.
+- Record facts, dialogue, and character details strictly in the active language of the story; never translate established terms or dialogue into another language.
 - Maintain the ## Voice section to anchor the story's active language, dialect, and narrative point of view.
 - Never invent facts. Never continue the story.
 - Keep it under ${SUMMARY_UPDATE_TARGET_WORDS} words. Compress wording, never drop a fact.
@@ -566,6 +566,22 @@ export function buildSystemSections(card, persona, settings = {}) {
     sections.push({ id: "persona", text: `[User Persona: ${pName}]\n${pDesc}${template}`, required: true, priority: 950 });
   }
 
+  // Cross-lingual adaptation, operational precedence & epistemic boundaries:
+  // When user persona or custom system directives are defined, establish operational authority
+  // so an imported preset in a different language adapts naturally, and strictly enforce
+  // the character's epistemic knowledge boundary (preventing omniscience bleed of persona facts/name
+  // upon first meeting or when unrevealed).
+  if (persona?.name || contract) {
+    sections.push({
+      id: "operationalPrecedence",
+      text: "[Operational Precedence & Epistemic Boundaries:\n" +
+        "1. Operational Precedence: The User Persona and System Directives are the active operational authority governing language, register, and narrative medium. The Character Preset defines character identity, traits, and memories. If the character preset is written in a different language than the user persona or dialogue, fluidly adapt the character's speech, prose, and reactions into the user's active language and register while preserving their core personality and demeanor. Dialogue examples illustrate personality only, not scene language or canon.\n" +
+        "2. Epistemic Boundary (Anti-Omniscience): The character does NOT possess telepathic or out-of-character knowledge of the user. The User Persona describes the player character out-of-character. In-universe, the character only knows what has been explicitly perceived, shared, or established in the scene history and scenario. Unless the scenario or dialogue history explicitly establishes a prior relationship or introduction, the character must treat the user as an unfamiliar person: they must NOT know or call the user by their persona name, cite their backstory, or presume unearned familiarity until the user introduces themselves or reveals that information in the active conversation.]",
+      required: true,
+      priority: 960,
+    });
+  }
+
   return sections;
 }
 
@@ -685,6 +701,7 @@ export function planChoiceRequest({
 
   const name = charName || card?.data?.name || card?.name || "the character";
   const who = playerName || persona?.name || "the player";
+
   let scenarioHint = "";
   const rawScenario = card?.data?.scenario || card?.scenario || "";
   if (rawScenario) {
@@ -693,15 +710,34 @@ export function planChoiceRequest({
       scenarioHint = `\nScenario: ${cleanScenario.slice(0, 300)}`;
     }
   }
+
+  let charHint = "";
+  const rawCharPrompt = card?.data?.system_prompt || card?.system_prompt || card?.data?.personality || card?.personality || "";
+  if (rawCharPrompt) {
+    const cleanChar = substituteCardPlaceholders(rawCharPrompt, card, persona).replace(/\s+/g, " ").trim();
+    if (cleanChar) {
+      charHint = `\nCharacter Context (${name}): ${cleanChar.slice(0, 400)}`;
+    }
+  }
+
+  let personaHint = "";
+  if (persona && persona.name) {
+    const pDesc = persona.description ? substituteCardPlaceholders(persona.description, card, persona).replace(/\s+/g, " ").trim() : "";
+    if (pDesc) {
+      personaHint = `\nUser Persona (${who}): ${pDesc.slice(0, 500)}`;
+    }
+  }
+
   let directiveHint = "";
   const rawContract = (settings?.agentsContract || "").trim();
   if (rawContract) {
     const cleanContract = substituteCardPlaceholders(rawContract, card, persona).replace(/\s+/g, " ").trim();
     if (cleanContract) {
-      directiveHint = `\nCraft Directives & Language: ${cleanContract.slice(0, 1500)}`;
+      directiveHint = `\nSystem & Craft Directives:\n${cleanContract.slice(0, 1500)}`;
     }
   }
-  const system = `${CHOICE_SYSTEM_PROMPT}\n\nScene: ${name} opposite ${who}.${scenarioHint}${directiveHint}`;
+
+  const system = `${CHOICE_SYSTEM_PROMPT}\n\nScene Context: ${name} opposite ${who}.${scenarioHint}${charHint}${personaHint}${directiveHint}`;
   const task = choicePrompt(count, { charName: name, playerName: who });
 
   // Everything that is not history or ledger: the fixed instruction overhead.
@@ -823,7 +859,7 @@ export class BrowserChatEngine {
     let candidates = 0;
     for (let i = 0; i < threshold; i++) {
       const c = messages[i] && messages[i].content;
-      if (typeof c === "string" && (c.indexOf("<thought") !== -1 || c.indexOf("<think") !== -1)) candidates++;
+      if (typeof c === "string" && (c.indexOf("<thought") !== -1 || c.indexOf("<think") !== -1 || c.indexOf("<reasoning") !== -1)) candidates++;
     }
     if (candidates === 0) return messages;
 
@@ -840,14 +876,14 @@ export class BrowserChatEngine {
     }
     if (deepestCheap < 0) return messages;
 
-    const regex = /<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi;
+    const regex = /<(thought|think|reasoning)[^>]*>[\s\S]*?<\/\1>/gi;
     let result = null;
     for (let i = 0; i < threshold; i++) {
       if (suffixTokens[i] > suffixLimitTokens) continue;
       const m = messages[i];
       if (!m || m.role !== "assistant") continue;
       const c = m.content;
-      if (typeof c !== "string" || (c.indexOf("<thought") === -1 && c.indexOf("<think") === -1)) continue;
+      if (typeof c !== "string" || (c.indexOf("<thought") === -1 && c.indexOf("<think") === -1 && c.indexOf("<reasoning") === -1)) continue;
       regex.lastIndex = 0;
       const stripped = c.replace(regex, "").trim();
       if (!stripped || stripped === c.trim()) continue;
@@ -1080,7 +1116,7 @@ export class BrowserChatEngine {
     for (const m of messages || []) {
       if (!m || !m.content) continue;
       const raw = typeof m.content === "string" ? m.content : String(m.content);
-      const clean = raw.replace(/<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi, "").trim();
+      const clean = raw.replace(/<(thought|think|reasoning)[^>]*>[\s\S]*?<\/\1>/gi, "").trim();
       if (!clean) continue;
       lines.push(`${m.role === "user" ? uName : cName}: ${clean}`);
     }
@@ -2147,7 +2183,7 @@ export class BrowserChatEngine {
     for (const m of messages || []) {
       if (!m || !m.content) continue;
       const raw = typeof m.content === "string" ? m.content : String(m.content);
-      const clean = raw.replace(/<(thought|think)[^>]*>[\s\S]*?<\/\1>/gi, "").replace(/\s+/g, " ").trim();
+      const clean = raw.replace(/<(thought|think|reasoning)[^>]*>[\s\S]*?<\/\1>/gi, "").replace(/\s+/g, " ").trim();
       if (!clean) continue;
       const who = m.role === "user" ? (persona && persona.name) || "User" : (card && (card.data?.name || card.name)) || "Character";
       let clipped = clean;

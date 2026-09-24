@@ -1,0 +1,18 @@
+[
+  {
+    "role": "system",
+    "content": "{{system_prompt}}"
+  },
+  {
+    "role": "user",
+    "content": "{{user_turn}}"
+  },
+  {
+    "role": "assistant",
+    "content": "{{assistant_turn}}"
+  },
+  {
+    "role": "user",
+    "content": "{{task_instruction}}"
+  }
+]

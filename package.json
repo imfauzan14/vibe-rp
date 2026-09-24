@@ -5,7 +5,8 @@
   "scripts": {
     "start": "bun serve.js",
     "build": "echo 'Static build ready'",
-    "test": "bun test test/"
+    "test": "bun test test/",
+    "eval": "bun test test/eval_harness.test.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",

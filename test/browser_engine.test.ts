@@ -173,5 +173,32 @@ describe("Browser-First Chat Engine & In-UI Config", () => {
     });
     expect(planMultiWord.postHistory).toContain("Archivist entry.");
   });
+
+  test("11. operationalPrecedence enforces epistemic knowledge boundaries and anti-omniscience for user personas", () => {
+    const card = {
+      data: {
+        name: "Elena",
+        description: "A mysterious alchemist living in an isolated tower.",
+        scenario: "A stranger arrives at the tower door seeking shelter from a storm.",
+      },
+    };
+    const persona = {
+      name: "Fauzan",
+      description: "An engineer from a distant high-tech land with secret cybernetic implants.",
+    };
+    const plan = BrowserChatEngine.planRequest({
+      card,
+      session: { messages: [{ role: "user", content: "I knock on the wooden door, shivering in the rain." }] },
+      persona,
+      settings: {},
+    });
+
+    const sys = plan.systemPrompt;
+    expect(sys).toContain("[User Persona: Fauzan]");
+    expect(sys).toContain("Operational Precedence & Epistemic Boundaries");
+    expect(sys).toContain("Epistemic Boundary (Anti-Omniscience)");
+    expect(sys).toContain("The character does NOT possess telepathic or out-of-character knowledge of the user");
+    expect(sys).toContain("must NOT know or call the user by their persona name");
+  });
 });
 

@@ -1,0 +1,77 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+# Test cases for Vibe RP Prompt & Choice Harness
+
+- description: "Indonesian Roleplay Scene - Language lock and narrative beats"
+  vars:
+    system_prompt: |
+      You generate the next moves available to the player in an ongoing roleplay scene.
+      Requirements:
+      - Language Lock: Generate dialogue and choices strictly in Indonesian.
+      - Narrative Perspective: Match 1st person ('aku' / 'saya').
+      - Dramatic Variety: Offer 4 distinct dramatic beats.
+    user_turn: "Kenapa kamu menatapku seperti itu di koridor stasiun?"
+    assistant_turn: "Siti melipat tangannya dan menyandarkan punggung ke dinding baja dingin. 'Karena data enkripsi itu seharusnya tidak ada di tanganmu, Budi.'"
+    task_instruction: |
+      Propose the next moves for Budi in the scene above, opposite Siti.
+      Return exactly one JSON object: {"choices":[{"label":"...","text":"..."}]}
+      Provide 4 choices in Indonesian.
+    expected_language: "Indonesian"
+    previous_turn: "Siti melipat tangannya dan menyandarkan punggung ke dinding baja dingin. 'Karena data enkripsi itu seharusnya tidak ada di tanganmu, Budi.'"
+  assert:
+    - type: python
+      value: "eval/metrics.js:validateChoiceJson"
+    - type: python
+      value: "eval/metrics.js:checkLanguage"
+    - type: python
+      value: "eval/metrics.js:checkRepetition"
+
+- description: "High Tension Interrogation - Anti-repetition and dramatic variety"
+  vars:
+    system_prompt: |
+      You generate the next moves available to the player in an ongoing roleplay scene.
+      Requirements:
+      - Dramatic Variety: Offer 4 distinct dramatic archetypes (assertive, tactical, cautious, vulnerable).
+      - Anti-Echo Rule: Never echo or mirror the other character's previous words.
+    user_turn: "I didn't touch the safe."
+    assistant_turn: "Detective Vance slammed both palms onto the scarred metal table, leaning forward until his shadow swallowed the lamp. 'Then explain why your retinal signature unlocked the vault at 3:14 AM, Mr. Vance.'"
+    task_instruction: |
+      Propose the next moves for Rowan in the scene above, opposite Vance.
+      Return exactly one JSON object: {"choices":[{"label":"...","text":"..."}]}
+      Provide 4 choices.
+    expected_language: ""
+    previous_turn: "Detective Vance slammed both palms onto the scarred metal table, leaning forward until his shadow swallowed the lamp. 'Then explain why your retinal signature unlocked the vault at 3:14 AM, Mr. Vance.'"
+  assert:
+    - type: python
+      value: "eval/metrics.js:validateChoiceJson"
+    - type: python
+      value: "eval/metrics.js:checkRepetition"
+
+- description: "Continuity Ledger Compression - Fact retention and word limits"
+  vars:
+    ledger_text: |
+      # CONTINUITY LEDGER
+      ## Cast
+      - Rowan (User): Veteran scout with an augmented left eye. Owed 5000 credits by Marcus.
+      - Elena: Archivist at New Geneva. Holds the cipher key to the Citadel.
+      - Marcus: Syndicate broker who vanished after the docking bay firefight.
+      ## Timeline
+      - Day 1: Arrived at Kepler Station. Met Elena at the hydroponics deck.
+      - Day 2: Attacked by syndicate drones; escaped via maintenance shaft 4.
+      ## World
+      - Kepler Station: Falling toward Saturn's gravity well; atmospheric scrubbers failing.
+      ## Threads
+      - Elena promised to decode the cipher if Rowan secures fuel cells from Bay 9.
+    compress_prompt: |
+      The continuity ledger above has grown too large. Compress it into a smaller continuity ledger.
+      Rules:
+      - Keep every fact: names, roles, relationships, places, objects, numbers, dates, promises.
+      - Keep under 700 words.
+    required_entities:
+      - "Rowan"
+      - "Elena"
+      - "Marcus"
+      - "Kepler"
+      - "cipher"
+  assert:
+    - type: python
+      value: "eval/metrics.js:checkLedgerCompliance"

@@ -468,5 +468,70 @@ describe("Universal & Adaptive Choice Mode Prompt Contract", () => {
     // Also verify scenario hint is included in system prompt
     expect(req.payload[0].content).toContain("Scenario: On the high ramparts at sunset.");
   });
+
+  test("CHOICE_SYSTEM_PROMPT contains Scene Beats, Subtext over Exposition, and Anti-Echo Rule", () => {
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Scene Beats & Physical Grounding");
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Subtext over Exposition");
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Anti-Echo Rule");
+  });
+
+  test("stripThoughtBlocks removes reasoning tags from 2026 router models", () => {
+    const raw = "<reasoning>Internal router or DeepSeek R1 trace</reasoning>Visible character dialogue.";
+    expect(stripThoughtBlocks(raw)).toBe("Visible character dialogue.");
+  });
+
+  test("CHOICE_SYSTEM_PROMPT and choicePrompt establish operational precedence for cross-lingual presets", () => {
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Language Lock & Register Adaptation");
+    expect(CHOICE_SYSTEM_PROMPT).toContain("active operational authority");
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Never default to the preset's source language");
+
+    const promptText = choicePrompt(4, { charName: "Aria", playerName: "Budi" });
+    expect(promptText).toContain("Operational Precedence: If the character preset was created in a different language, override it to match Budi's active language, persona, and directives.");
+  });
+
+  test("planChoiceRequest adapts seamlessly to user persona, character context, and system directives", () => {
+    const session = {
+      messages: [
+        { id: "u1", role: "user", content: "Kenapa kamu ada di sini?" },
+        { id: "a1", role: "assistant", content: "Aku sedang mencari dokumen rahasia itu." },
+      ],
+      ledger: "",
+      consumed: 1,
+    };
+    const card = {
+      data: {
+        name: "Siti",
+        personality: "Dingin, waspada, agen intelijen berpengalaman.",
+        scenario: "Di sebuah kafe tua di Jakarta Pusat.",
+      },
+    };
+    const req = planChoiceRequest({
+      card,
+      session,
+      settings: {
+        maxContextTokens: 4096,
+        maxTokens: 1000,
+        agentsContract: "Directives: Gunakan bahasa Indonesia santai dengan latar Jakarta.",
+      },
+      persona: {
+        name: "Budi",
+        description: "Detektif swasta sinis yang selalu curiga dan berbicara dengan bahasa santai.",
+      },
+      count: 4,
+    });
+
+    const sysMsg = req.payload[0];
+    expect(sysMsg.role).toBe("system");
+    expect(sysMsg.content).toContain("User Persona (Budi): Detektif swasta sinis");
+    expect(sysMsg.content).toContain("Character Context (Siti): Dingin, waspada");
+    expect(sysMsg.content).toContain("Scenario: Di sebuah kafe tua di Jakarta Pusat.");
+    expect(sysMsg.content).toContain("System & Craft Directives:\nDirectives: Gunakan bahasa Indonesia santai");
+    expect(sysMsg.content).toContain("Language Lock & Register Adaptation");
+
+    const userPromptMsg = req.payload[req.payload.length - 1];
+    expect(userPromptMsg.role).toBe("user");
+    expect(userPromptMsg.content).toContain("Embody Budi's persona, speech habits, and narrative perspective.");
+    expect(userPromptMsg.content).toContain("Seamlessly match the active language, dialect, and tone established in the scene and directives.");
+  });
 });
 
