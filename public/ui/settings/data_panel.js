@@ -28,7 +28,12 @@ function formatBytes(bytes) {
 
 export function mountDataPanel(root, options = {}) {
   const { host, onDataChanged } = options;
-  const confirm = options.confirm || confirmAction;
+  const confirm =
+    typeof options.confirmAction === "function"
+      ? options.confirmAction
+      : typeof options.confirm === "function" && options.confirm.length <= 1
+        ? options.confirm
+        : confirmAction;
   const showToast = (msg, tone = "info") => host?.toast?.(msg, { tone }) || host?.(msg, tone);
 
   if (!root) return { refresh: () => {}, destroy: () => {} };

@@ -29,6 +29,7 @@ import { mountDirectiveList } from "./directive_list.js";
 import { mountDataPanel } from "./data_panel.js";
 import { openPersonaEditor } from "../editors/persona_editor.js";
 import { openDirectiveEditor } from "../editors/directive_editor.js";
+import { confirmAction } from "../confirm.js";
 
 // Slider rows, declared once so the panel markup stays declarative.
 function sliderRow({ id, valueId, label, hint, min, max, step, value }) {
@@ -278,7 +279,7 @@ export function openSettingsModal(options = {}) {
   });
 
   const data = mountDataPanel(dataPanel, {
-    confirm: options.confirm,
+    confirmAction: options.confirmAction || confirmAction,
     host,
     onDataChanged: async () => {
       refreshAll();

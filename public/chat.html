@@ -112,7 +112,7 @@
                 <span class="rp-composer__figures rp-tnum" id="composer-live-stats">~0 tokens</span>
               </div>
 
-              <div class="rp-composer__actions--end" style="display:flex; gap: var(--space-2);">
+              <div class="rp-composer__actions--end">
                 <button type="button" id="stop-btn" class="rp-btn rp-btn--secondary rp-btn--md" hidden>Stop</button>
                 <button type="submit" id="send-btn" class="rp-btn rp-btn--primary rp-btn--md" disabled>Send</button>
               </div>
@@ -158,21 +158,21 @@
       <div class="rp-dialog__body">
         <div class="rp-field">
           <label class="rp-label" for="history-persona-select">Speaking persona</label>
-          <div style="display:flex; gap: var(--space-2);">
+          <div class="rp-field__row">
             <select id="history-persona-select" class="rp-select"></select>
             <button type="button" id="history-manage-personas-btn" class="rp-btn rp-btn--ghost rp-btn--md">Manage</button>
           </div>
         </div>
         <div class="rp-field">
           <label class="rp-label" for="history-directive-select">System prompt</label>
-          <div style="display:flex; gap: var(--space-2);">
+          <div class="rp-field__row">
             <select id="history-directive-select" class="rp-select"></select>
             <button type="button" id="history-manage-directives-btn" class="rp-btn rp-btn--ghost rp-btn--md">Manage</button>
           </div>
         </div>
         <div class="rp-field">
-          <div style="display:flex; align-items:center; justify-content:space-between; gap: var(--space-2);">
-            <span class="rp-label" style="margin:0;">Saved sessions</span>
+          <div class="rp-field__head">
+            <span class="rp-label">Saved sessions</span>
             <button type="button" id="history-new-scene-btn" class="rp-btn rp-btn--secondary rp-btn--sm">New chat</button>
           </div>
           <div id="history-threads-list" role="list"></div>

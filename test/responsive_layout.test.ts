@@ -184,4 +184,31 @@ describe("Responsive layout guards", () => {
       expect(rule).toContain("inset: 0");
     });
   });
+
+  describe("settings modal mobile reflow", () => {
+    test("tab buttons carry flex-shrink: 0 so horizontal tabs do not crush", () => {
+      const rule = ruleFor(componentsCss, ".rp-tab {");
+      expect(rule).not.toBeNull();
+      expect(rule).toContain("flex-shrink: 0");
+    });
+
+    test("settings tabs wrap into multi-row segmented pills on mobile", () => {
+      expect(componentsCss).toContain(".rp-settings__tabs {");
+      expect(componentsCss).toContain("flex-wrap: wrap");
+      expect(componentsCss).toContain(".rp-settings__tabs .rp-tab {");
+      expect(componentsCss).toContain("border-radius: var(--radius-md)");
+    });
+
+    test("storage stats collapse to a 2-column grid on mobile", () => {
+      expect(componentsCss).toContain(".rp-storage-stats {");
+      expect(componentsCss).toContain("grid-template-columns: repeat(2, 1fr)");
+    });
+
+    test("destructive actions and save buttons stack to full width on mobile", () => {
+      expect(componentsCss).toContain(".rp-actions-row {");
+      expect(componentsCss).toContain("flex-direction: column");
+      expect(componentsCss).toContain(".rp-settings__footer .rp-btn");
+      expect(componentsCss).toContain("min-height: var(--tap-min)");
+    });
+  });
 });

@@ -111,6 +111,9 @@ describe("Unified settings surface", () => {
       ".rp-settings__footer-spacer {",
       ".rp-field__head {",
       ".rp-dialog--wide .rp-dialog__panel {",
+      ".rp-persona-editor__hero {",
+      ".rp-directive-editor__row {",
+      ".rp-textarea--mono {",
     ]) {
       expect(components).toContain(sel);
       // And it must NOT also live in the library sheet, or the two can drift.

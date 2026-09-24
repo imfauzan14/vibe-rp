@@ -310,6 +310,85 @@ describe("Redundancy cleanup and legacy export removal", () => {
       }
     }
   });
+
+  test("mountDataPanel ignores a 2-arg delete confirmation helper and uses structured confirmAction", async () => {
+    const { mountDataPanel } = await import("../public/ui/settings/data_panel.js");
+    const listeners: Record<string, Function[]> = {};
+    const nodesById: Record<string, any> = {};
+    const makeNode = (tag: string) => {
+      const node = {
+        tagName: tag.toUpperCase(),
+        style: { cssText: "" },
+        className: "",
+        textContent: "",
+        value: "",
+        files: [],
+        hidden: false,
+        children: [] as any[],
+        setAttribute(k: string, v: string) {
+          if (k === "id") nodesById[v] = node;
+        },
+        removeAttribute() {},
+        append(...nodes: any[]) {
+          this.children.push(...nodes);
+        },
+        appendChild(child: any) {
+          this.children.push(child);
+          return child;
+        },
+        querySelector(sel: string) {
+          if (sel.startsWith("#")) return nodesById[sel.slice(1)];
+          return null;
+        },
+        addEventListener(type: string, fn: Function) {
+          (listeners[type] ||= []).push(fn);
+        },
+        removeEventListener(type: string, fn: Function) {
+          if (listeners[type]) listeners[type] = listeners[type].filter((f) => f !== fn);
+        },
+      };
+      return node;
+    };
+
+    const orig = (globalThis as any).document;
+    (globalThis as any).document = { createElement: makeNode };
+    try {
+      const root = makeNode("div");
+      let deleteHelperCalled = false;
+      const fakeDeleteHelper = (kind: any, label: any) => {
+        deleteHelperCalled = true;
+        return Promise.resolve(false);
+      };
+
+      let structuredConfirmOpts: any = null;
+      const fakeConfirmAction = (opts: any) => {
+        structuredConfirmOpts = opts;
+        return Promise.resolve(false);
+      };
+
+      mountDataPanel(root as any, {
+        confirm: fakeDeleteHelper as any,
+        confirmAction: fakeConfirmAction as any,
+      });
+
+      const clickListeners = listeners["click"] || [];
+      expect(clickListeners.length).toBeGreaterThan(0);
+
+      // Trigger clearSessionsBtn click (listener index 2)
+      await clickListeners[2]?.();
+
+      expect(deleteHelperCalled).toBe(false);
+      expect(structuredConfirmOpts).not.toBeNull();
+      expect(structuredConfirmOpts.title).toBe("Clear all conversations?");
+      expect(structuredConfirmOpts.confirmLabel).toBe("Clear Sessions");
+    } finally {
+      if (orig === undefined) {
+        delete (globalThis as any).document;
+      } else {
+        (globalThis as any).document = orig;
+      }
+    }
+  });
 });
 
 describe("Cookie serialization helpers", () => {

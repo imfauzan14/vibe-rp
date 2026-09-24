@@ -1023,6 +1023,7 @@ dialog.rp-dialog:not([open]) {
   font-size: var(--text-sm);
   font-weight: 600;
   white-space: nowrap;
+  flex-shrink: 0;
   cursor: pointer;
   transition: color var(--dur-fast) var(--ease-out),
               background-color var(--dur-fast) var(--ease-out);
@@ -1163,6 +1164,24 @@ dialog.rp-dialog:not([open]) {
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+}
+
+/* An inline pair (input/select + trailing button): input takes the free
+   space while the button keeps its intrinsic width. */
+.rp-field__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rp-field__row .rp-select,
+.rp-field__row .rp-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.rp-field__row .rp-btn {
+  flex: none;
 }
 
 /* The save row at the foot of a settings panel. The spacer keeps the primary
@@ -1312,6 +1331,43 @@ dialog.rp-dialog:not([open]) {
   color: var(--ink-muted);
   flex: none;
   white-space: nowrap;
+}
+
+/* ============================================================== EDITORS == */
+
+.rp-persona-editor__hero {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.rp-persona-editor__portrait {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+
+.rp-persona-editor__fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  flex: 1;
+  min-width: 0;
+}
+
+.rp-directive-editor__row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
+
+.rp-textarea--mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  min-height: 180px;
 }
 
 /* Under 720px the label and its create action stack, so the button keeps the
@@ -1731,6 +1787,9 @@ dialog.rp-dialog:not([open]) {
 }
 
 .rp-composer__actions--end {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   margin-left: auto;
 }
 
@@ -2043,6 +2102,88 @@ dialog.rp-dialog:not([open]) {
 
   .rp-empty {
     padding-block: var(--space-6);
+  }
+
+  /* Settings tabs: reflow into multi-row segmented pills so all tabs are visible
+     and easy to tap without being squeezed onto a single crowded line. */
+  .rp-settings__tabs {
+    flex-wrap: wrap;
+    gap: var(--space-1-5) var(--space-2);
+    border-bottom: var(--border-width) solid var(--border-hairline);
+    padding-bottom: var(--space-2);
+  }
+
+  .rp-settings__tabs .rp-tab {
+    flex: 1 1 calc(33.333% - var(--space-2));
+    min-width: max-content;
+    justify-content: center;
+    min-height: 38px;
+    padding: var(--space-1-5) var(--space-2-5);
+    border-radius: var(--radius-md);
+    background-color: var(--surface-raised);
+    border: var(--border-width) solid var(--border-hairline);
+    font-size: var(--text-xs);
+  }
+
+  .rp-settings__tabs .rp-tab::after {
+    display: none;
+  }
+
+  .rp-settings__tabs .rp-tab[aria-selected="true"],
+  .rp-settings__tabs .rp-tab.is-active {
+    color: var(--ink);
+    background-color: var(--surface-base);
+    border-color: var(--accent-annotation);
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* Settings metrics & actions reflow on mobile. */
+  .rp-storage-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-2);
+  }
+
+  .rp-storage-stat {
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .rp-actions-row {
+    flex-direction: column;
+  }
+
+  .rp-actions-row .rp-btn,
+  .rp-settings__footer .rp-btn,
+  .rp-settings__danger-zone .rp-btn {
+    width: 100%;
+    justify-content: center;
+    min-height: var(--tap-min);
+  }
+
+  .rp-settings__footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .rp-settings__footer-spacer {
+    display: none;
+  }
+
+  .rp-persona-editor__hero {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #history-threads-list .rp-card__head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-2);
+  }
+
+  #history-threads-list .rp-card__actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 }
 
