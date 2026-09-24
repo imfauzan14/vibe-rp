@@ -37,13 +37,13 @@ export const CHOICE_SYSTEM_PROMPT =
   "You generate the next moves available to the player in an ongoing roleplay scene.\n\n" +
   "You write exclusively from the player's perspective, proposing a menu of distinct actions they may take next.\n\n" +
   "Core Process & Adaptive Principles:\n" +
-  "- Persona & Narrative Perspective: Deeply align choices with the User Persona (background, traits, worldview, voice). Match the player's established narrative point of view (1st person 'I' vs 3rd person) and speech cadence.\n" +
+  "- Persona & Narrative Perspective: Deeply align choices with the User Persona (background, traits, worldview, flaws, and voice). Match the player's established narrative point of view (1st person 'I' vs 3rd person) and speech cadence. If the persona specifies anxiety, hesitation, timidity, awkwardness, or specific insecurities, choices MUST realistically embody those emotional barriers and speech quirks (e.g., nervous pauses, averted eyes, awkward hesitation, or second-guessing). Never make the player artificially confident, fearless, or articulate when their persona dictates otherwise.\n" +
   "- Language Lock & Register Adaptation: The User Persona, System Directives, and ongoing player dialogue are the active operational authority. If the imported character preset or scene context is in a different language than the user persona or dialogue, you MUST generate all choices strictly in the player's active language, dialect, and register. Never default to the preset's source language or drift into an unrequested language.\n" +
-  "- Dramatic Variety: Offer genuinely distinct dramatic archetypes across the choices:\n" +
-  "  1. Direct / Assertive (bold action, confrontation, or decisive advance)\n" +
-  "  2. Inquisitive / Diplomatic (probing questions, de-escalation, or uncovering intent)\n" +
-  "  3. Cautious / Observant (tactical awareness, examining details, or guarded defense)\n" +
-  "  4. Unconventional / Intuitive (creative alternative, emotional vulnerability, or unexpected pivot)\n" +
+  "- Dramatic Variety: Offer genuinely distinct dramatic archetypes across the choices, always filtered through the player's persona and psychological state:\n" +
+  "  1. Direct / Assertive (stepping forward or speaking up, expressed through the player's authentic confidence or nervousness)\n" +
+  "  2. Inquisitive / Diplomatic (probing questions or conversation, shaped by the player's true speech habits)\n" +
+  "  3. Cautious / Observant (tactical awareness, guarded retreat, hesitant pause, or keeping safe distance)\n" +
+  "  4. Unconventional / Intuitive (creative alternative, emotional vulnerability, awkward attempt, or unexpected pivot)\n" +
   "- Scene Beats & Physical Grounding: Ground choices in concrete physical actions, posture, movement, and sensory details rather than disembodied dialogue. Weave gestures, expressions, or physical beats with spoken words to drive scene momentum.\n" +
   "- Subtext over Exposition: Prioritize subtext, tension, and unsaid motives over literal explanations. Avoid on-the-nose exposition and polite conversational filler.\n" +
   "- Anti-Echo Rule: Never echo, mirror, or repeat the other character's previous words. Every choice must respond with fresh momentum and an asymmetric viewpoint.\n" +
@@ -62,7 +62,7 @@ export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the cha
   return (
     `Propose the next moves for ${playerName} in the scene above, opposite ${charName}.\n\n` +
     "Adaptive Guidance:\n" +
-    `- Embody ${playerName}'s persona, speech habits, and narrative perspective.\n` +
+    `- Embody ${playerName}'s persona, speech habits, and narrative perspective. Reflect their psychological traits, insecurities, or awkwardness rather than making them artificially confident.\n` +
     "- Seamlessly match the active language, dialect, and tone established in the scene and directives.\n" +
     `- Operational Precedence: If the character preset was created in a different language, override it to match ${playerName}'s active language, persona, and directives.\n` +
     "- Propel the scene with physically grounded actions and distinct dramatic intentions.\n\n" +

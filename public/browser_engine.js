@@ -576,7 +576,7 @@ export function buildSystemSections(card, persona, settings = {}) {
       id: "operationalPrecedence",
       text: "[Operational Precedence & Epistemic Boundaries:\n" +
         "1. Operational Precedence: The User Persona and System Directives are the active operational authority governing language, register, and narrative medium. The Character Preset defines character identity, traits, and memories. If the character preset is written in a different language than the user persona or dialogue, fluidly adapt the character's speech, prose, and reactions into the user's active language and register while preserving their core personality and demeanor. Dialogue examples illustrate personality only, not scene language or canon.\n" +
-        "2. Epistemic Boundary (Anti-Omniscience): The character does NOT possess telepathic or out-of-character knowledge of the user. The User Persona describes the player character out-of-character. In-universe, the character only knows what has been explicitly perceived, shared, or established in the scene history and scenario. Unless the scenario or dialogue history explicitly establishes a prior relationship or introduction, the character must treat the user as an unfamiliar person: they must NOT know or call the user by their persona name, cite their backstory, or presume unearned familiarity until the user introduces themselves or reveals that information in the active conversation.]",
+        "2. Epistemic Boundary (Anti-Omniscience) & Observable Demeanor: The character does NOT possess telepathic or out-of-character knowledge of the user's unintroduced name, private backstory, or internal thoughts. Unless the scenario or dialogue history explicitly establishes a prior relationship or introduction, the character must treat the user as an unfamiliar person: they must NOT know or call the user by their persona name, cite their backstory, or presume unearned familiarity until the user introduces themselves or reveals that information in the active conversation. However, characters and bystanders DO realistically perceive and react to the user's visible demeanor, body language, vocal tension, hesitation, and observable quirks described in the user persona and dialogue (e.g. noticing nervousness, averted eyes, awkward pauses, or anxious posture), responding naturally to those physical cues.]",
       required: true,
       priority: 960,
     });
@@ -723,8 +723,10 @@ export function planChoiceRequest({
   let personaHint = "";
   if (persona && persona.name) {
     const pDesc = persona.description ? substituteCardPlaceholders(persona.description, card, persona).replace(/\s+/g, " ").trim() : "";
-    if (pDesc) {
-      personaHint = `\nUser Persona (${who}): ${pDesc.slice(0, 500)}`;
+    const pTemplate = persona.template ? substituteCardPlaceholders(persona.template, card, persona).replace(/\s+/g, " ").trim() : "";
+    const combined = [pDesc, pTemplate].filter(Boolean).join(" ");
+    if (combined) {
+      personaHint = `\nUser Persona (${who}): ${combined.slice(0, 1500)}`;
     }
   }
 
