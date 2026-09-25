@@ -111,6 +111,11 @@ export function detectParameterRejection(err) {
 }
 
 
+// Compression target: 55% of the initial fold target. A ledger that reached
+// the fold ceiling must actually shrink; targeting the same word count gives
+// the model no reduction obligation. 55% achieves real compression while
+// keeping enough room to preserve all facts from a typical 700-word ledger.
+export const LEDGER_COMPRESS_TARGET_WORDS = Math.round(SUMMARY_TARGET_WORDS * 0.55);
 export const LEDGER_COMPRESS_PROMPT = `The continuity ledger above has grown too large. Compress it into a smaller continuity ledger.
 
 Rules:
@@ -119,7 +124,7 @@ Rules:
 - Use the same sections as the input (Cast, Timeline, World, Threads, Voice).
 - Preserve every proper noun, term, and dialogue in its original language exactly as written. Never invent, infer, or continue the story.
 - Anything you do not carry forward is lost forever.
-- Keep it under ${SUMMARY_TARGET_WORDS} words.`;
+- Keep it under ${LEDGER_COMPRESS_TARGET_WORDS} words.`;
 
 
 export const SUMMARY_SYSTEM_PROMPT =
@@ -324,7 +329,9 @@ export function buildSystemSections(card, persona, settings = {}) {
         "The Character Preset defines character identity; if it was written in a different " +
         "language than the user persona or dialogue, fluidly adapt speech and prose into the " +
         "user's active language while preserving the character's core personality. " +
-        "Dialogue examples illustrate personality only, not scene language or canon.]",
+        "Dialogue examples illustrate personality only, not scene language or canon. " +
+        "When a continuity ledger is present, consult each character's recorded knowledge state — " +
+        "a character may not act on, reference, or react to information not yet in their Cast entry.]",
       required: true,
       priority: 960,
     });
@@ -406,7 +413,7 @@ export function planChoiceRequest({
   const outputTokens = Math.max(floor, Math.min(CHOICE_OUTPUT_TOKENS, window - MIN_INPUT_HEADROOM));
 
   const name = charName || card?.data?.name || card?.name || "the character";
-  const who = playerName || persona?.name || "the player";
+  const who = playerName || persona?.name || "the protagonist";
 
   let scenarioHint = "";
   const rawScenario = card?.data?.scenario || card?.scenario || "";
@@ -441,7 +448,11 @@ export function planChoiceRequest({
   if (rawContract) {
     const cleanContract = substituteCardPlaceholders(rawContract, card, persona).replace(/\s+/g, " ").trim();
     if (cleanContract) {
-      directiveHint = `\nSystem & Craft Directives:\n${cleanContract.slice(0, 1500)}`;
+      // Cap at 300 chars: enough for a card-specific or user-customised override
+      // sentence, but not enough to re-send the full default craft contract that
+      // CHOICE_SYSTEM_PROMPT already covers. Prevents ~375 tokens of duplication
+      // on every choice request when the user has the default contract.
+      directiveHint = `\nSystem & Craft Directives:\n${cleanContract.slice(0, 300)}`;
     }
   }
 
@@ -1929,9 +1940,13 @@ export class BrowserChatEngine {
     if (carried.length > fallbackMaxChars) {
       carried = `- [earlier ledger material omitted at the digest ceiling; the full transcript is preserved]\n${carried.slice(-fallbackMaxChars)}`;
     }
+    // Use schema-compatible section headers so a subsequent LLM fold
+    // (SUMMARY_UPDATE_PROMPT) can merge this digest without encountering
+    // non-schema headings that would pass through verbatim or trigger
+    // hallucinated section mappings.
     const header = carried
-      ? `## Prior continuity\n${carried}\n\n## Later events (condensed verbatim)\n`
-      : "## Events (condensed verbatim)\n";
+      ? `## Timeline\n${carried}\n\n## Timeline (continued)\n`
+      : "## Timeline\n";
     return `${header}${body}`;
   }
 

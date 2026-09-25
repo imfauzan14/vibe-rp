@@ -47,7 +47,7 @@ export const CHOICE_SYSTEM_PROMPT =
   "  3. Cautious / Observant (tactical awareness, guarded retreat, hesitant pause)\n" +
   "  4. Unconventional / Intuitive (creative alternative, emotional vulnerability, unexpected pivot)\n" +
   "- Scene Beats & Physical Grounding: Ground choices in concrete physical actions, posture, movement, and sensory details rather than disembodied dialogue.\n" +
-  "- Subtext over Exposition: Prioritize subtext, tension, and unsaid motives over literal explanations. Avoid conversational filler.\n" +
+  "- Subtext over Exposition: Prioritize subtext, tension, and unsaid motives over literal explanations. Avoid conversational holding patterns.\n" +
   "- Anti-Echo Rule: Never echo or repeat the other character's previous words. Every choice responds with fresh momentum.\n" +
   "- Strict Agency: Express each choice as what the player says or attempts in the immediate beat. Never godmode character reactions, never dictate other characters' thoughts or answers, and never narrate future outcomes.\n" +
   "- Player Agency vs. Story Continuation:\n" +
@@ -82,7 +82,7 @@ export const CHOICE_SYSTEM_PROMPT =
  * hardening) — a model that receives instructions inside those fields cannot
  * escape the bracketed scope into the instruction text.
  */
-export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the character", playerName = "the player" } = {}) {
+export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the character", playerName = "the protagonist" } = {}) {
   const target = Math.max(CHOICE_COUNT_MIN, Math.min(CHOICE_COUNT_MAX, Math.floor(Number(count) || CHOICE_COUNT_DEFAULT)));
   // Clamp and strip literal newlines so injected card text cannot break out of
   // the label position and append new prompt lines.
