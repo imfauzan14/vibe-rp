@@ -314,7 +314,7 @@ export function openDetailModal({ card, sessions = [], loadSessions = null, hand
         el(
           "div",
           { class: "rp-variation-list" },
-          groupOnly.map((alt, index) => variation(`Group ${index + 1}`, alt)).filter(Boolean)
+          groupOnly.map((alt, index) => variation(`Group ${index + 1}`, alt, startFrom)).filter(Boolean)
         )
       )
     );

@@ -23,9 +23,9 @@
 //     re-homed to presets_resolution.test.ts (prompt-assembly suite).
 //   - longrun 1000-turn duplicate -> the 500-turn row below (same invariant,
 //     same harness, larger N adds no new assertion).
-import { describe, test, expect, afterEach } from "bun:test";
 import {
   BrowserChatEngine,
+  buildSystemSections,
   estimateTokens,
   countMessages,
   LEDGER_HARD_MAX_TOKENS,
@@ -713,5 +713,68 @@ describe("Context prompt assembly - macros and constant lore", () => {
     expect(prompt).toContain("### CONSTANT WORLD LORE");
     expect(prompt).toContain("The kingdom has been at war for ten years.");
     expect(prompt).not.toContain("The Sunblade glows near danger.");
+  });
+});
+
+describe("Ensemble cards - multi-character cast roster", () => {
+  const mockPersona = { name: "Rowan", description: "A wandering scholar." };
+
+  test("castRoster renders additional members and skips the primary duplicate", () => {
+    const card = {
+      data: {
+        name: "Aria",
+        extensions: {
+          group: {
+            members: [
+              { name: "Aria", role: "swordswoman" },
+              { name: "Vex", role: "drifter, watchful" },
+              { name: "Marlow", role: "archivist", voice: "nervous, clipped" },
+            ],
+          },
+        },
+      },
+    };
+    const prompt = BrowserChatEngine.formatSystemPrompt(card, mockPersona, {});
+    expect(prompt).toContain("### CAST IN SCENE (ensemble)");
+    expect(prompt).toContain("Vex");
+    expect(prompt).toContain("drifter, watchful");
+    expect(prompt).toContain("Marlow");
+    expect(prompt).toContain("voice: nervous, clipped");
+    expect(prompt).toContain("Never merge two named characters into one");
+    expect(prompt).toContain("Each member's familiarity");
+    // The primary character is rendered by CHARACTER IN SCENE, not duplicated.
+    expect(prompt.match(/Aria/g).length).toBeLessThanOrEqual(2);
+  });
+
+  test("castRoster is absent for single-character cards", () => {
+    const card = { data: { name: "Aria", description: "A stoic swordswoman." } };
+    const prompt = BrowserChatEngine.formatSystemPrompt(card, mockPersona, {});
+    expect(prompt).not.toContain("CAST IN SCENE (ensemble)");
+  });
+
+  test("castRoster reads alternate member shapes and drops nameless entries", () => {
+    const card = {
+      data: {
+        name: "Aria",
+        characters: ["Vex", { char_name: "Marlow", description: "archivist" }, { role: "no name" }, null],
+      },
+    };
+    const prompt = BrowserChatEngine.formatSystemPrompt(card, mockPersona, {});
+    expect(prompt).toContain("### CAST IN SCENE (ensemble)");
+    expect(prompt).toContain("Vex");
+    expect(prompt).toContain("Marlow");
+    expect(prompt).not.toContain("no name");
+  });
+
+  test("castRoster is degradable and yields after examples", () => {
+    const sections = buildSystemSections(
+      { data: { name: "Aria", extensions: { group: { members: [{ name: "Vex" }] } } } },
+      mockPersona,
+      {}
+    );
+    const roster = sections.find((s) => s.id === "castRoster");
+    expect(roster).toBeDefined();
+    expect(roster.required).toBe(false);
+    expect(roster.priority).toBe(15);
   });
 });

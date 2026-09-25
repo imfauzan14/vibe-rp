@@ -163,3 +163,35 @@ describe("SessionController - send flow with fake engine + db", () => {
     expect(last.updatedAt).toBeGreaterThanOrEqual(0);
   });
 });
+
+describe("SessionController - ensemble greeting", () => {
+  const soloCard = { id: "card_1", name: "Aria", data: { name: "Aria", first_mes: "Aria nods at you." } };
+  const groupCard = {
+    id: "card_1",
+    name: "Trio",
+    data: {
+      name: "Aria",
+      first_mes: "Aria nods at you.",
+      group_only_greetings: ["Aria draws her blade. Vex steps back. Marlow freezes."],
+    },
+  };
+
+  test("greeting() prefers the group greeting when the card carries one", async () => {
+    const db = makeDb({ cards: [groupCard] });
+    const { ctl } = await makeController({ db });
+    expect(ctl.greeting()).toBe("Aria draws her blade. Vex steps back. Marlow freezes.");
+  });
+
+  test("greeting() falls back to first_mes for single-character cards", async () => {
+    const db = makeDb({ cards: [soloCard] });
+    const { ctl } = await makeController({ db });
+    expect(ctl.greeting()).toBe("Aria nods at you.");
+  });
+
+  test("new sessions open on the group greeting for ensemble cards", async () => {
+    const db = makeDb({ cards: [groupCard] });
+    const { ctl } = await makeController({ db });
+    // init() with no stored sessions creates one via createSession -> greeting().
+    expect(ctl.activeSession.messages[0].content).toBe("Aria draws her blade. Vex steps back. Marlow freezes.");
+  });
+});

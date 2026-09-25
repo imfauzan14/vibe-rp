@@ -139,7 +139,7 @@ export const SUMMARY_PROMPT = `Fold the transcript above into a continuity ledge
 Use exactly these sections, omitting any that would be empty:
 
 ## Cast
-- [Name]: [role, appearance, voice, current condition, and what this character knows — facts they have witnessed or been told in the transcript. Track knowledge per character so no one acts on information they could not yet have.]
+- [Name]: [role, appearance, voice, current condition, present or absent in the latest events, and what this character knows — facts they have witnessed or been told in the transcript. Track knowledge per character so no one acts on information they could not yet have.]
 
 ## Timeline
 - [What happened, in order, with its concrete outcome. Anchor each event in time relative to the story's start (e.g. "earlier", "recently", "the night before").]
@@ -169,7 +169,7 @@ Rules:
 - Move resolved threads out of Threads; record how they resolved in Timeline.
 - Add new cast, places, and objects. Never drop or rename an existing one.
 - Update each Cast entry's knowledge state: add what this character learned in the new transcript, remove nothing already known unless the transcript explicitly contradicts it.
-- Update Threads with new emotional wounds, fatigue, or unresolved consequences that emerged in the transcript.
+- Mark each Cast entry present or absent in the latest events; a departed character stays listed with their last known state but must not speak or act.
 - Preserve verbatim: proper nouns, numbers, dates and time anchors, promises, inventory items, wounds, unresolved threads, and any text the character spoke verbatim.
 - Record facts, dialogue, and character details strictly in the active language of the story; never translate established terms or dialogue into another language.
 - Maintain the ## Voice section to anchor the story's active language, dialect, psychic distance, and narrative point of view.
@@ -181,7 +181,7 @@ Rules:
 /** Rendered around a stored ledger on every send. Constant text, so it caches. */
 export const LEDGER_OPEN =
   "The story so far, in ledger form. This is settled continuity: build on it and never contradict it. " +
-  "Each character's knowledge is scoped to what they have witnessed or been told — no character acts on information they could not yet have.\n\n<ledger>\n";
+  "Each character's knowledge is scoped to what they have witnessed or been told — consult each character's Cast entry before writing them; no character may act on, reference, or react to information absent from it.\n\n<ledger>\n";
 export const LEDGER_CLOSE = "\n</ledger>";
 
 // Token allowance for the ledger's own framing (the open/close wrapper plus one
@@ -293,13 +293,54 @@ export function buildSystemSections(card, persona, settings = {}) {
 
   const mesEx = sub(card ? card.data?.mes_example || card.mes_example : "");
   if (mesEx) sections.push({ id: "examples", text: `[Dialogue Examples:\n${mesEx}]`, required: false, priority: 10 });
-
   // Ingest constant lorebook entries into the stable prefix (atomic, cache-friendly)
   const { loreBudget } = resolveContextBudgets(settings);
   const constantLore = selectLorebookEntries(card, { budget: loreBudget, constantOnly: true });
   if (constantLore.length > 0) {
     const loreContent = constantLore.map((e) => `[World Lore: ${sub(e.content)}]`).join("\n\n");
     sections.push({ id: "constantLore", text: `### CONSTANT WORLD LORE\n${loreContent}`, required: false, priority: 20 });
+  }
+  // Ensemble roster: `extensions.group.members` (TavernAI group cards),
+  // `extensions.characters` (some exporters), or a top-level
+  // `characters` array on card.data. A member is accepted when it has a name;
+  // role/voice are optional and omitted when absent (no "Unknown" padding).
+  const extGroup = card ? card.data?.extensions?.group || card.extensions?.group : null;
+  const rawRoster =
+    (Array.isArray(extGroup?.members) && extGroup.members) ||
+    (Array.isArray(card?.data?.extensions?.characters) && card.data.extensions.characters) ||
+    (Array.isArray(card?.data?.characters) && card.data.characters) ||
+    (Array.isArray(card?.characters) && card.characters) ||
+    [];
+  const rostered = rawRoster
+    .map((m) => {
+      if (!m) return null;
+      if (typeof m === "string") return m.trim() ? { name: m.trim() } : null;
+      const nm = String(m.name || m.char_name || m.character_name || "").trim();
+      if (!nm) return null;
+      return {
+        name: nm,
+        role: String(m.role || m.description || "").trim(),
+        voice: String(m.voice || m.personality || m.traits || "").trim(),
+      };
+    })
+    .filter(Boolean);
+  // The primary character may appear in the roster too; drop the duplicate so
+  // the section adds only *additional* cast. De-duplicate case-insensitively.
+  const mainName = String(card?.data?.name || card?.name || "").trim().toLowerCase();
+  const ensemble = rostered.filter((m) => m.name.toLowerCase() !== mainName);
+  if (ensemble.length > 0) {
+    const rosterLines = ensemble.map((m) => {
+      const bits = [`- ${m.name}`];
+      if (m.role) bits.push(m.role.slice(0, 160));
+      if (m.voice) bits.push(`voice: ${m.voice.slice(0, 160)}`);
+      return bits.join(" — ");
+    });
+    sections.push({
+      id: "castRoster",
+      text: `### CAST IN SCENE (ensemble)\n${rosterLines.join("\n")}\nEvery named character above is a distinct person. Never merge two named characters into one, and never let one speak or act for another. Each member's familiarity with the user — and with each other — is separate: one with an established relationship uses it, a stranger does not.`,
+      required: false,
+      priority: 15,
+    });
   }
 
   if (persona && persona.name) {
@@ -329,9 +370,7 @@ export function buildSystemSections(card, persona, settings = {}) {
         "The Character Preset defines character identity; if it was written in a different " +
         "language than the user persona or dialogue, fluidly adapt speech and prose into the " +
         "user's active language while preserving the character's core personality. " +
-        "Dialogue examples illustrate personality only, not scene language or canon. " +
-        "When a continuity ledger is present, consult each character's recorded knowledge state — " +
-        "a character may not act on, reference, or react to information not yet in their Cast entry.]",
+        "Dialogue examples illustrate personality only, not scene language or canon.]",
       required: true,
       priority: 960,
     });
@@ -424,12 +463,32 @@ export function planChoiceRequest({
     }
   }
 
+  // Ensemble cards: prefer the compact roster over the single character's
+  // personality, so the choice model calibrates against the whole cast rather
+  // than one member. Single-character cards fall through to the legacy hint.
   let charHint = "";
-  const rawCharPrompt = card?.data?.system_prompt || card?.system_prompt || card?.data?.personality || card?.personality || "";
-  if (rawCharPrompt) {
-    const cleanChar = substituteCardPlaceholders(rawCharPrompt, card, persona).replace(/\s+/g, " ").trim();
-    if (cleanChar) {
-      charHint = `\nCharacter Context (${name}): ${cleanChar.slice(0, 400)}`;
+  const rosterSrc = [card?.data?.extensions?.group?.members, card?.extensions?.group?.members, card?.data?.extensions?.characters, card?.data?.characters, card?.characters]
+    .find((v) => Array.isArray(v) && v.length > 0) || [];
+  if (rosterSrc.length > 0) {
+    const rosterBits = rosterSrc.map((m) => {
+      if (!m) return "";
+      if (typeof m === "string") return m.trim();
+      const nm = String(m.name || m.char_name || m.character_name || "").trim();
+      if (!nm) return "";
+      const rl = String(m.role || m.description || "").trim().slice(0, 80);
+      return rl ? `${nm} (${rl})` : nm;
+    }).filter(Boolean).slice(0, 8);
+    if (rosterBits.length > 1) {
+      charHint = `\nEnsemble Cast: ${rosterBits.join(", ")}`;
+    }
+  }
+  if (!charHint) {
+    const rawCharPrompt = card?.data?.system_prompt || card?.system_prompt || card?.data?.personality || card?.personality || "";
+    if (rawCharPrompt) {
+      const cleanChar = substituteCardPlaceholders(rawCharPrompt, card, persona).replace(/\s+/g, " ").trim();
+      if (cleanChar) {
+        charHint = `\nCharacter Context (${name}): ${cleanChar.slice(0, 400)}`;
+      }
     }
   }
 
@@ -831,13 +890,32 @@ export class BrowserChatEngine {
   static #serializeForSummary(messages, card, persona) {
     const cName = card ? card.data?.name || card.name || "Character" : "Character";
     const uName = persona && persona.name ? persona.name : "User";
+    // Ensemble speaker detection: build the known-cast set (primary + roster),
+    // then check each assistant turn for a leading `Name:` tag matching a cast
+    // member. Turns that already declare their speaker keep that attribution;
+    // narrator turns and single-character cards fall through to the card name.
+    const rosterSrc = [card?.data?.extensions?.group?.members, card?.extensions?.group?.members, card?.data?.extensions?.characters, card?.data?.characters, card?.characters]
+      .find((v) => Array.isArray(v) && v.length > 0) || [];
+    const castNames = new Set([String(cName).toLowerCase()]);
+    for (const m of rosterSrc) {
+      const nm = typeof m === "string" ? m.trim() : String(m?.name || m?.char_name || m?.character_name || "").trim();
+      if (nm) castNames.add(nm.toLowerCase());
+    }
     const lines = [];
     for (const m of messages || []) {
       if (!m || !m.content) continue;
       const raw = typeof m.content === "string" ? m.content : String(m.content);
       const clean = raw.replace(/<(thought|think|reasoning)[^>]*>[\s\S]*?<\/\1>/gi, "").trim();
       if (!clean) continue;
-      lines.push(`${m.role === "user" ? uName : cName}: ${clean}`);
+      if (m.role === "user") {
+        lines.push(`${uName}: ${clean}`);
+        continue;
+      }
+      // Leading `Name:` tag — only honored when Name is a known cast member,
+      // so a stray "Note:" or "Elsewhere:" line cannot hijack attribution.
+      const tag = /^([A-Za-z][\w.'-]{1,40})\s*:\s*/.exec(clean);
+      const who = tag && castNames.has(tag[1].toLowerCase()) ? tag[1] : cName;
+      lines.push(`${who}: ${clean}`);
     }
     return lines.join("\n\n");
   }

@@ -122,7 +122,12 @@ export class SessionController {
   }
 
   greeting() {
-    return this.activeCard.data?.first_mes || this.activeCard.first_mes || GREETING_FALLBACK;
+    const data = this.activeCard?.data || this.activeCard || {};
+    // Ensemble cards open with the group greeting (multi-character intro) when
+    // the author provided one; single-character cards keep the classic opener.
+    const groupGreet = Array.isArray(data.group_only_greetings) ? data.group_only_greetings.find((g) => typeof g === "string" && g.trim()) : "";
+    if (groupGreet) return groupGreet;
+    return data.first_mes || this.activeCard.first_mes || GREETING_FALLBACK;
   }
 
   async loadSessions(sessionId) {

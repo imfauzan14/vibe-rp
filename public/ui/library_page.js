@@ -217,8 +217,9 @@ function openSettings(initialTab) {
 async function startConversation(card, customOpening) {
   const count = controller.sessionsFor(card.id).length;
   const data = card.data || card;
+  const groupGreet = Array.isArray(data.group_only_greetings) ? data.group_only_greetings.find((g) => typeof g === "string" && g.trim()) : "";
   const opening =
-    customOpening || data.first_mes || "The door closes behind you. Silence settles into the corridor.";
+    customOpening || groupGreet || data.first_mes || "The door closes behind you. Silence settles into the corridor.";
   const session = {
     id: `sess_${Date.now()}`,
     cardId: card.id,
