@@ -114,7 +114,7 @@ export function detectParameterRejection(err) {
 export const LEDGER_COMPRESS_PROMPT = `The continuity ledger above has grown too large. Compress it into a smaller continuity ledger.
 
 Rules:
-- Keep every fact: names, roles, relationships, places, objects, numbers, dates, promises, unresolved threads, and current conditions.
+- Keep every fact: names, roles, relationships, places, objects, numbers, dates, promises, wounds, unresolved threads, knowledge states, and current conditions.
 - Cut wording, repetition, and atmospheric commentary. Never cut a fact.
 - Use the same sections as the input (Cast, Timeline, World, Threads, Voice).
 - Preserve every proper noun, term, and dialogue in its original language exactly as written. Never invent, infer, or continue the story.
@@ -134,19 +134,19 @@ export const SUMMARY_PROMPT = `Fold the transcript above into a continuity ledge
 Use exactly these sections, omitting any that would be empty:
 
 ## Cast
-- [Name]: [role, appearance, voice, and current condition. Carry over every name in the prior ledger.]
+- [Name]: [role, appearance, voice, current condition, and what this character knows — facts they have witnessed or been told in the transcript. Track knowledge per character so no one acts on information they could not yet have.]
 
 ## Timeline
-- [What happened, in order, with its concrete outcome.]
+- [What happened, in order, with its concrete outcome. Anchor each event in time relative to the story's start (e.g. "earlier", "recently", "the night before").]
 
 ## World
 - [Places, factions, objects, rules, and physical facts that are now true.]
 
 ## Threads
-- [Unresolved promises, plans, threads, and open questions.]
+- [Unresolved promises, plans, tensions, and open questions. Note any emotional wounds, fatigue states, or consequences that will carry forward.]
 
 ## Voice
-- [Active story language, dialect, narrative point of view (1st vs 3rd person), tense, and stylistic commitments the prose must keep.]
+- [Active story language, dialect, narrative point of view (1st vs 3rd person), tense, and stylistic commitments the prose must keep. Note the psychic distance and sentence-rhythm established in the scene.]
 
 Rules to guarantee factual canon and zero hallucination:
 - Preserve verbatim: proper nouns, numbers, dates and time anchors, promises, inventory items, wounds, unresolved threads, and any text the character spoke verbatim. Never rename, merge, or drop a character.
@@ -155,8 +155,7 @@ Rules to guarantee factual canon and zero hallucination:
 - Fold dialogue into objective outcomes: record what became true, not banter.
 - Prefer concrete specifics over abstractions: "bronze key, bent at the bow" over "a key".
 - Keep it concise and under ${SUMMARY_TARGET_WORDS} words. Cut atmospheric commentary before cutting facts.
-- Anything you do not carry into the new ledger is lost forever; the conversation record wins any conflict with the prior ledger.
-- Anchor each event in time relative to the story's start (e.g. "earlier", "recently", "the night before").`;
+- Anything you do not carry into the new ledger is lost forever; the conversation record wins any conflict with the prior ledger.`;
 
 export const SUMMARY_UPDATE_PROMPT = `The transcript above continues the story. Merge it into the prior ledger.
 
@@ -164,9 +163,11 @@ Rules:
 - Keep every fact already in the prior ledger unless the transcript explicitly changes it.
 - Move resolved threads out of Threads; record how they resolved in Timeline.
 - Add new cast, places, and objects. Never drop or rename an existing one.
+- Update each Cast entry's knowledge state: add what this character learned in the new transcript, remove nothing already known unless the transcript explicitly contradicts it.
+- Update Threads with new emotional wounds, fatigue, or unresolved consequences that emerged in the transcript.
 - Preserve verbatim: proper nouns, numbers, dates and time anchors, promises, inventory items, wounds, unresolved threads, and any text the character spoke verbatim.
 - Record facts, dialogue, and character details strictly in the active language of the story; never translate established terms or dialogue into another language.
-- Maintain the ## Voice section to anchor the story's active language, dialect, and narrative point of view.
+- Maintain the ## Voice section to anchor the story's active language, dialect, psychic distance, and narrative point of view.
 - Never invent facts. Never continue the story.
 - Keep it under ${SUMMARY_UPDATE_TARGET_WORDS} words. Compress wording, never drop a fact.
 - Anything you do not carry into the new ledger is lost forever; the conversation record wins any conflict with the prior ledger.
@@ -174,7 +175,8 @@ Rules:
 
 /** Rendered around a stored ledger on every send. Constant text, so it caches. */
 export const LEDGER_OPEN =
-  "The story so far, in ledger form. This is settled continuity: build on it and never contradict it.\n\n<ledger>\n";
+  "The story so far, in ledger form. This is settled continuity: build on it and never contradict it. " +
+  "Each character's knowledge is scoped to what they have witnessed or been told — no character acts on information they could not yet have.\n\n<ledger>\n";
 export const LEDGER_CLOSE = "\n</ledger>";
 
 // Token allowance for the ledger's own framing (the open/close wrapper plus one
@@ -337,7 +339,9 @@ export function buildSystemSections(card, persona, settings = {}) {
         "cite their backstory, or presume unearned familiarity until the user reveals it. " +
         "However, characters and bystanders DO realistically perceive and react to the user's " +
         "visible demeanor, body language, vocal tension, hesitation, and observable quirks " +
-        "described in the user persona and dialogue, responding naturally to those physical cues.]",
+        "described in the user persona and dialogue, responding naturally to those physical cues. " +
+        "Voice differentiation: each character in the scene should sound distinct — vocabulary, " +
+        "sentence rhythm, and what they choose to say or withhold should be identifiable without dialogue tags.]",
       required: false,
       priority: 20,
     });
