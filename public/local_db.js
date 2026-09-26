@@ -128,10 +128,20 @@ const DIRECTIVE_PRESETS = {
 };
 
 
-export class LocalDb {
-  static db = null;
+// ---------------------------------------------------------------------------
+// Backend: IndexedDB (cards and sessions)
+// ---------------------------------------------------------------------------
 
-  static async open() {
+/**
+ * Owns the IndexedDB connection cache and every card/session transaction. The
+ * connection is cached on the instance, so an injected store carries its own
+ * handle instead of sharing one global. Storage failures are normalised into
+ * typed errors callers can branch on.
+ */
+class IdbStore {
+  db = null;
+
+  async open() {
     if (this.db) return this.db;
     if (typeof indexedDB === "undefined") {
       throw new Error("IndexedDB is not supported in this environment");
@@ -158,7 +168,7 @@ export class LocalDb {
         this.db = req.result;
         resolve(req.result);
       };
-      req.onerror = () => reject(LocalDb.#wrapStorageError(req.error, "open"));
+      req.onerror = () => reject(IdbStore.#wrapStorageError(req.error, "open"));
       // Another tab holds an older version open: without this handler the
       // promise would never settle. Surface it so the UI can ask the user to
       // close the other tab instead of hanging (defect 7).
@@ -176,37 +186,37 @@ export class LocalDb {
     return err || new Error(`IndexedDB failure during ${context}.`);
   }
 
-  static async getAllCards() {
+  async getAllCards() {
     const db = await this.open();
     return new Promise((resolve, reject) => {
       const tx = db.transaction("cards", "readonly");
       const req = tx.objectStore("cards").getAll();
       req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => reject(LocalDb.#wrapStorageError(req.error, "getAllCards"));
+      req.onerror = () => reject(IdbStore.#wrapStorageError(req.error, "getAllCards"));
     });
   }
 
-  static async saveCard(card) {
+  async saveCard(card) {
     const db = await this.open();
     return new Promise((resolve, reject) => {
       const tx = db.transaction("cards", "readwrite");
       tx.objectStore("cards").put(card);
       tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(LocalDb.#wrapStorageError(tx.error, "saveCard"));
+      tx.onerror = () => reject(IdbStore.#wrapStorageError(tx.error, "saveCard"));
     });
   }
 
-  static async saveSession(session) {
+  async saveSession(session) {
     const db = await this.open();
     return new Promise((resolve, reject) => {
       const tx = db.transaction("sessions", "readwrite");
       tx.objectStore("sessions").put(session);
       tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(LocalDb.#wrapStorageError(tx.error, "saveSession"));
+      tx.onerror = () => reject(IdbStore.#wrapStorageError(tx.error, "saveSession"));
     });
   }
 
-  static async getSessionsForCard(characterId) {
+  async getSessionsForCard(characterId) {
     const db = await this.open();
     return new Promise((resolve, reject) => {
       const tx = db.transaction("sessions", "readonly");
@@ -214,20 +224,52 @@ export class LocalDb {
       // scan per card (defect 6).
       const req = tx.objectStore("sessions").index("cardId").getAll(characterId);
       req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => reject(LocalDb.#wrapStorageError(req.error, "getSessionsForCard"));
+      req.onerror = () => reject(IdbStore.#wrapStorageError(req.error, "getSessionsForCard"));
     });
   }
-  static async deleteSession(sessionId) {
+
+  async getAllSessions() {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("sessions", "readonly");
+      const req = tx.objectStore("sessions").getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(IdbStore.#wrapStorageError(req.error, "getAllSessions"));
+    });
+  }
+
+  async countSessions() {
+    const db = await this.open();
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction("sessions", "readonly");
+        const store = tx.objectStore("sessions");
+        if (typeof store.count === "function") {
+          const req = store.count();
+          req.onsuccess = () => resolve(req.result || 0);
+          req.onerror = () => resolve(0);
+        } else {
+          const req = store.getAll();
+          req.onsuccess = () => resolve(req.result?.length || 0);
+          req.onerror = () => resolve(0);
+        }
+      } catch (_) {
+        resolve(0);
+      }
+    });
+  }
+
+  async deleteSession(sessionId) {
     const db = await this.open();
     return new Promise((resolve, reject) => {
       const tx = db.transaction("sessions", "readwrite");
       tx.objectStore("sessions").delete(sessionId);
       tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(LocalDb.#wrapStorageError(tx.error, "deleteSession"));
+      tx.onerror = () => reject(IdbStore.#wrapStorageError(tx.error, "deleteSession"));
     });
   }
 
-  static async deleteCard(cardId) {
+  async deleteCard(cardId) {
     const db = await this.open();
     return new Promise((resolve, reject) => {
       // Card and its sessions share one transaction: the fan-out delete either
@@ -241,13 +283,75 @@ export class LocalDb {
         for (const key of req.result || []) sessionStore.delete(key);
       };
       tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(LocalDb.#wrapStorageError(tx.error, "deleteCard"));
-      tx.onabort = () => reject(LocalDb.#wrapStorageError(tx.error, "deleteCard"));
+      tx.onerror = () => reject(IdbStore.#wrapStorageError(tx.error, "deleteCard"));
+      tx.onabort = () => reject(IdbStore.#wrapStorageError(tx.error, "deleteCard"));
     });
   }
 
+  async clearAllSessions() {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("sessions", "readwrite");
+      tx.objectStore("sessions").clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(IdbStore.#wrapStorageError(tx.error, "clearAllSessions"));
+    });
+  }
 
-  static #presets({ key, prefix, defaultFactory, cardField, dataField }) {
+  async clearAllCards() {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(["cards", "sessions"], "readwrite");
+      tx.objectStore("cards").clear();
+      tx.objectStore("sessions").clear();
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(IdbStore.#wrapStorageError(tx.error, "clearAllCards"));
+    });
+  }
+
+  /** Bulk write of a backup's rows; `replace` clears both stores first. */
+  async importRows({ cards, sessions, mode = "merge" }) {
+    const db = await this.open();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(["cards", "sessions"], "readwrite");
+      const cardStore = tx.objectStore("cards");
+      const sessionStore = tx.objectStore("sessions");
+
+      if (mode === "replace") {
+        cardStore.clear();
+        sessionStore.clear();
+      }
+
+      for (const card of cards) {
+        if (card && card.id) cardStore.put(card);
+      }
+      for (const session of sessions) {
+        if (session && session.id) sessionStore.put(session);
+      }
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(IdbStore.#wrapStorageError(tx.error, "importRows"));
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Backend: localStorage (presets, settings, import-session cache)
+// ---------------------------------------------------------------------------
+
+/**
+ * Owns every synchronous key-value concern: the persona/directive preset
+ * stores (seeded on first read) and the settings blob. Kept apart from
+ * IdbStore because the two have nothing in common but a name — one is async
+ * and transactional, the other is a synchronous string map.
+ */
+class LocalStore {
+  /**
+   * A preset store over one localStorage key. `cardField`/`dataField` name the
+   * card fields that point at a preset id; the resolution rule (card root,
+   * then card.data, then default) lives here and only here.
+   */
+  presets({ key, prefix, defaultFactory, cardField, dataField }) {
     const read = () => {
       try {
         const raw = localStorage.getItem(key);
@@ -301,24 +405,7 @@ export class LocalDb {
     };
   }
 
-  static getAllPersonas() { return this.#presets(PERSONA_PRESETS).list(); }
-  static getPersona(id) { return this.#presets(PERSONA_PRESETS).get(id); }
-  static savePersona(p) { return this.#presets(PERSONA_PRESETS).save(p); }
-  static deletePersona(id) { return this.#presets(PERSONA_PRESETS).remove(id); }
-  static getDefaultPersona() { return this.#presets(PERSONA_PRESETS).getDefault(); }
-  static setDefaultPersona(id) { return this.#presets(PERSONA_PRESETS).setDefault(id); }
-  static resolvePersonaForCard(card) { return this.#presets(PERSONA_PRESETS).resolveForCard(card); }
-
-  static getAllDirectives() { return this.#presets(DIRECTIVE_PRESETS).list(); }
-  static getDirective(id) { return this.#presets(DIRECTIVE_PRESETS).get(id); }
-  static saveDirective(d) { return this.#presets(DIRECTIVE_PRESETS).save(d); }
-  static deleteDirective(id) { return this.#presets(DIRECTIVE_PRESETS).remove(id); }
-  static getDefaultDirective() { return this.#presets(DIRECTIVE_PRESETS).getDefault(); }
-  static setDefaultDirective(id) { return this.#presets(DIRECTIVE_PRESETS).setDefault(id); }
-  static resolveDirectiveForCard(card) { return this.#presets(DIRECTIVE_PRESETS).resolveForCard(card); }
-
-  // Settings (synchronous storage via localStorage).
-  static getSettings() {
+  getSettings() {
     try {
       const raw = localStorage.getItem("vibe_rp_settings");
       if (raw) {
@@ -328,67 +415,43 @@ export class LocalDb {
     return { ...DEFAULT_SETTINGS };
   }
 
-  static saveSettings(settings) {
+  saveSettings(settings) {
     localStorage.setItem("vibe_rp_settings", JSON.stringify(settings));
   }
 
-  // Data Management: Clear, Reset, Export, and Import
-
-  static async clearAllSessions() {
-    const db = await this.open();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction("sessions", "readwrite");
-      tx.objectStore("sessions").clear();
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(LocalDb.#wrapStorageError(tx.error, "clearAllSessions"));
-    });
-  }
-
-  static async clearAllCards() {
-    const db = await this.open();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(["cards", "sessions"], "readwrite");
-      tx.objectStore("cards").clear();
-      tx.objectStore("sessions").clear();
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(LocalDb.#wrapStorageError(tx.error, "clearAllCards"));
-    });
-  }
-
-  static resetPersonas() {
-    const seed = PERSONA_PRESETS.defaultFactory();
-    localStorage.setItem(PERSONA_PRESETS.key, JSON.stringify([seed]));
-    return [seed];
-  }
-
-  static resetDirectives() {
-    const seed = DIRECTIVE_PRESETS.defaultFactory();
-    localStorage.setItem(DIRECTIVE_PRESETS.key, JSON.stringify([seed]));
-    return [seed];
-  }
-
-  static resetSettings() {
+  resetSettings() {
     localStorage.removeItem("vibe_rp_settings");
     return { ...DEFAULT_SETTINGS };
   }
 
-  static clearImportSession() {
+  clearImportSession() {
     try {
       localStorage.removeItem("vibe_rp_import_session");
       localStorage.removeItem("vibe_rp_import_session_refresh_lock");
     } catch (_) {}
   }
 
-  static async wipeAllData({ resetCache = false } = {}) {
-    const db = await this.open();
-    await new Promise((resolve, reject) => {
-      const tx = db.transaction(["cards", "sessions"], "readwrite");
-      tx.objectStore("cards").clear();
-      tx.objectStore("sessions").clear();
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(LocalDb.#wrapStorageError(tx.error, "wipeAllData"));
-    });
+  /** Re-seeds a preset store from its default factory. */
+  resetPresets({ key, defaultFactory }) {
+    const seed = defaultFactory();
+    localStorage.setItem(key, JSON.stringify([seed]));
+    return [seed];
+  }
 
+  /** Every vibe_rp* key currently stored, for export and replace-import. */
+  snapshot() {
+    const out = {};
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith("vibe_rp")) out[k] = localStorage.getItem(k);
+      }
+    } catch (_) {}
+    return out;
+  }
+
+  /** Removes every vibe_rp* key. */
+  clearAll() {
     try {
       const keysToRemove = [];
       for (let i = 0; i < localStorage.length; i++) {
@@ -397,10 +460,98 @@ export class LocalDb {
       }
       for (const k of keysToRemove) localStorage.removeItem(k);
     } catch (_) {}
+  }
 
-    this.resetPersonas();
-    this.resetDirectives();
-    this.resetSettings();
+  /** Writes a backup's key/value map back, returning how many keys landed. */
+  restore(map) {
+    let count = 0;
+    if (map && typeof map === "object") {
+      try {
+        for (const [k, v] of Object.entries(map)) {
+          if (typeof v === "string") {
+            localStorage.setItem(k, v);
+            count++;
+          }
+        }
+      } catch (_) {}
+    }
+    return count;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Facade
+// ---------------------------------------------------------------------------
+
+/**
+ * The storage seam. An instance holds the two backends it talks to, so a
+ * caller can construct one with injected stores (a fake IndexedDB, an
+ * in-memory key-value map) instead of reaching for module globals. The static
+ * surface delegates to a shared default instance, so every existing call site
+ * keeps working unchanged while the migration to instances is incremental.
+ */
+export class LocalDb {
+  static #defaultInstance = new LocalDb();
+
+  constructor({ idb = new IdbStore(), local = new LocalStore() } = {}) {
+    this.idb = idb;
+    this.local = local;
+  }
+
+  // --- instance surface (the injectable seam) ---
+
+  get db() {
+    return this.idb.db;
+  }
+
+  set db(value) {
+    this.idb.db = value;
+  }
+
+  open() {
+    return this.idb.open();
+  }
+
+  getAllCards() { return this.idb.getAllCards(); }
+  saveCard(card) { return this.idb.saveCard(card); }
+  saveSession(session) { return this.idb.saveSession(session); }
+  getSessionsForCard(characterId) { return this.idb.getSessionsForCard(characterId); }
+  getAllSessions() { return this.idb.getAllSessions(); }
+  deleteSession(sessionId) { return this.idb.deleteSession(sessionId); }
+  deleteCard(cardId) { return this.idb.deleteCard(cardId); }
+  clearAllSessions() { return this.idb.clearAllSessions(); }
+  clearAllCards() { return this.idb.clearAllCards(); }
+
+  getAllPersonas() { return this.local.presets(PERSONA_PRESETS).list(); }
+  getPersona(id) { return this.local.presets(PERSONA_PRESETS).get(id); }
+  savePersona(p) { return this.local.presets(PERSONA_PRESETS).save(p); }
+  deletePersona(id) { return this.local.presets(PERSONA_PRESETS).remove(id); }
+  getDefaultPersona() { return this.local.presets(PERSONA_PRESETS).getDefault(); }
+  setDefaultPersona(id) { return this.local.presets(PERSONA_PRESETS).setDefault(id); }
+  resolvePersonaForCard(card) { return this.local.presets(PERSONA_PRESETS).resolveForCard(card); }
+
+  getAllDirectives() { return this.local.presets(DIRECTIVE_PRESETS).list(); }
+  getDirective(id) { return this.local.presets(DIRECTIVE_PRESETS).get(id); }
+  saveDirective(d) { return this.local.presets(DIRECTIVE_PRESETS).save(d); }
+  deleteDirective(id) { return this.local.presets(DIRECTIVE_PRESETS).remove(id); }
+  getDefaultDirective() { return this.local.presets(DIRECTIVE_PRESETS).getDefault(); }
+  setDefaultDirective(id) { return this.local.presets(DIRECTIVE_PRESETS).setDefault(id); }
+  resolveDirectiveForCard(card) { return this.local.presets(DIRECTIVE_PRESETS).resolveForCard(card); }
+
+  getSettings() { return this.local.getSettings(); }
+  saveSettings(settings) { return this.local.saveSettings(settings); }
+  resetSettings() { return this.local.resetSettings(); }
+
+  resetPersonas() { return this.local.resetPresets(PERSONA_PRESETS); }
+  resetDirectives() { return this.local.resetPresets(DIRECTIVE_PRESETS); }
+  clearImportSession() { return this.local.clearImportSession(); }
+
+  async wipeAllData({ resetCache = false } = {}) {
+    await this.idb.clearAllCards();
+    this.local.clearAll();
+    this.local.resetPresets(PERSONA_PRESETS);
+    this.local.resetPresets(DIRECTIVE_PRESETS);
+    this.local.resetSettings();
 
     if (resetCache && typeof globalThis.caches !== "undefined") {
       try {
@@ -412,20 +563,10 @@ export class LocalDb {
     }
   }
 
-  static async getAllSessions() {
-    const db = await this.open();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction("sessions", "readonly");
-      const req = tx.objectStore("sessions").getAll();
-      req.onsuccess = () => resolve(req.result || []);
-      req.onerror = () => reject(LocalDb.#wrapStorageError(req.error, "getAllSessions"));
-    });
-  }
-
-  static async getStorageStats() {
+  async getStorageStats() {
     if (typeof indexedDB === "undefined") {
-      const personas = (await this.getAllPersonas?.()) || [];
-      const directives = (await this.getAllDirectives?.()) || [];
+      const personas = (await this.local.presets(PERSONA_PRESETS).list()) || [];
+      const directives = (await this.local.presets(DIRECTIVE_PRESETS).list()) || [];
       return {
         cardCount: 0,
         sessionCount: 0,
@@ -435,28 +576,11 @@ export class LocalDb {
         quota: 0,
       };
     }
-    const cards = await this.getAllCards();
-    const db = await this.open();
-    const sessionCount = await new Promise((resolve) => {
-      try {
-        const tx = db.transaction("sessions", "readonly");
-        const store = tx.objectStore("sessions");
-        if (typeof store.count === "function") {
-          const req = store.count();
-          req.onsuccess = () => resolve(req.result || 0);
-          req.onerror = () => resolve(0);
-        } else {
-          const req = store.getAll();
-          req.onsuccess = () => resolve(req.result?.length || 0);
-          req.onerror = () => resolve(0);
-        }
-      } catch (_) {
-        resolve(0);
-      }
-    });
+    const cards = await this.idb.getAllCards();
+    const sessionCount = await this.idb.countSessions();
 
-    const personas = await this.getAllPersonas();
-    const directives = await this.getAllDirectives();
+    const personas = await this.local.presets(PERSONA_PRESETS).list();
+    const directives = await this.local.presets(DIRECTIVE_PRESETS).list();
 
     let storageEstimate = null;
     if (typeof navigator !== "undefined" && navigator.storage?.estimate) {
@@ -475,19 +599,10 @@ export class LocalDb {
     };
   }
 
-  static async exportAllData({ cookies = [] } = {}) {
-    const cards = await this.getAllCards();
-    const sessions = await this.getAllSessions();
-
-    const localData = {};
-    try {
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.startsWith("vibe_rp")) {
-          localData[k] = localStorage.getItem(k);
-        }
-      }
-    } catch (_) {}
+  async exportAllData({ cookies = [] } = {}) {
+    const cards = await this.idb.getAllCards();
+    const sessions = await this.idb.getAllSessions();
+    const localData = this.local.snapshot();
 
     const sessionData = {};
     if (typeof sessionStorage !== "undefined") {
@@ -517,7 +632,7 @@ export class LocalDb {
     };
   }
 
-  static async importAllData(payload, { mode = "merge" } = {}) {
+  async importAllData(payload, { mode = "merge" } = {}) {
     if (!payload || typeof payload !== "object") {
       throw new Error("Invalid backup: data is empty or not an object.");
     }
@@ -535,7 +650,7 @@ export class LocalDb {
         consumed: payload.consumed || 0,
         updatedAt: Date.now(),
       };
-      await this.saveSession(legacySession);
+      await this.idb.saveSession(legacySession);
       return {
         ok: true,
         cardsImported: 0,
@@ -554,50 +669,11 @@ export class LocalDb {
     const cards = Array.isArray(idbData.cards) ? idbData.cards : [];
     const sessions = Array.isArray(idbData.sessions) ? idbData.sessions : [];
 
-    const db = await this.open();
-    await new Promise((resolve, reject) => {
-      const tx = db.transaction(["cards", "sessions"], "readwrite");
-      const cardStore = tx.objectStore("cards");
-      const sessionStore = tx.objectStore("sessions");
+    await this.idb.importRows({ cards, sessions, mode });
 
-      if (mode === "replace") {
-        cardStore.clear();
-        sessionStore.clear();
-      }
+    if (mode === "replace") this.local.clearAll();
 
-      for (const card of cards) {
-        if (card && card.id) cardStore.put(card);
-      }
-      for (const session of sessions) {
-        if (session && session.id) sessionStore.put(session);
-      }
-
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(LocalDb.#wrapStorageError(tx.error, "importAllData:idb"));
-    });
-
-    if (mode === "replace") {
-      try {
-        const keysToRemove = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
-          if (k && k.startsWith("vibe_rp")) keysToRemove.push(k);
-        }
-        for (const k of keysToRemove) localStorage.removeItem(k);
-      } catch (_) {}
-    }
-
-    let lsCount = 0;
-    if (lsData && typeof lsData === "object") {
-      try {
-        for (const [k, v] of Object.entries(lsData)) {
-          if (typeof v === "string") {
-            localStorage.setItem(k, v);
-            lsCount++;
-          }
-        }
-      } catch (_) {}
-    }
+    const lsCount = this.local.restore(lsData);
 
     if (ssData && typeof ssData === "object" && typeof sessionStorage !== "undefined") {
       try {
@@ -615,4 +691,70 @@ export class LocalDb {
       cookies: Array.isArray(cookies) ? cookies : [],
     };
   }
+
+  // --- connection (proxied so `LocalDb.db = null` still resets the cache) ---
+
+  static get db() {
+    return this.#defaultInstance.idb.db;
+  }
+
+  static set db(value) {
+    this.#defaultInstance.idb.db = value;
+  }
+
+  static open() {
+    return this.#defaultInstance.idb.open();
+  }
+
+  // --- cards and sessions ---
+
+  static getAllCards() { return this.#defaultInstance.idb.getAllCards(); }
+  static saveCard(card) { return this.#defaultInstance.idb.saveCard(card); }
+  static saveSession(session) { return this.#defaultInstance.idb.saveSession(session); }
+  static getSessionsForCard(characterId) { return this.#defaultInstance.idb.getSessionsForCard(characterId); }
+  static getAllSessions() { return this.#defaultInstance.idb.getAllSessions(); }
+  static deleteSession(sessionId) { return this.#defaultInstance.idb.deleteSession(sessionId); }
+  static deleteCard(cardId) { return this.#defaultInstance.idb.deleteCard(cardId); }
+  static clearAllSessions() { return this.#defaultInstance.idb.clearAllSessions(); }
+  static clearAllCards() { return this.#defaultInstance.idb.clearAllCards(); }
+
+  // --- presets (personas and directives) ---
+
+  static getAllPersonas() { return this.#defaultInstance.local.presets(PERSONA_PRESETS).list(); }
+  static getPersona(id) { return this.#defaultInstance.local.presets(PERSONA_PRESETS).get(id); }
+  static savePersona(p) { return this.#defaultInstance.local.presets(PERSONA_PRESETS).save(p); }
+  static deletePersona(id) { return this.#defaultInstance.local.presets(PERSONA_PRESETS).remove(id); }
+  static getDefaultPersona() { return this.#defaultInstance.local.presets(PERSONA_PRESETS).getDefault(); }
+  static setDefaultPersona(id) { return this.#defaultInstance.local.presets(PERSONA_PRESETS).setDefault(id); }
+  static resolvePersonaForCard(card) { return this.#defaultInstance.local.presets(PERSONA_PRESETS).resolveForCard(card); }
+
+  static getAllDirectives() { return this.#defaultInstance.local.presets(DIRECTIVE_PRESETS).list(); }
+  static getDirective(id) { return this.#defaultInstance.local.presets(DIRECTIVE_PRESETS).get(id); }
+  static saveDirective(d) { return this.#defaultInstance.local.presets(DIRECTIVE_PRESETS).save(d); }
+  static deleteDirective(id) { return this.#defaultInstance.local.presets(DIRECTIVE_PRESETS).remove(id); }
+  static getDefaultDirective() { return this.#defaultInstance.local.presets(DIRECTIVE_PRESETS).getDefault(); }
+  static setDefaultDirective(id) { return this.#defaultInstance.local.presets(DIRECTIVE_PRESETS).setDefault(id); }
+  static resolveDirectiveForCard(card) { return this.#defaultInstance.local.presets(DIRECTIVE_PRESETS).resolveForCard(card); }
+
+  // --- settings ---
+
+  static getSettings() { return this.#defaultInstance.local.getSettings(); }
+  static saveSettings(settings) { return this.#defaultInstance.local.saveSettings(settings); }
+  static resetSettings() { return this.#defaultInstance.local.resetSettings(); }
+
+  // --- reset and import cache ---
+
+  static resetPersonas() { return this.#defaultInstance.local.resetPresets(PERSONA_PRESETS); }
+  static resetDirectives() { return this.#defaultInstance.local.resetPresets(DIRECTIVE_PRESETS); }
+  static clearImportSession() { return this.#defaultInstance.local.clearImportSession(); }
+
+  static wipeAllData(options) { return this.#defaultInstance.wipeAllData(options); }
+
+  // --- stats and backup ---
+
+  static getStorageStats() { return this.#defaultInstance.getStorageStats(); }
+
+  static exportAllData(options) { return this.#defaultInstance.exportAllData(options); }
+
+  static importAllData(payload, options) { return this.#defaultInstance.importAllData(payload, options); }
 }
