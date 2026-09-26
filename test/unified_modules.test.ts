@@ -442,3 +442,39 @@ describe("thought-stripping is defined once", () => {
     expect(text).toContain("trailing");
   });
 });
+
+describe("one renderer for user-authored inline fields", () => {
+  const publicDir = path.join(import.meta.dir, "..", "public");
+
+  function jsFiles(dir: string): string[] {
+    const out: string[] = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) out.push(...jsFiles(full));
+      else if (entry.name.endsWith(".js")) out.push(full);
+    }
+    return out;
+  }
+
+  test("the newline-flattening rule lives only in text.js", () => {
+    // A card name, persona name or roster field is interpolated into a
+    // one-line prompt slot. A second copy of the flattening pattern is how
+    // the system-prompt path drifted from the Choice Mode path and let a
+    // card name open a fake section heading.
+    const offenders = [];
+    for (const file of jsFiles(publicDir)) {
+      const rel = path.relative(publicDir, file);
+      if (rel === "text.js") continue;
+      const text = fs.readFileSync(file, "utf8");
+      if (/replace\(\/\[\\r\\n\]\+\/g/.test(text)) offenders.push(rel);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  test("both the section builder and the choice task line render through it", () => {
+    const engine = fs.readFileSync(path.join(publicDir, "browser_engine.js"), "utf8");
+    const choice = fs.readFileSync(path.join(publicDir, "choice_format.js"), "utf8");
+    expect(engine).toMatch(/renderInlineField/);
+    expect(choice).toMatch(/renderInlineField/);
+  });
+});

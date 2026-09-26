@@ -18,7 +18,7 @@ import {
   parseChoices,
   CHOICE_COUNT_DEFAULT,
 } from "./choice_format.js";
-import { substitutePlaceholders, stripThoughtBlocks, utf8Decoder } from "./text.js";
+import { substitutePlaceholders, stripThoughtBlocks, utf8Decoder, renderInlineField } from "./text.js";
 import {
   applyFold,
   noteUsage,
@@ -277,7 +277,10 @@ export function buildSystemSections(card, persona, settings = {}) {
   const contract = settings && settings.agentsContract ? sub(String(settings.agentsContract).trim()) : "";
   if (contract) sections.push({ id: "contract", text: contract, required: true, priority: 1000 });
 
-  const cName = card ? card.data?.name || card.name || "Character" : "Character";
+  // A name is interpolated into a one-line heading and a bracketed slot, so it
+  // is flattened first: a newline in a card name would otherwise open a new
+  // line that reads as a section heading of the model's own.
+  const cName = renderInlineField(card ? card.data?.name || card.name || "Character" : "Character");
   sections.push({ id: "character", text: `### CHARACTER IN SCENE: ${cName}`, required: true, priority: 1000 });
 
   const cardSystemPrompt = sub(card ? card.data?.system_prompt || card.system_prompt : "");
@@ -314,13 +317,17 @@ export function buildSystemSections(card, persona, settings = {}) {
   const rostered = rawRoster
     .map((m) => {
       if (!m) return null;
-      if (typeof m === "string") return m.trim() ? { name: m.trim() } : null;
-      const nm = String(m.name || m.char_name || m.character_name || "").trim();
+      if (typeof m === "string") return m.trim() ? { name: renderInlineField(m) } : null;
+      const nm = renderInlineField(String(m.name || m.char_name || m.character_name || ""));
       if (!nm) return null;
+      // Every roster field shares one flatten rule; role and voice then get a
+      // longer clamp than the name. Rendering these raw let a member's role
+      // open a new roster line — or a new section — at a different width than
+      // the rest of the card.
       return {
         name: nm,
-        role: String(m.role || m.description || "").trim(),
-        voice: String(m.voice || m.personality || m.traits || "").trim(),
+        role: renderInlineField(String(m.role || m.description || ""), 160),
+        voice: renderInlineField(String(m.voice || m.personality || m.traits || ""), 160),
       };
     })
     .filter(Boolean);
@@ -331,8 +338,8 @@ export function buildSystemSections(card, persona, settings = {}) {
   if (ensemble.length > 0) {
     const rosterLines = ensemble.map((m) => {
       const bits = [`- ${m.name}`];
-      if (m.role) bits.push(m.role.slice(0, 160));
-      if (m.voice) bits.push(`voice: ${m.voice.slice(0, 160)}`);
+      if (m.role) bits.push(m.role);
+      if (m.voice) bits.push(`voice: ${m.voice}`);
       return bits.join(" — ");
     });
     sections.push({
@@ -344,7 +351,7 @@ export function buildSystemSections(card, persona, settings = {}) {
   }
 
   if (persona && persona.name) {
-    const pName = sub(persona.name);
+    const pName = renderInlineField(sub(persona.name));
     const pDesc = sub(persona.description || "");
     const template = persona.template ? `\n${sub(String(persona.template).trim())}` : "";
     sections.push({ id: "persona", text: `[User Persona: ${pName}]\n${pDesc}${template}`, required: true, priority: 950 });

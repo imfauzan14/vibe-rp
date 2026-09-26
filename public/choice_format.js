@@ -8,7 +8,7 @@
 // Choice Mode changes how the reader picks the next turn. It never changes how
 // the conversation is stored: a selected choice is an ordinary user message.
 
-import { stripThoughtBlocks } from "./text.js";
+import { stripThoughtBlocks, renderInlineField } from "./text.js";
 
 // A choice is one line the reader can scan. Beyond this it stops being a menu
 // item and becomes a paragraph, so the parser rejects rather than truncates.
@@ -84,10 +84,10 @@ export const CHOICE_SYSTEM_PROMPT =
  */
 export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the character", playerName = "the protagonist" } = {}) {
   const target = Math.max(CHOICE_COUNT_MIN, Math.min(CHOICE_COUNT_MAX, Math.floor(Number(count) || CHOICE_COUNT_DEFAULT)));
-  // Clamp and strip literal newlines so injected card text cannot break out of
-  // the label position and append new prompt lines.
-  const safeChar = String(charName).replace(/[\r\n]+/g, " ").slice(0, 80);
-  const safePlayer = String(playerName).replace(/[\r\n]+/g, " ").slice(0, 80);
+  // One-line slots: injected card text must not be able to open a new prompt
+  // line and impersonate a directive. The flatten rule lives in text.js.
+  const safeChar = renderInlineField(charName);
+  const safePlayer = renderInlineField(playerName);
   return (
     `Propose the next moves for [${safePlayer}] in the scene above, opposite [${safeChar}].\n\n` +
     "Adaptive Guidance:\n" +
