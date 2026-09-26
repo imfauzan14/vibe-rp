@@ -189,6 +189,14 @@ describe("chat surface wiring", () => {
     expect(composerSrc).toMatch(/input\.value\.trim\(\)\s*===\s*submittedText\.trim\(\)/);
     expect(boot).toMatch(/composer\.clearIfMatched\(promptHint\)/);
   });
+
+  test("the copy action strips every reasoning tag via the shared stripper", () => {
+    // The copy button used to strip only <thought>, so a reply containing
+    // <think> or <reasoning> pasted internal reasoning into the clipboard.
+    expect(boot).toMatch(/import\s*\{[^}]*stripThoughtBlocks[^}]*\}\s*from\s*"\.\.\/\.\.\/text\.js"/);
+    expect(boot).toMatch(/stripThoughtBlocks\(msg\.content\)/);
+    expect(boot).not.toMatch(/replace\(\/<thought/);
+  });
 });
 
 describe("failed-generation recovery affordance", () => {

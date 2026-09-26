@@ -19,6 +19,13 @@ import {
   CHOICE_COUNT_DEFAULT,
 } from "./choice_format.js";
 import { substitutePlaceholders, stripThoughtBlocks, utf8Decoder } from "./text.js";
+import {
+  applyFold,
+  noteUsage,
+  markLedgerTruncated,
+  setOverflowReported,
+  setCondensedReported,
+} from "./session_state.js";
 export {
   estimateTokens,
   countMessages,
@@ -617,7 +624,8 @@ export class BrowserChatEngine {
   // Thought shaking
 
   /**
-   * Strips `<thought>` and `<think>` blocks from assistant turns older than
+   * Strips reasoning scratchpad blocks (`<thought>`, `<think>`, `<reasoning>`,
+   * via the shared `stripThoughtBlocks`) from assistant turns older than
    * `keepRecent`, and only while the suffix that the rewrite would invalidate
    * stays small. A provider reuses the longest byte-identical prefix, so
    * rewriting deep history re-bills everything after it; the tail-adjacent
@@ -647,16 +655,14 @@ export class BrowserChatEngine {
     }
     if (deepestCheap < 0) return messages;
 
-    const regex = /<(thought|think|reasoning)[^>]*>[\s\S]*?<\/\1>/gi;
     let result = null;
     for (let i = 0; i < threshold; i++) {
       if (suffixTokens[i] > suffixLimitTokens) continue;
       const m = messages[i];
       if (!m || m.role !== "assistant") continue;
       const c = m.content;
-      if (typeof c !== "string" || (c.indexOf("<thought") === -1 && c.indexOf("<think") === -1 && c.indexOf("<reasoning") === -1)) continue;
-      regex.lastIndex = 0;
-      const stripped = c.replace(regex, "").trim();
+      if (typeof c !== "string") continue;
+      const stripped = stripThoughtBlocks(c);
       if (!stripped || stripped === c.trim()) continue;
       if (!result) result = messages.slice();
       result[i] = { ...m, content: stripped };
@@ -898,7 +904,7 @@ export class BrowserChatEngine {
     for (const m of messages || []) {
       if (!m || !m.content) continue;
       const raw = typeof m.content === "string" ? m.content : String(m.content);
-      const clean = raw.replace(/<(thought|think|reasoning)[^>]*>[\s\S]*?<\/\1>/gi, "").trim();
+      const clean = stripThoughtBlocks(raw);
       if (!clean) continue;
       if (m.role === "user") {
         lines.push(`${uName}: ${clean}`);
@@ -1641,9 +1647,7 @@ export class BrowserChatEngine {
         previousLedger: session.ledger || "",
         signal,
       });
-      if (result.ledger) {
-        session.ledger = result.ledger;
-        session.consumed = request.plan.consumedAfter;
+      if (applyFold(session, { ledger: result.ledger, consumedAfter: request.plan.consumedAfter })) {
         // Notices travel on their own channel: a degraded fold has no chunk to
         // emit, and passing a null chunk here used to be stringified into the
         // reply as the literal text "null".
@@ -1653,7 +1657,7 @@ export class BrowserChatEngine {
         // The ledger is still stored (a partial ledger beats the digest), but
         // the user is told rather than left to discover a missing fact later.
         if (result.truncated) {
-          session.ledgerTruncated = true;
+          markLedgerTruncated(session);
           if (onNotice) onNotice("Continuity ledger reached its size limit and was compressed; some detail may be condensed.");
         }
         // Re-plan: the ledger changed size, so the tail must be re-measured and
@@ -1682,7 +1686,7 @@ export class BrowserChatEngine {
         req.payload,
         onChunk,
         (u) => {
-          session.lastUsage = u;
+          noteUsage(session, u);
         },
         signal,
         ceiling
@@ -1741,24 +1745,18 @@ export class BrowserChatEngine {
     // *transition* into the impossible state, not every turn, and name the
     // component crowding the window out so the failure is never silent.
     if (request.impossible) {
-      if (!session.ledgerOverflowReported) {
-        session.ledgerOverflowReported = true;
-        if (onNotice) onNotice(this.#overflowReport(request, ledgerCondensed));
-      }
-    } else if (session.ledgerOverflowReported) {
-      session.ledgerOverflowReported = false;
+      if (setOverflowReported(session, true) && onNotice) onNotice(this.#overflowReport(request, ledgerCondensed));
+    } else {
+      setOverflowReported(session, false);
     }
 
     // A condensed ledger is a lossy *send* of derived data, not a loss of canon:
     // the stored ledger and the transcript are untouched. It is reported on the
     // transition so the user knows why the model may have forgotten detail.
     if (ledgerCondensed) {
-      if (!session.ledgerCondensedReported) {
-        session.ledgerCondensedReported = true;
-        if (onNotice) onNotice("The continuity ledger was condensed to fit this request; older ledger detail is omitted from the model's context but the stored ledger and transcript are unchanged. Raise the context window to restore it.");
-      }
-    } else if (session.ledgerCondensedReported) {
-      session.ledgerCondensedReported = false;
+      if (setCondensedReported(session, true) && onNotice) onNotice("The continuity ledger was condensed to fit this request; older ledger detail is omitted from the model's context but the stored ledger and transcript are unchanged. Raise the context window to restore it.");
+    } else {
+      setCondensedReported(session, false);
     }
 
     return fullText;
@@ -1970,7 +1968,7 @@ export class BrowserChatEngine {
     for (const m of messages || []) {
       if (!m || !m.content) continue;
       const raw = typeof m.content === "string" ? m.content : String(m.content);
-      const clean = raw.replace(/<(thought|think|reasoning)[^>]*>[\s\S]*?<\/\1>/gi, "").replace(/\s+/g, " ").trim();
+      const clean = stripThoughtBlocks(raw).replace(/\s+/g, " ").trim();
       if (!clean) continue;
       const isNarration = m.role === "assistant";
       const perMessage = isNarration ? basePerMsg : Math.max(120, Math.floor(basePerMsg * 0.4));

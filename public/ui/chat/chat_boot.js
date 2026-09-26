@@ -1,7 +1,7 @@
     import { BrowserChatEngine, estimateTokens as estimateTokensModule } from "../../browser_engine.js";
     import { SessionController, CHOICE_STATUS } from "../../session_controller.js";
     import { formatProse } from "../../message_format.js";
-    import { substitutePlaceholders } from "../../text.js";
+    import { substitutePlaceholders, stripThoughtBlocks } from "../../text.js";
     import { escapeHtml, escapeAttr } from "../../safe_html.js";
     import { LocalDbQuotaError, LocalDbBlockedError } from "../../local_db.js";
 
@@ -92,7 +92,7 @@
       if (!msg) return;
 
       if (action === "copy") {
-        const text = String(msg.content || "").replace(/<thought[\s\S]*?<\/thought>/i, "").trim();
+        const text = stripThoughtBlocks(msg.content);
         try {
           await navigator.clipboard.writeText(text);
           const label = button.textContent;

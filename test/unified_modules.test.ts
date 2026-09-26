@@ -406,3 +406,39 @@ describe("sw.js precache shell", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// One thought-stripping rule
+// ---------------------------------------------------------------------------
+describe("thought-stripping is defined once", () => {
+  const publicDir = path.join(import.meta.dir, "..", "public");
+
+  function jsFiles(dir: string): string[] {
+    const out: string[] = [];
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) out.push(...jsFiles(full));
+      else if (entry.name.endsWith(".js")) out.push(full);
+    }
+    return out;
+  }
+
+  test("the only thought-block regexes live in text.js", () => {
+    // A second copy of the pattern is how <think>/<reasoning> leaked past the
+    // copy button and the fallback ledger; the rule must have one home.
+    const offenders = [];
+    for (const file of jsFiles(publicDir)) {
+      const rel = path.relative(publicDir, file);
+      if (rel === "text.js") continue;
+      const text = fs.readFileSync(file, "utf8");
+      if (/\(thought\|think\|reasoning\)/.test(text)) offenders.push(rel);
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  test("stripThoughtBlocks is the single entry point for stripping", () => {
+    const text = fs.readFileSync(path.join(publicDir, "text.js"), "utf8");
+    expect(text).toMatch(/export\s+function\s+stripThoughtBlocks\b/);
+    expect(text).toContain("trailing");
+  });
+});
