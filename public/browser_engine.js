@@ -430,7 +430,7 @@ export function allocateContext(...args) {
 // short lines, with headroom for a reasoning model that spends tokens before
 // its visible output. It is a ceiling, not a reservation, and the allocator
 // lowers it when the window is tight.
-export const CHOICE_OUTPUT_TOKENS = 600;
+export const CHOICE_OUTPUT_TOKENS = 1000;
 // How much of the continuity ledger a choice request may carry. Choices only
 // need the immediately preceding scene, so the ledger is a small hint, never
 // the full continuity document.
@@ -473,7 +473,7 @@ export function planChoiceRequest({
   const margin = budgets.safetyMargin;
   const window = Math.max(0, contextWindow - margin);
   const floor = MIN_OUTPUT_TOKENS;
-  const outputTokens = Math.max(floor, Math.min(CHOICE_OUTPUT_TOKENS, window - MIN_INPUT_HEADROOM));
+  const isTight = window <= 2400;
 
   // One-line slots: a card name or persona name that contains a newline can
   // open a new prompt line and impersonate a section heading in the scene
@@ -486,7 +486,7 @@ export function planChoiceRequest({
   if (rawScenario) {
     const cleanScenario = substituteCardPlaceholders(rawScenario, card, persona).replace(/\s+/g, " ").trim();
     if (cleanScenario) {
-      scenarioHint = `\nScenario: ${cleanScenario.slice(0, 300)}`;
+      scenarioHint = `\nScenario: ${cleanScenario.slice(0, isTight ? 100 : 400)}`;
     }
   }
 
@@ -510,11 +510,15 @@ export function planChoiceRequest({
     }
   }
   if (!charHint) {
-    const rawCharPrompt = card?.data?.system_prompt || card?.system_prompt || card?.data?.personality || card?.personality || "";
-    if (rawCharPrompt) {
-      const cleanChar = substituteCardPlaceholders(rawCharPrompt, card, persona).replace(/\s+/g, " ").trim();
+    const rawCharParts = [
+      card?.data?.system_prompt || card?.system_prompt || "",
+      card?.data?.personality || card?.personality || "",
+      card?.data?.description || card?.description || "",
+    ].filter(Boolean);
+    if (rawCharParts.length > 0) {
+      const cleanChar = substituteCardPlaceholders(rawCharParts.join(" | "), card, persona).replace(/\s+/g, " ").trim();
       if (cleanChar) {
-        charHint = `\nCharacter Context (${name}): ${cleanChar.slice(0, 400)}`;
+        charHint = `\nCharacter Context (${name}): ${cleanChar.slice(0, isTight ? 100 : 800)}`;
       }
     }
   }
@@ -526,7 +530,7 @@ export function planChoiceRequest({
     const pTemplate = persona.template ? substituteCardPlaceholders(persona.template, card, persona).replace(/\s+/g, " ").trim() : "";
     const combined = [pDesc, pTemplate].filter(Boolean).join(" ");
     if (combined) {
-      personaHint = `\nUser Persona (${who}): ${combined.slice(0, 1500)}`;
+      personaHint = `\nUser Persona (${who}): ${combined.slice(0, isTight ? 300 : 1500)}`;
     }
   }
 
@@ -535,11 +539,8 @@ export function planChoiceRequest({
   if (rawContract) {
     const cleanContract = substituteCardPlaceholders(rawContract, card, persona).replace(/\s+/g, " ").trim();
     if (cleanContract) {
-      // Cap at 300 chars: enough for a card-specific or user-customised override
-      // sentence, but not enough to re-send the full default craft contract that
-      // CHOICE_SYSTEM_PROMPT already covers. Prevents ~375 tokens of duplication
-      // on every choice request when the user has the default contract.
-      directiveHint = `\nSystem & Craft Directives:\n${cleanContract.slice(0, 300)}`;
+      // Allows user-customized directives and craft contracts to guide choices while bounding length.
+      directiveHint = `\nSystem & Craft Directives:\n${cleanContract.slice(0, isTight ? 100 : 800)}`;
     }
   }
 
@@ -549,6 +550,7 @@ export function planChoiceRequest({
   // Everything that is not history or ledger: the fixed instruction overhead.
   const fixedTokens =
     estimateTokens(system) + 4 + estimateTokens(task) + 4;
+  const outputTokens = Math.max(floor, Math.min(CHOICE_OUTPUT_TOKENS, Math.max(floor, window - fixedTokens)));
   let remaining = Math.max(0, window - outputTokens - fixedTokens);
 
   // The ledger is a hint, never the continuity document: capped both by its own

@@ -52,6 +52,7 @@ export function createTurnMachine({
   showToast,
   isNearBottom = () => true,
   scrollFeed = () => {},
+  scrollToStream = (id) => feed?.scrollToMessage?.(id, { behavior: "smooth" }),
   requestAnimationFrame = (fn) => fn(),
   matchFinePointer = () => false,
   clearComposerInput = () => {},
@@ -96,6 +97,7 @@ export function createTurnMachine({
     let settledOk = false;
     const streamId = `msg_${clockNow() + 1}`;
     const stream = feed.beginStream(streamId, { autoFollow });
+    scrollToStream(streamId);
     const partial = { id: streamId, role: "assistant", content: "", timestamp: clockNow() };
     const turn = { stream, msg: partial, stopped: false };
     activeStream = turn;

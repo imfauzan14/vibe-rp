@@ -110,6 +110,18 @@ describe("streamTurn", () => {
     expect(composer.cleared).toEqual(["go"]);
   });
 
+  test("anchors the view at the top of the new incoming assistant message via scrollToStream", async () => {
+    const scrolled: string[] = [];
+    const { machine } = rig({
+      machine: {
+        scrollToStream: (id: string) => scrolled.push(id),
+      },
+    });
+    await machine.streamTurn("hello");
+    expect(scrolled.length).toBe(1);
+    expect(scrolled[0]).toMatch(/^msg_/);
+  });
+
   test("a failure fails the stream and shows the retry toast", async () => {
     const toasted = [];
     const notifier = { toast: (text, opts) => toasted.push([text, opts]) };

@@ -564,6 +564,29 @@ describe("Universal & Adaptive Choice Mode Prompt Contract", () => {
     expect(userPromptMsg.content).toContain("Seamlessly match the active language, dialect, and tone established in the scene and directives.");
   });
 
+  test("planChoiceRequest incorporates character description when personality and system_prompt are absent", () => {
+    const session = {
+      messages: [{ id: "m1", role: "assistant", content: "A quiet tavern corner." }],
+      ledger: "",
+      consumed: 1,
+    };
+    const card = {
+      data: {
+        name: "Lyra",
+        description: "A mysterious cartographer carrying ancient star charts and speaking in whispered riddles.",
+      },
+    };
+    const req = planChoiceRequest({
+      card,
+      session,
+      settings: { maxContextTokens: 4096, maxTokens: 1000 },
+      persona: { name: "Rowan" },
+      count: 3,
+    });
+    const sysMsg = req.payload[0];
+    expect(sysMsg.content).toContain("Character Context (Lyra): A mysterious cartographer carrying ancient star charts");
+  });
+
   test("CHOICE_SYSTEM_PROMPT and choicePrompt mandate agency, condition assessment and no disguised NPC control", () => {
     expect(CHOICE_SYSTEM_PROMPT).toContain("Player Agency vs. Story Continuation");
     expect(CHOICE_SYSTEM_PROMPT).toContain("Condition Assessment");

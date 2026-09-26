@@ -275,6 +275,7 @@
       personaNameEl: $("composer-persona-name"),
       personaAvatarEl: $("composer-speaker-avatar"),
       estimateTokens,
+      matchFinePointer: () => window.matchMedia("(pointer: fine)").matches,
       onSend: (text) => submitTurn(text),
       onStop: () => stopTurn(),
     });
@@ -397,7 +398,7 @@
 
     $("composer").addEventListener("submit", (e) => {
       e.preventDefault();
-      if (!composer.busy) submitTurn(authorInput.value.trim());
+      if (!composer.busy) composer.send();
     });
     // Turn lifecycle. The bodies live in ui/chat/turn_machine.js; the boot
     // supplies the DOM objects and the callbacks that are genuinely
@@ -412,6 +413,10 @@
       showToast,
       isNearBottom,
       scrollFeed: () => scrollFeed(),
+      scrollToStream: (id) => {
+        stickToBottom = false;
+        feed.scrollToMessage?.(id, { behavior: "smooth" });
+      },
       requestAnimationFrame: (fn) => requestAnimationFrame(fn),
       matchFinePointer: () => window.matchMedia("(pointer: fine)").matches,
       clearComposerInput: (promptHint) => composer.clearIfMatched(promptHint),

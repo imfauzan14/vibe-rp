@@ -260,7 +260,7 @@ bun test test/
 
 ### Stats
 
-588 tests, 10840 expect() calls, 29 files (measured with `bun test test/`).
+594 tests, 10859 expect() calls, 30 files (measured with `bun test test/`).
 
 ### Existing Test Files
 
@@ -268,6 +268,7 @@ bun test test/
 - `test/choice_format.test.ts`: the Choice Mode parser (malformed/aliased/line-list output, sanitation, dedupe, clamping) and the auxiliary choice request planner
 - `test/choice_mode.test.ts`: the choice state machine (double-click, staleness, scene-awaiting-player guard, failure recovery, persistence without a refetch)
 - `test/choice_ui.test.ts`: presentation guards (real buttons, text-not-markup, durable retry affordance, the engine choice seam stays non-streaming and transcript-free)
+- `test/composer.test.ts`: composer clearing on send, fine-pointer Enter, and mobile Enter newline insertion
 - `test/compaction.test.ts`: long-run compaction, adaptive summary budget, and fold boundary/stress invariants
 - `test/context.test.ts`: context planning, allocation, Inspector alignment, large presets, and seams
 - `test/context_longrun.test.ts`: long-run context compaction monotonicity

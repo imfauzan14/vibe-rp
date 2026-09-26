@@ -12,8 +12,8 @@ import { stripThoughtBlocks, renderInlineField } from "./text.js";
 
 // A choice is one line the reader can scan. Beyond this it stops being a menu
 // item and becomes a paragraph, so the parser rejects rather than truncates.
-export const CHOICE_TEXT_MAX_CHARS = 160;
-export const CHOICE_LABEL_MAX_CHARS = 60;
+export const CHOICE_TEXT_MAX_CHARS = 320;
+export const CHOICE_LABEL_MAX_CHARS = 80;
 export const CHOICE_TEXT_MIN_CHARS = 2;
 export const CHOICE_COUNT_MIN = 3;
 export const CHOICE_COUNT_MAX = 5;
@@ -39,7 +39,7 @@ export const CHOICE_SYSTEM_PROMPT =
   "You generate the next moves available to the player in an ongoing roleplay scene.\n\n" +
   "You write from the player's perspective (or narrative continuation perspective if incapacitated), proposing distinct next moves.\n\n" +
   "Core Process & Adaptive Principles:\n" +
-  "- Persona & Narrative Perspective: Align choices with User Persona (traits, voice, flaws). Match the player's established point of view ('I' vs 3rd person) and speech cadence. If the persona specifies anxiety, hesitation, or timidity, embody those emotional barriers and speech quirks. Never make the player artificially fearless or articulate when their persona dictates otherwise.\n" +
+  "- Persona & Narrative Perspective: Align choices with User Persona (traits, voice, flaws). Match the player's established point of view ('I' vs 3rd person) and speech cadence. If the scene or persona is in 3rd person, write choices in 3rd person; if in 1st person, write choices in 1st person. If the persona specifies anxiety, hesitation, or timidity, embody those emotional barriers and speech quirks. Never make the player artificially fearless or articulate when their persona dictates otherwise.\n" +
   "- Language Lock & Register Adaptation: User Persona, Directives, and player dialogue are the active operational authority. If the imported character preset is in a different language than the user persona or dialogue, generate choices strictly in the player's active language and register. Never default to the preset's source language or drift into an unrequested language.\n" +
   "- Dramatic Variety: Offer distinct dramatic archetypes filtered through the player's persona:\n" +
   "  1. Direct / Assertive (stepping forward or speaking up)\n" +
@@ -58,16 +58,14 @@ export const CHOICE_SYSTEM_PROMPT =
   "- Information Boundary: Restrict choices to what the player perceives in the current scene; never invent off-screen facts.\n" +
   "- Register & Tone: Preserve the established atmospheric tone, genre boundaries, and scene tension.\n" +
   "- Internal Ranking (self-consistency): Before emitting JSON, mentally generate more candidates than needed, then select only the most distinct and scene-appropriate ones. Every emitted choice must differ in dramatic archetype, not just wording.\n" +
-  "- Plain Prose Only: Each choice \"text\" must be plain prose — no markdown, no asterisks, no code fences, no nested JSON. Formatting characters corrupt the UI.\n" +
-  // Q7: Canonical few-shot example in the system prompt (static cached prefix).
-  // Placing it here rather than in choicePrompt keeps the per-turn user message
-  // lean so it does not shrink the history window on tight context budgets.
+  "- Action Labels: Each \"label\" must be an unambiguous, evocative title (3 to 7 words) that clearly defines the character's immediate intent or move (e.g. \"Approach the door cautiously\", \"Hold ground and demand answers\", \"Offer a quiet truce\"). Never use vague, ambiguous labels like \"Respond\", \"Look\", or \"Step closer\" alone.\n" +
+  "- Roleplay Craft & Formatting: Each choice \"text\" must be an authentic, fully formed roleplay response combining physical action, dialogue, or reaction. Match the scene's established narrative point of view (1st person 'I' vs 3rd person) and style. Quoted dialogue and descriptive action are encouraged. Never include code fences, meta-commentary, or nested JSON.\n" +
   "- Output format example (do not copy these choices — generate fresh ones for the actual scene):\n" +
   '  {"choices":[\n' +
-  '    {"label":"Step closer","text":"I move toward the door, hand hovering near the latch.","type":"action"},\n' +
-  '    {"label":"Stay silent","text":"I press my back against the wall and wait, watching the shadow under the door.","type":"action"},\n' +
-  '    {"label":"Call out","text":"Is anyone there? I keep my voice flat, not giving away the shake in my chest.","type":"action"}\n' +
-  "  ]}\n" +
+  '    {"label":"Step into the light and demand answers","text":"I step into the firelight, resting my hand near the pommel of my blade. \\"Who sent you here?\\"","type":"action"},\n' +
+  '    {"label":"Remain hidden in shadows and observe","text":"I press my back flat against the cold stone, holding my breath as I watch their silhouette in the doorway.","type":"action"},\n' +
+  '    {"label":"Lower weapon and propose a truce","text":"I carefully lower my dagger and keep both hands open and visible. \\"We do not have to do this. Put the steel away.\\"","type":"action"}\n' +
+  '  ]}\n' +
   // Q11: Enum pinned in system prompt alongside the schema, not buried in the task line.
   '  "type" must be exactly one of: "action" (player can act), "continuation" (scene progresses without player action), "story" (external narrative beat). Omit the key if none applies.\n' +
   "- Return ONLY the JSON described above, with no commentary, no code fences, and no extra text.";
@@ -97,8 +95,8 @@ export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the cha
     "- Propel the scene with physically grounded actions and distinct dramatic intentions.\n" +
     `- Agency & Scene State: Respect [${safePlayer}]'s condition. Propose player actions if able to act; propose scene continuation beats if incapacitated or deceased rather than impossible actions or disguised NPC puppeteering.\n\n` +
     `Provide ${target} choices. For each choice:\n` +
-    `- "label": A brief summary of intent (3 to 6 words, under ${CHOICE_LABEL_MAX_CHARS} characters) in [${safePlayer}]'s active language.\n` +
-    `- "text": Full roleplay action or dialogue to send (under ${CHOICE_TEXT_MAX_CHARS} characters), plain prose only, in [${safePlayer}]'s active language.\n` +
+    `- "label": An unambiguous, clear title of intent (3 to 7 words, under ${CHOICE_LABEL_MAX_CHARS} characters) in [${safePlayer}]'s active language.\n` +
+    `- "text": Full in-character roleplay action or dialogue to send (under ${CHOICE_TEXT_MAX_CHARS} characters), in [${safePlayer}]'s active language and established narrative POV.\n` +
     `- "type": one of "action", "continuation", "story" — or omit the key.\n` +
     `Phrased from [${safePlayer}]'s perspective (or narrative continuation perspective if [${safePlayer}] cannot act).`
   );

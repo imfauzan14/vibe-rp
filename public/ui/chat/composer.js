@@ -20,6 +20,7 @@ export function createComposer({
   personaNameEl = null,
   personaAvatarEl = null,
   estimateTokens = () => 0,
+  matchFinePointer = () => (typeof window !== "undefined" && window.matchMedia ? window.matchMedia("(pointer: fine)").matches : true),
   onSend = () => {},
   onStop = () => {},
 }) {
@@ -58,19 +59,24 @@ export function createComposer({
     if (busy && !was && document.activeElement !== input) stopButton?.focus?.();
   }
 
+  function clear() {
+    input.value = "";
+    resize();
+    updateStats();
+    updateSendState();
+  }
+
   function send() {
     if (busy) return;
     const text = input.value.trim();
     if (!text) return;
+    clear();
     onSend(text);
   }
 
   function clearIfMatched(submittedText) {
     if (typeof submittedText === "string" && input.value.trim() === submittedText.trim()) {
-      input.value = "";
-      resize();
-      updateStats();
-      updateSendState();
+      clear();
     }
   }
 
@@ -107,9 +113,16 @@ export function createComposer({
   });
 
   input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      if (!busy) send();
+    if (e.key === "Enter") {
+      const isFine = Boolean(matchFinePointer?.());
+      // Desktop with mouse/physical keyboard: Enter sends, Shift+Enter inserts newline.
+      // Mobile touch virtual keyboard: Enter inserts newline (Shift is absent on touch keyboards).
+      // Ctrl+Enter or Cmd+Enter sends on any device.
+      const shouldSend = (isFine && !e.shiftKey) || (!isFine && (e.ctrlKey || e.metaKey));
+      if (shouldSend) {
+        e.preventDefault();
+        if (!busy) send();
+      }
     }
   });
 
@@ -130,6 +143,8 @@ export function createComposer({
     updateStats,
     updateSendState,
     resize,
+    clear,
+    send,
     focus: () => input.focus(),
     getValue: () => input.value,
     setValue: (v) => {
