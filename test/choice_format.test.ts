@@ -210,6 +210,18 @@ describe("choicePrompt", () => {
     expect(prompt).toContain("[Row an]");
     expect(prompt.split("\n").filter((l) => l.includes("[Row "))).toHaveLength(7);
   });
+
+  test("includes negative variation constraints when previous choices are provided", () => {
+    const prev = [
+      { label: "Step closer", text: "I move toward the door." },
+      { label: "Stay silent", text: "I wait in the dark." },
+    ];
+    const prompt = choicePrompt(4, { charName: "Elena", playerName: "Rowan", previousChoices: prev });
+    expect(prompt).toContain("Fresh Dramatic Angles Required");
+    expect(prompt).toContain("Do NOT repeat or paraphrase these previous options");
+    expect(prompt).toContain("Step closer: I move toward the door.");
+    expect(prompt).toContain("Stay silent: I wait in the dark.");
+  });
 });
 
 describe("planChoiceRequest", () => {
@@ -294,6 +306,21 @@ describe("planChoiceRequest", () => {
     });
     const systemMessage = req.payload.find((m) => m.role === "system");
     expect(systemMessage?.content).toContain("Custom contract");
+  });
+
+  test("carries previousChoices through to choicePrompt in task message", () => {
+    const prev = [{ label: "Draw weapon", text: "I unsheath my steel." }];
+    const req = planChoiceRequest({
+      card,
+      session: grownSession(2),
+      settings,
+      persona: { name: "Rowan" },
+      count: 4,
+      previousChoices: prev,
+    });
+    const lastMsg = req.payload.at(-1);
+    expect(lastMsg?.content).toContain("Fresh Dramatic Angles Required");
+    expect(lastMsg?.content).toContain("Draw weapon: I unsheath my steel.");
   });
 });
 

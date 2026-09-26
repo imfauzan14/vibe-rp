@@ -80,12 +80,34 @@ export const CHOICE_SYSTEM_PROMPT =
  * hardening) — a model that receives instructions inside those fields cannot
  * escape the bracketed scope into the instruction text.
  */
-export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the character", playerName = "the protagonist" } = {}) {
+export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the character", playerName = "the protagonist", previousChoices = [] } = {}) {
   const target = Math.max(CHOICE_COUNT_MIN, Math.min(CHOICE_COUNT_MAX, Math.floor(Number(count) || CHOICE_COUNT_DEFAULT)));
   // One-line slots: injected card text must not be able to open a new prompt
   // line and impersonate a directive. The flatten rule lives in text.js.
   const safeChar = renderInlineField(charName);
   const safePlayer = renderInlineField(playerName);
+
+  let freshVariationHint = "";
+  if (Array.isArray(previousChoices) && previousChoices.length > 0) {
+    const list = previousChoices
+      .map((c) => {
+        if (!c) return "";
+        if (typeof c === "string") return renderInlineField(c);
+        const l = renderInlineField(c.label || "");
+        const t = renderInlineField(c.text || "", 120);
+        return l ? `${l}: ${t}` : t;
+      })
+      .filter(Boolean)
+      .slice(0, 6);
+    if (list.length > 0) {
+      freshVariationHint =
+        `\n\nFresh Dramatic Angles Required:\n` +
+        `The player requested fresh choices. Do NOT repeat or paraphrase these previous options:\n` +
+        list.map((item) => `- ${item}`).join("\n") +
+        `\nExplore distinctly different dramatic archetypes, unexpected tactics, physical reactions, or emotional pivots.`;
+    }
+  }
+
   return (
     `Propose the next moves for [${safePlayer}] in the scene above, opposite [${safeChar}].\n\n` +
     "Adaptive Guidance:\n" +
@@ -98,7 +120,8 @@ export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the cha
     `- "label": An unambiguous, clear title of intent (3 to 7 words, under ${CHOICE_LABEL_MAX_CHARS} characters) in [${safePlayer}]'s active language.\n` +
     `- "text": Full in-character roleplay action or dialogue to send (under ${CHOICE_TEXT_MAX_CHARS} characters), in [${safePlayer}]'s active language and established narrative POV.\n` +
     `- "type": one of "action", "continuation", "story" — or omit the key.\n` +
-    `Phrased from [${safePlayer}]'s perspective (or narrative continuation perspective if [${safePlayer}] cannot act).`
+    `Phrased from [${safePlayer}]'s perspective (or narrative continuation perspective if [${safePlayer}] cannot act).` +
+    freshVariationHint
   );
 }
 

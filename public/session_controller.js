@@ -629,7 +629,10 @@ export class SessionController {
    * can retry, never a thrown error that could fail the RP turn, and the
    * transcript is never touched. Resolves to the settled `choiceState`.
    */
-  async requestChoices({ count, onState } = {}) {
+  async requestChoices({ count, onState, isRegenerate = false } = {}) {
+    const previousChoices = isRegenerate || (this.choiceState?.choices?.length > 0)
+      ? (this.choiceState?.choices || this.activeSession?.choiceSet?.choices || [])
+      : [];
     const run = this.#beginChoiceGeneration();
     if (!run) return this.choiceState;
     onState?.(this.choiceState);
@@ -647,6 +650,8 @@ export class SessionController {
         count,
         charName: this.charName,
         playerName: this.currentPersona?.name || "the player",
+        previousChoices,
+        isRegenerate,
         signal: abort.signal,
       });
       settled = this.#settleChoices(token, choices);

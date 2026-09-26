@@ -467,7 +467,8 @@ export function planChoiceRequest({
   count = 4,
   charName = "",
   playerName = "",
-} = {}) {
+  previousChoices = [],
+}) {
   const budgets = resolveContextBudgets(settings);
   const contextWindow = budgets.contextWindow;
   const margin = budgets.safetyMargin;
@@ -545,7 +546,7 @@ export function planChoiceRequest({
   }
 
   const system = `${CHOICE_SYSTEM_PROMPT}\n\nScene Context: ${name} opposite ${who}.${scenarioHint}${charHint}${personaHint}${directiveHint}`;
-  const task = choicePrompt(count, { charName: name, playerName: who });
+  const task = choicePrompt(count, { charName: name, playerName: who, previousChoices });
 
   // Everything that is not history or ledger: the fixed instruction overhead.
   const fixedTokens =
@@ -1871,6 +1872,8 @@ export class BrowserChatEngine {
     count = CHOICE_COUNT_DEFAULT,
     charName = "",
     playerName = "",
+    previousChoices = [],
+    isRegenerate = false,
     signal,
   } = {}) {
     const hasPersonaContent = Boolean(
@@ -1882,7 +1885,7 @@ export class BrowserChatEngine {
     );
     const activePersona = hasPersonaContent ? persona : null;
     const activeSettings = agentsContract !== undefined ? { ...settings, agentsContract } : settings;
-    const request = planChoiceRequest({ card, session, settings: activeSettings, persona: activePersona, count, charName, playerName });
+    const request = planChoiceRequest({ card, session, settings: activeSettings, persona: activePersona, count, charName, playerName, previousChoices });
     const { base, headers } = this.#resolveEndpoint(activeSettings);
 
     const choiceModel = String(activeSettings.choiceModel || activeSettings.model || "").trim();
@@ -1897,11 +1900,10 @@ export class BrowserChatEngine {
       [tokenKey]: request.outputTokens,
     };
     if (cap.supportsTemperature !== false) {
-      if (typeof activeSettings.temperature === "number") {
-        body.temperature = Math.min(activeSettings.temperature, 0.7);
-      } else {
-        body.temperature = 0.7;
-      }
+      const baseTemp = typeof activeSettings.temperature === "number" ? activeSettings.temperature : 0.8;
+      body.temperature = isRegenerate || (previousChoices && previousChoices.length > 0)
+        ? Math.min(1.0, Math.max(0.85, baseTemp + 0.15))
+        : Math.min(1.0, baseTemp);
     }
     if (activeSettings?.reasoningEffort && cap.supportsReasoningEffort !== false) {
       body.reasoning_effort = activeSettings.reasoningEffort;

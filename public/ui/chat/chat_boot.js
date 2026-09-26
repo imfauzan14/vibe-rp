@@ -292,7 +292,7 @@
     const choicePanel = createChoicePanel({
       mount: choicePanelEl,
       onSelect: (id) => selectChoice(id),
-      onRegenerate: () => requestChoices(),
+      onRegenerate: () => requestChoices({ isRegenerate: true }),
       onRetry: () => requestChoices(),
       // Never steal focus on arrival: choices are read in-place, shortcuts work globally
       autoFocus: () => false,
@@ -379,10 +379,10 @@
     }
 
     /** Asks the controller for a fresh set. Auxiliary: never fails the RP turn. */
-    async function requestChoices() {
+    async function requestChoices({ isRegenerate = false } = {}) {
       if (mode !== "choice") return;
       renderChoices(); // paints `generating` immediately
-      await controller.requestChoices({ onState: () => renderChoices() });
+      await controller.requestChoices({ isRegenerate, onState: () => renderChoices() });
       renderChoices();
     }
 
@@ -867,7 +867,7 @@
         get choices() { return controller.choiceState.choices.map((c) => ({ ...c })); },
         get choiceStatus() { return controller.choiceState.status; },
         selectChoice: (id) => selectChoice(id),
-        regenerateChoices: () => requestChoices(),
+        regenerateChoices: () => requestChoices({ isRegenerate: true }),
         setMode: (m) => setMode(m),
         toggleTheme,
         stop: () => stopTurn(),

@@ -54,6 +54,22 @@ describe("Choice Mode - the core loop", () => {
     expect(JSON.stringify(ctl.messages.at(-2))).not.toContain("c1");
   });
 
+  test("requestChoices with isRegenerate passes previous choices and isRegenerate flag to engine", async () => {
+    const { ctl, engine } = await makeController();
+    await ctl.send("Hello there.");
+    await ctl.requestChoices();
+    expect(ctl.choiceState.choices.length).toBe(3);
+
+    // Now regenerate
+    await ctl.requestChoices({ isRegenerate: true });
+    const lastArgs = engine.lastChoiceArgs as Record<string, unknown>;
+    expect(lastArgs.isRegenerate).toBe(true);
+    expect(Array.isArray(lastArgs.previousChoices)).toBe(true);
+    const prev = lastArgs.previousChoices as Array<{ text: string }>;
+    expect(prev.length).toBe(3);
+    expect(prev[0].text).toBe("Ask about the letter.");
+  });
+
   test("a double click appends one user turn and starts one generation", async () => {
     const { ctl, engine } = await makeController();
     await ctl.send("Hello.");
