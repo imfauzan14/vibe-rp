@@ -140,6 +140,28 @@ describe("Streaming contract - terminators and usage", () => {
   });
 });
 
+describe("Streaming contract - finish_reason length with partial content", () => {
+  test("a truncated reply surfaces a notice but returns the partial text", async () => {
+    const notices: string[] = [];
+    globalThis.fetch = async () =>
+      sseResponse(
+        'data: {"choices":[{"delta":{"content":"Once upon"},"finish_reason":null}]}\n\n' +
+          'data: {"choices":[{"delta":{},"finish_reason":"length"}],"usage":{"completion_tokens":50}}\n\n' +
+          "data: [DONE]\n\n"
+      );
+    const text = await BrowserChatEngine.streamTurn({
+      card: null,
+      session: session(),
+      settings,
+      persona: null,
+      agentsContract: "",
+      onNotice: (n: string) => notices.push(n),
+    });
+    expect(text).toBe("Once upon");
+    expect(notices.some((n) => /cut off.*output token limit/i.test(n))).toBe(true);
+  });
+});
+
 describe("Streaming contract - non-streaming providers", () => {
   test("8. a JSON completion document is accepted as the reply", async () => {
     globalThis.fetch = async () =>

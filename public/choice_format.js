@@ -260,7 +260,7 @@ export function parseChoices(raw, { max = CHOICE_COUNT_MAX, maxChars = CHOICE_TE
       if (c.label && c.label !== c.text) {
         res.label = c.label.length > CHOICE_LABEL_MAX_CHARS ? clampText(c.label, CHOICE_LABEL_MAX_CHARS) : c.label;
       }
-      if (c.type) res.type = c.type;
+      if (c.type && ["action", "continuation", "story"].includes(c.type)) res.type = c.type;
       return res;
     }),
   };

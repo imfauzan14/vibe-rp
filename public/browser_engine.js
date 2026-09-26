@@ -108,13 +108,17 @@ export function detectParameterRejection(err) {
     /max_completion_tokens.*?(?:not supported|unsupported|unrecognized|unknown)/i.test(msg);
   const unsupportedReasoningEffort =
     /reasoning_effort.*?(?:not supported|unsupported|unrecognized|unknown)/i.test(msg);
+  const unsupportedStreamOptions =
+    /stream_options.*?(?:not supported|unsupported|unrecognized|unknown)/i.test(msg) ||
+    /unsupported.*?parameter ['\"]?stream_options['\"]?/i.test(msg);
 
-  if (unsupportedTemp || needsMaxCompletionTokens || needsMaxTokens || unsupportedReasoningEffort) {
+  if (unsupportedTemp || needsMaxCompletionTokens || needsMaxTokens || unsupportedReasoningEffort || unsupportedStreamOptions) {
     return {
       unsupportedTemp,
       needsMaxCompletionTokens,
       needsMaxTokens,
       unsupportedReasoningEffort,
+      unsupportedStreamOptions,
     };
   }
   return null;
@@ -458,8 +462,11 @@ export function planChoiceRequest({
   const floor = MIN_OUTPUT_TOKENS;
   const outputTokens = Math.max(floor, Math.min(CHOICE_OUTPUT_TOKENS, window - MIN_INPUT_HEADROOM));
 
-  const name = charName || card?.data?.name || card?.name || "the character";
-  const who = playerName || persona?.name || "the protagonist";
+  // One-line slots: a card name or persona name that contains a newline can
+  // open a new prompt line and impersonate a section heading in the scene
+  // context line. renderInlineField flattens and clamps before interpolation.
+  const name = renderInlineField(charName || card?.data?.name || card?.name || "the character");
+  const who = renderInlineField(playerName || persona?.name || "the protagonist");
 
   let scenarioHint = "";
   const rawScenario = card?.data?.scenario || card?.scenario || "";
@@ -479,10 +486,10 @@ export function planChoiceRequest({
   if (rosterSrc.length > 0) {
     const rosterBits = rosterSrc.map((m) => {
       if (!m) return "";
-      if (typeof m === "string") return m.trim();
-      const nm = String(m.name || m.char_name || m.character_name || "").trim();
+      if (typeof m === "string") return renderInlineField(m) || "";
+      const nm = renderInlineField(String(m.name || m.char_name || m.character_name || ""));
       if (!nm) return "";
-      const rl = String(m.role || m.description || "").trim().slice(0, 80);
+      const rl = renderInlineField(String(m.role || m.description || ""), 80);
       return rl ? `${nm} (${rl})` : nm;
     }).filter(Boolean).slice(0, 8);
     if (rosterBits.length > 1) {
@@ -1138,8 +1145,12 @@ export class BrowserChatEngine {
       model,
       messages,
       stream: true,
-      stream_options: { include_usage: true },
     };
+    // stream_options is an OpenAI extension; some providers reject it with 400.
+    // Gate it behind a capability flag so #streamDirect can drop it on rejection.
+    if (cap.supportsStreamOptions !== false) {
+      body.stream_options = { include_usage: true };
+    }
     if (cap.supportsTemperature !== false) {
       if (typeof settings.temperature === "number") body.temperature = settings.temperature;
       if (typeof settings.topP === "number" && settings.topP < 1) body.top_p = settings.topP;
@@ -1180,7 +1191,7 @@ export class BrowserChatEngine {
    * Streams one completion. Only non-neutral sampler values are sent, so an
    * untouched control cannot silently override a provider default.
    */
-  static async *#streamDirect(settings, messages, onCleanChunk, onUsage, signal, outputCeiling = null) {
+  static async *#streamDirect(settings, messages, onCleanChunk, onUsage, signal, outputCeiling = null, onLengthCut = null) {
     const { base, headers } = this.#resolveEndpoint(settings);
     let body = this.buildRequestBody(settings, messages, outputCeiling);
 
@@ -1195,6 +1206,7 @@ export class BrowserChatEngine {
         if (rejection.needsMaxCompletionTokens) updateModelCapability(settings?.apiEndpoint, settings?.model, { tokenKey: "max_completion_tokens" });
         if (rejection.needsMaxTokens) updateModelCapability(settings?.apiEndpoint, settings?.model, { tokenKey: "max_tokens" });
         if (rejection.unsupportedReasoningEffort) updateModelCapability(settings?.apiEndpoint, settings?.model, { supportsReasoningEffort: false });
+        if (rejection.unsupportedStreamOptions) updateModelCapability(settings?.apiEndpoint, settings?.model, { supportsStreamOptions: false });
 
         body = this.buildRequestBody(settings, messages, outputCeiling);
         res = await this.#postChat(base, headers, body, signal);
@@ -1339,6 +1351,16 @@ export class BrowserChatEngine {
     // length-truncated responses seen in the wild.
     if (!sawContent) {
       throw this.#emptyCompletionError({ finishReason, sawReasoning, usage });
+    }
+    // A stream that settles at finish_reason "length" but DID produce visible
+    // content was cut off mid-reply: the output ceiling was too low, or the
+    // model ran out of allocated tokens. Surface a notice so the reader knows
+    // the reply is incomplete; the partial text is still kept.
+    if (finishReason === "length" && onLengthCut) {
+      const completion = usage && typeof usage.completion_tokens === "number"
+        ? ` (completion_tokens: ${usage.completion_tokens})`
+        : "";
+      onLengthCut(`The reply was cut off at the output token limit${completion}. Raise max output tokens for this model to get the full reply.`);
     }
   }
 
@@ -1696,7 +1718,8 @@ export class BrowserChatEngine {
           noteUsage(session, u);
         },
         signal,
-        ceiling
+        ceiling,
+        onNotice ? (msg) => onNotice(msg) : null
       )) {
         streamedAny = true;
         text += chunk;
@@ -1996,16 +2019,22 @@ export class BrowserChatEngine {
       lines.push(`- ${who}: ${clipped}`);
     }
     if (lines.length === 0) return previousLedger || "";
+    // Fill the budget newest-first so the most recent turns are always kept
+    // when the digest overflows. Without this, a forward scan drops the newest
+    // turns — exactly the facts the model most needs for the next beat.
     let bodyLines = [];
     let bodyChars = 0;
-    for (const line of lines) {
+    for (let i = lines.length - 1; i >= 0; i -= 1) {
+      const line = lines[i];
       if (bodyChars + line.length > fallbackMaxChars && bodyLines.length > 0) {
-        bodyLines.push("- […]");
+        bodyLines.push("- […]"); // marks that older material was dropped
         break;
       }
       bodyLines.push(line);
       bodyChars += line.length + 1;
     }
+    // Restore chronological order so the summary reads as a timeline.
+    bodyLines.reverse();
     const body = bodyLines.join("\n");
     // A degraded fold cannot compress the prior ledger, so re-embedding it whole
     // would let the digest grow without bound across repeated summarizer

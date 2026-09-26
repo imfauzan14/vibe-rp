@@ -32,7 +32,7 @@ Top-level logic (all zero DOM unless noted):
 
 - **`public/browser_engine.js`** (~2150 lines): `BrowserChatEngine`. Prompt assembly, the four context rules, ledger folding, SSE streaming, the universal allocator, and auxiliary choice generation. Re-exports the pure planning helpers from `context_plan.js` and the session-write accessors from `session_state.js` so callers keep one import surface.
 - **`public/context_plan.js`** (~205 lines): pure planning. Token estimation, `cleanPromptText`, the summary budgets, and `allocateContext`. Owns the ledger-framing cost (`LEDGER_OPEN`/`LEDGER_CLOSE`, `ledgerFramingTokens()`) so every charge site reads one value.
-- **`public/session_state.js`** (~60 lines): the session-write seam (`applyFold`, `noteUsage`, `markLedgerTruncated`, `setOverflowReported`, `setCondensedReported`). The engine decides *when*; this module owns *how* the controller's session is mutated, so the fold returns a value and one place applies it.
+- **`public/session_state.js`** (~70 lines): the session-write seam (`applyFold`, `resetLedger`, `noteUsage`, `markLedgerTruncated`, `setOverflowReported`, `setCondensedReported`). The engine decides *when*; this module owns *how* the controller's session is mutated, so the fold returns a value and one place applies it. `resetLedger` handles explicit ledger clears (user transcript edits).
 - **`public/session_controller.js`** (~745 lines): `SessionController`. Session lifecycle, modal state machine, message transitions, send/stream flow, retry of an unanswered turn, and the Choice Mode state machine. Accepts `options.signal` and exposes `cancel()`.
 - **`public/local_db.js`** (~760 lines): `LocalDb` plus its two backends. `IdbStore` owns IndexedDB (cards, sessions); `LocalStore` owns localStorage (personas, directives, settings). `LocalDb` is a facade: an instance drives its own stores and accepts injected ones, while the statics delegate to a default instance. `DB_VERSION` is 2.
 - **`public/text.js`** (~60 lines): the cycle-free leaf every other pure module may import. `utf8Decoder`, `substitutePlaceholders`, `stripThoughtBlocks`, `renderInlineField`.
@@ -260,7 +260,7 @@ bun test test/
 
 ### Stats
 
-568 tests, 10775 expect() calls, 29 files (measured with `bun test test/`).
+573 tests, 10788 expect() calls, 29 files (measured with `bun test test/`).
 
 ### Existing Test Files
 
@@ -292,7 +292,7 @@ bun test test/
 - `test/unified_modules.test.ts`: single escapeHtml/toast/theme/thought-strip/field-render implementations, sw.js shell hygiene
 - `test/turn_machine.test.ts`: the chat turn lifecycle against collaborator fakes (chunk piping, settle, stop silence, failure toast, all four entries)
 - `test/local_db_seam.test.ts`: the LocalDb instance seam (injected IDB/local backends, default-instance delegation)
-- `test/session_state.test.ts`: the session-write accessors (fold application, usage, notice latches)
+- `test/session_state.test.ts`: the session-write accessors (fold application, ledger reset, usage, notice latches)
 
 ### When to Add Tests
 

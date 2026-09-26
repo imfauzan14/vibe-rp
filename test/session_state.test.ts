@@ -6,6 +6,7 @@
 import { describe, test, expect } from "bun:test";
 import {
   applyFold,
+  resetLedger,
   noteUsage,
   markLedgerTruncated,
   setOverflowReported,
@@ -27,6 +28,22 @@ describe("applyFold", () => {
     expect(stored).toBe(false);
     expect(session.ledger).toBe("prior");
     expect(session.consumed).toBe(3);
+  });
+});
+
+describe("resetLedger", () => {
+  test("clears ledger and consumed regardless of prior state", () => {
+    const session = { ledger: "prior facts", consumed: 7 };
+    resetLedger(session);
+    expect(session.ledger).toBe("");
+    expect(session.consumed).toBe(0);
+  });
+
+  test("is idempotent on an already-empty session", () => {
+    const session = { ledger: "", consumed: 0 };
+    resetLedger(session);
+    expect(session.ledger).toBe("");
+    expect(session.consumed).toBe(0);
   });
 });
 

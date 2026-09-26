@@ -10,6 +10,7 @@
 
 import { LocalDb } from "./local_db.js";
 import { BrowserChatEngine } from "./browser_engine.js";
+import { applyFold, resetLedger } from "./session_state.js";
 
 const GREETING_FALLBACK = "The door closes behind you. Silence settles into the corridor.";
 const INITIAL_TITLE = "Chapter 1: The Initial Approach";
@@ -36,6 +37,9 @@ function mergeSignals(external, controller) {
   if (typeof AbortSignal.any === "function") return AbortSignal.any([external, controller.signal]);
   // Fallback for runtimes without AbortSignal.any: an external abort cancels
   // the per-turn controller, so both cancellation paths still take effect.
+  // If the external signal is already aborted at call time the event never
+  // fires, so abort the controller immediately in that case.
+  if (external.aborted) { controller.abort(); return controller.signal; }
   external.addEventListener("abort", () => controller.abort(), { once: true });
   return controller.signal;
 }
@@ -270,7 +274,9 @@ export class SessionController {
     // plan re-pins and consumed=0 normalizes back to 1).
     const consumed = Number(sess?.consumed) || 0;
     if (idx === 0) {
-      if (sess) { sess.ledger = ""; sess.consumed = 0; }
+      // Clearing the pinned opening resets all ledger bookkeeping; route
+      // through the session-write seam so the mutation has one owner.
+      if (sess) resetLedger(sess);
     } else if (idx < consumed) {
       sess.consumed = consumed - 1;
     }

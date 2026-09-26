@@ -23,6 +23,16 @@ export function applyFold(session, { ledger, consumedAfter }) {
   return true;
 }
 
+/**
+ * Clears the ledger and resets coverage to zero. Used when a user action
+ * (e.g. deleting the pinned opening message) invalidates all ledger
+ * bookkeeping so the next plan can re-pin from scratch.
+ */
+export function resetLedger(session) {
+  session.ledger = "";
+  session.consumed = 0;
+}
+
 /** Stores the provider's usage report for the turn. */
 export function noteUsage(session, usage) {
   session.lastUsage = usage;
