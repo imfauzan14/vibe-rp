@@ -34,7 +34,10 @@ export {
   resolveSafetyMargin,
   SUMMARY_TARGET_WORDS,
   SUMMARY_UPDATE_TARGET_WORDS,
+  LEDGER_OPEN,
+  LEDGER_CLOSE,
   LEDGER_HARD_MAX_TOKENS,
+  ledgerFramingTokens,
   clipLedgerToTokens,
   resolveSummaryBudget,
   fitFoldLedgerTokens,
@@ -52,18 +55,18 @@ import {
   TOKEN_SAFETY_MARGIN,
   MIN_INPUT_HEADROOM,
   MIN_OUTPUT_TOKENS,
-  resolveSafetyMargin,
   SUMMARY_TARGET_WORDS,
   SUMMARY_UPDATE_TARGET_WORDS,
+  LEDGER_OPEN,
+  LEDGER_CLOSE,
   LEDGER_HARD_MAX_TOKENS,
+  ledgerFramingTokens,
   clipLedgerToTokens,
   resolveSummaryBudget,
   fitFoldLedgerTokens,
   resolveContextBudgets,
   allocateContext as rawAllocateContext,
 } from "./context_plan.js";
-// Dynamic registry of learned endpoint/model capabilities.
-// Populated when any OpenAI-compatible provider, gateway, or local server
 // indicates parameter support or rejection via standard responses or HTTP 400.
 const modelCapabilities = new Map();
 
@@ -177,17 +180,7 @@ Rules:
 - Keep it under ${SUMMARY_UPDATE_TARGET_WORDS} words. Compress wording, never drop a fact.
 - Anything you do not carry into the new ledger is lost forever; the conversation record wins any conflict with the prior ledger.
 - Anchor each event in time relative to the story's start (e.g. "earlier", "recently", "the night before").`;
-
-/** Rendered around a stored ledger on every send. Constant text, so it caches. */
-export const LEDGER_OPEN =
-  "The story so far, in ledger form. This is settled continuity: build on it and never contradict it. " +
-  "Each character's knowledge is scoped to what they have witnessed or been told — consult each character's Cast entry before writing them; no character may act on, reference, or react to information absent from it.\n\n<ledger>\n";
-export const LEDGER_CLOSE = "\n</ledger>";
-
-// Token allowance for the ledger's own framing (the open/close wrapper plus one
-// message's framing overhead). Charged wherever the ledger is measured, so the
-// planner, the truncator and the allocator all count the same bytes.
-export const LEDGER_FRAMING_TOKENS = estimateTokens(LEDGER_OPEN + LEDGER_CLOSE) + 4;
+const LEDGER_FRAMING_TOKENS = ledgerFramingTokens();
 
 
 /**
@@ -739,7 +732,7 @@ export class BrowserChatEngine {
     const rest = history.slice(system.length);
     // Account for the ledger (sent as message 1) and any material appended after
     // planning (dynamic lore / writing guidance) when sizing what remains.
-    const ledgerTokens = ledger ? estimateTokens(ledger) + 40 : 0;
+    const ledgerTokens = ledger ? estimateTokens(ledger) + LEDGER_FRAMING_TOKENS : 0;
     const extra = Math.max(0, Number(extraInputTokens) || 0);
     const budget = Math.max(0, capacity - countMessages(system) - ledgerTokens - extra);
     if (budget <= 0 || rest.length <= 1) {
@@ -823,7 +816,7 @@ export class BrowserChatEngine {
     // a history that fits its own budget and the assembled request still
     // overflows the window.
     const extra = Math.max(0, Number(extraInputTokens) || 0);
-    const outer = estimateTokens(systemPrompt) + (ledger ? estimateTokens(ledger) + 40 : 0) + extra;
+    const outer = estimateTokens(systemPrompt) + (ledger ? estimateTokens(ledger) + LEDGER_FRAMING_TOKENS : 0) + extra;
     // `overflow` means the *irreducible* prefix (static prompt + ledger + the
     // material appended after planning) already exceeds the input capacity the
     // allocator granted, so no amount of history reduction can bring the

@@ -29,6 +29,9 @@ import {
   estimateTokens,
   countMessages,
   LEDGER_HARD_MAX_TOKENS,
+  LEDGER_OPEN,
+  LEDGER_CLOSE,
+  ledgerFramingTokens,
 } from "../public/browser_engine.js";
 import { words, SSE_OK, presetOfTokens, captureGeneration, resetFetch } from "./helpers.js";
 
@@ -440,6 +443,31 @@ describe("Context seams - planner overflow guards", () => {
       settings,
     });
     expect(plan.budget).toBeGreaterThanOrEqual(256);
+  });
+
+  test("ledger framing is charged identically by the planner and the allocator", () => {
+    // One ledger cost, derived once. Before concentration, planContext charged a
+    // flat +40 while planRequest charged LEDGER_FRAMING_TOKENS (88) — a 48-token
+    // undercharge on every ledger-bearing request. Both must now agree.
+    const ledger = "The party crossed the bridge at dusk. ".repeat(20);
+    const messages = [
+      { role: "assistant", content: "Initial greeting." },
+      { role: "user", content: "We head north." },
+      { role: "assistant", content: "The road bends east." },
+      { role: "user", content: "Keep moving." },
+    ];
+    const settings = { maxContextTokens: 8192, maxTokens: 1024 };
+    const plan = BrowserChatEngine.planContext({
+      systemPrompt: "Base prompt.",
+      messages,
+      ledger,
+      consumed: 1,
+      settings,
+    });
+    const expectedOuter =
+      estimateTokens("Base prompt.") + estimateTokens(ledger) + ledgerFramingTokens();
+    expect(plan.promptTokens - countMessages(plan.history)).toBe(expectedOuter);
+    expect(ledgerFramingTokens()).toBe(estimateTokens(LEDGER_OPEN + LEDGER_CLOSE) + 4);
   });
 });
 

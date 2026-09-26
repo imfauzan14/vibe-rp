@@ -60,8 +60,17 @@ export function resolveSafetyMargin(contextWindow) {
 
 export const SUMMARY_TARGET_WORDS = 700;
 export const SUMMARY_UPDATE_TARGET_WORDS = 900;
+export const LEDGER_OPEN =
+  "The story so far, in ledger form. This is settled continuity: build on it and never contradict it. " +
+  "Each character's knowledge is scoped to what they have witnessed or been told — consult each character's Cast entry before writing them; no character may act on, reference, or react to information absent from it.\n\n<ledger>\n";
+export const LEDGER_CLOSE = "\n</ledger>";
 export const LEDGER_HARD_MAX_TOKENS = 16384;
-
+/** Token allowance for the ledger's own framing (the open/close wrapper plus
+ * one message's framing overhead). Charged wherever the ledger is measured,
+ * so the planner, the truncator and the allocator all count the same bytes. */
+export function ledgerFramingTokens() {
+  return estimateTokens(LEDGER_OPEN + LEDGER_CLOSE) + 4;
+}
 export function clipLedgerToTokens(text, maxTokens, marker = "\n- [older ledger material omitted at the size ceiling; the full transcript is preserved]") {
   const str = typeof text === "string" ? text : String(text ?? "");
   const limit = Math.max(0, Math.floor(Number(maxTokens) || 0));
