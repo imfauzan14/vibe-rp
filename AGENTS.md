@@ -30,12 +30,15 @@ The dependency direction is one-way: UI modules depend on controllers, controlle
 
 Top-level logic (all zero DOM unless noted):
 
-- **`public/browser_engine.js`** (2100+ lines): `BrowserChatEngine`. Prompt assembly, the four context rules, ledger folding, SSE streaming, the universal allocator, and auxiliary choice generation.
-- **`public/session_controller.js`** (700+ lines): `SessionController`. Session lifecycle, modal state machine, message transitions, send/stream flow, retry of an unanswered turn, and the Choice Mode state machine. Accepts `options.signal` and exposes `cancel()`.
-- **`public/local_db.js`** (315 lines): `LocalDb`. IndexedDB (cards, sessions) plus localStorage (personas, directives, settings). `DB_VERSION` is 2.
-- **`public/safe_html.js`** (38 lines): `escapeHtml` and `escapeAttr`. The single escaping point for the whole app.
-- **`public/message_format.js`** (201 lines): pure `formatProse` and `formatMessages` view models.
-- **`public/choice_format.js`** (~200 lines): the Choice Mode prompt and the resilient parser for untrusted model output (zero DOM).
+- **`public/browser_engine.js`** (~2150 lines): `BrowserChatEngine`. Prompt assembly, the four context rules, ledger folding, SSE streaming, the universal allocator, and auxiliary choice generation. Re-exports the pure planning helpers from `context_plan.js` and the session-write accessors from `session_state.js` so callers keep one import surface.
+- **`public/context_plan.js`** (~205 lines): pure planning. Token estimation, `cleanPromptText`, the summary budgets, and `allocateContext`. Owns the ledger-framing cost (`LEDGER_OPEN`/`LEDGER_CLOSE`, `ledgerFramingTokens()`) so every charge site reads one value.
+- **`public/session_state.js`** (~60 lines): the session-write seam (`applyFold`, `noteUsage`, `markLedgerTruncated`, `setOverflowReported`, `setCondensedReported`). The engine decides *when*; this module owns *how* the controller's session is mutated, so the fold returns a value and one place applies it.
+- **`public/session_controller.js`** (~745 lines): `SessionController`. Session lifecycle, modal state machine, message transitions, send/stream flow, retry of an unanswered turn, and the Choice Mode state machine. Accepts `options.signal` and exposes `cancel()`.
+- **`public/local_db.js`** (~760 lines): `LocalDb` plus its two backends. `IdbStore` owns IndexedDB (cards, sessions); `LocalStore` owns localStorage (personas, directives, settings). `LocalDb` is a facade: an instance drives its own stores and accepts injected ones, while the statics delegate to a default instance. `DB_VERSION` is 2.
+- **`public/text.js`** (~60 lines): the cycle-free leaf every other pure module may import. `utf8Decoder`, `substitutePlaceholders`, `stripThoughtBlocks`, `renderInlineField`.
+- **`public/safe_html.js`** (~40 lines): `escapeHtml` and `escapeAttr`. The single escaping point for the whole app.
+- **`public/message_format.js`** (~160 lines): pure `formatProse` and `formatMessages` view models.
+- **`public/choice_format.js`** (~265 lines): the Choice Mode prompt and the resilient parser for untrusted model output (zero DOM).
 - **`public/card_parse.js`** (284 lines): character-card parsing (JSONC strip, normalize, PNG/WebP `chara` extraction).
 - **`public/remote_import.js`** (266 lines): URL import, character-page API mapping, direct card-file fetch.
 - **`public/session_refresh.js`** (336 lines): refresh-token exchange, single-flight, proactive refresh.
@@ -46,11 +49,13 @@ Page shells (markup plus a thin bootstrap only):
 - **`public/index.html`** (92 lines): character library shell. Imports `ui/library_page.js`.
 - **`public/chat.html`** (184 lines): conversation shell. Loads `ui/chat/chat_boot.js` with `<script src>`.
 
-Shared UI modules (**`public/ui/`**, 26 modules, ~5400 lines). Reuse these instead of re-implementing:
+Shared UI modules (**`public/ui/`**, 30 modules, ~7000 lines). Reuse these instead of re-implementing:
 
 - Shared: `dom.js`, `toast.js`, `modal.js`, `tabs.js`, `confirm.js`, `theme.js`, `image.js`, `data_transfer.js`
 - Library: `library_page.js`, `library_controller.js`, `library_view.js`, `character_card.js`, `detail_modal.js`, `import_flow.js`
 - Library subfolders: `settings/**` (modal, persona/directive lists, params, engine, and data panels), `editors/**` (persona and directive editors)
+- Chat: `ui/chat/**` — `message_feed.js`, `composer.js`, `choice_panel.js`, `search.js`, `turn_machine.js`, and the `chat_boot.js` composition root. The turn lifecycle (start, chunk piping, settle, stop, failure classification, retry) lives in `turn_machine.js` as `createTurnMachine({ controller, composer, feed, ... })`; the boot supplies the DOM objects and the callbacks that paint. It has no `document`/`window` at module scope.
+- Both pages mount the SAME settings surface: `ui/settings/settings_modal.js` (plus `ui/editors/**` and `ui/settings/data_panel.js`). There is no chat-only settings panel; the library-only session-import block is rendered only when the caller passes `saveSession`.
 - Chat: `ui/chat/**` (feed, composer, search, confirm)
 - Both pages mount the SAME settings surface: `ui/settings/settings_modal.js` (plus `ui/editors/**` and `ui/settings/data_panel.js`). There is no chat-only settings panel; the library-only session-import block is rendered only when the caller passes `saveSession`.
 
@@ -102,12 +107,12 @@ trailing unanswered user turn, so recovery survives an expired toast and a
 reload. A new turn supersedes any turn still in flight, so two generations never
 run concurrently.
 
-## Key Directories
-
 - **`public/`**: All frontend code, served statically
 - **`public/ui/`**: UI modules. The only place DOM work belongs
 - **`public/design/`**: Design system. `tokens.css` owns every colour value
 - **`test/`**: Bun test suite (`*.test.ts`)
+- **`CONTEXT.md`**: the domain model — core concepts and the modules/seams that own them. Read this before an architecture change.
+- **`docs/adr/`**: Architecture Decision Records. Read before proposing a refactor that touches a recorded seam.
 - **`serve.js`**: Dev server, SPA routing, security headers
 - **`vercel.json`**: Deployment routing, rewrites, and headers
 
@@ -144,6 +149,15 @@ These rules exist because breaking them has already caused defects. Treat them a
 - `BrowserChatEngine`, `SessionController`, and `LocalDb` must not touch `document` or `window`.
 - Constructors take their dependencies (`db`, `engine`) as options so tests can inject fakes. Keep it that way.
 - Anything that renders, focuses, or reads layout belongs in a `public/ui/**` module, never in a controller.
+
+### One home per rule
+
+These rules exist because each one has already drifted and produced a defect:
+
+- **A cost that is charged in more than one place is derived in one place.** The ledger-framing charge (`LEDGER_FRAMING_TOKENS` from `ledgerFramingTokens()` in `context_plan.js`) was once `+40` at two sites and `+88` at another, a silent 48-token disagreement per fold. Every charge site now reads the one value.
+- **A transform applied to untrusted text is defined once.** `stripThoughtBlocks` (reasoning tags) and `renderInlineField` (newline flattening for one-line prompt slots) both live in `text.js`, the cycle-free leaf. Both exist because a second copy let `<think>` reach the clipboard, or let a card name open a fake section heading in the system prompt while the choice path stayed clean.
+- **A session write has one owner.** The engine decides *when* a fold or a notice applies; `session_state.js` owns *how* the controller's session is mutated. Do not assign `session.ledger`/`session.usage`-style fields from engine code.
+- **A page-shaped callback is injected, not imported.** When a controller-adjacent module needs the DOM, it takes a callback (`onSettled`, `scrollFeed`, `matchFinePointer`) rather than reaching for `document`. `turn_machine.js` is the worked example.
 
 ### Styling contract
 
@@ -246,7 +260,7 @@ bun test test/
 
 ### Stats
 
-518 tests, 10625 expect() calls, 26 files (measured with `bun test test/`).
+568 tests, 10775 expect() calls, 29 files (measured with `bun test test/`).
 
 ### Existing Test Files
 
@@ -275,7 +289,11 @@ bun test test/
 - `test/session_refresh.test.ts`: JWT decode, expiry skew, rotation, single-flight, no token leak
 - `test/settings_unification.test.ts`: one settings surface for both pages (shared modal import, cache-key read/write, session-import gating, no chat-only panel or markup)
 - `test/stream_robustness.test.ts`: the OpenAI-compatible streaming contract (delta/message content, `data:` framing, non-streaming bodies, max_tokens forwarding)
-- `test/unified_modules.test.ts`: single escapeHtml/toast/theme implementations, sw.js shell hygiene
+- `test/unified_modules.test.ts`: single escapeHtml/toast/theme/thought-strip/field-render implementations, sw.js shell hygiene
+- `test/turn_machine.test.ts`: the chat turn lifecycle against collaborator fakes (chunk piping, settle, stop silence, failure toast, all four entries)
+- `test/local_db_seam.test.ts`: the LocalDb instance seam (injected IDB/local backends, default-instance delegation)
+- `test/session_state.test.ts`: the session-write accessors (fold application, usage, notice latches)
+
 ### When to Add Tests
 
 - New context management logic (cache stability, summarization)
