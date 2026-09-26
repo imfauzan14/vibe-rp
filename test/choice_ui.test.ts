@@ -18,6 +18,7 @@ describe("choice UI drift-guard", () => {
   const panel = read("ui/chat/choice_panel.js");
   const boot = read("ui/chat/chat_boot.js");
   const engine = read("browser_engine.js");
+  const machine = read("ui/chat/turn_machine.js");
 
   test("panel, boot and engine call-sites keep their pinned shape", () => {
     // a choice is a real button, not a clickable div
@@ -81,15 +82,20 @@ describe("choice UI drift-guard", () => {
     // choice generation is requested only after a settled turn or explicitly
     {
       // One call site after a settled turn, plus the panel's own regenerate/retry.
-      const afterTurn = boot.match(/if \(settledOk && mode === "choice"\)/g) || [];
+      // The turn lifecycle now lives in turn_machine.js; the boot wires the
+      // settled-turn side effect in exactly once.
+      const afterTurn = machine.match(/if \(settledOk && isChoiceMode\(\)\)/g) || [];
       expect(afterTurn.length).toBe(1);
+      const bootWiring = boot.match(/onChoiceTurnSettled:/g) || [];
+      expect(bootWiring.length).toBe(1);
       // No request is issued from a render helper.
       expect(boot).not.toMatch(/function renderChoices\(\)[\s\S]{0,400}?requestChoices\(\)/);
     }
     // the panel is repainted after a failed turn so it cannot sit disabled
     {
-      const body = boot.slice(boot.indexOf("async function streamTurn"), boot.indexOf("async function submitTurn"));
-      expect(body).toMatch(/catch \(err\)[\s\S]*?if \(mode === "choice"\) renderChoices\(\)/);
+      const body = machine.slice(machine.indexOf("async function streamTurn"), machine.indexOf("async function submitTurn"));
+      expect(body).toMatch(/catch \(err\)[\s\S]*?onChoiceTurnFailed\(\)/);
+      expect(boot).toMatch(/onChoiceTurnFailed:\s*\(\)\s*=>\s*\{\s*if \(mode === "choice"\) renderChoices\(\)/);
     }
     // choice generation is a separate, non-streaming request
     {
@@ -115,6 +121,7 @@ describe("choice UI drift-guard", () => {
 
 describe("chat surface wiring", () => {
   const boot = read("ui/chat/chat_boot.js");
+  const machine = read("ui/chat/turn_machine.js");
   const html = read("chat.html");
   const css = read("ui/chat/chat.css");
 
@@ -138,9 +145,10 @@ describe("chat surface wiring", () => {
 
   test("a selected choice goes through the ordinary user-turn path", () => {
     // Selection appends a normal user message and streams it; it does not
-    // create an assistant message or a special choice turn.
+    // create an assistant message or a special choice turn. The append lives in
+    // the machine's submitTurn; selectChoice in the boot routes into it.
     expect(boot).toMatch(/async function selectChoice[\s\S]*?submitTurn\(choice\.text\)/);
-    expect(boot).toMatch(/controller\.appendMessage\(\{\s*role:\s*"user"/);
+    expect(machine).toMatch(/controller\.appendMessage\(\{\s*role:\s*"user"/);
   });
 
   test("leaving Choice Mode preserves the pending set for return without token waste", () => {
@@ -213,7 +221,8 @@ describe("failed-generation recovery affordance", () => {
 
   test("retry re-streams the existing turn instead of appending a new one", () => {
     // Appending would duplicate the user's turn; the recovery must reuse it.
-    const body = boot.slice(boot.indexOf("async function retryUnansweredTurn"), boot.indexOf("// Context stats"));
+    const machine = read("ui/chat/turn_machine.js");
+    const body = machine.slice(machine.indexOf("async function retryUnansweredTurn"), machine.lastIndexOf("return {"));
     expect(body).toContain("controller.pendingUserTurn()");
     expect(body).toContain("streamTurn(pending.content)");
     expect(body).not.toMatch(/appendMessage/);

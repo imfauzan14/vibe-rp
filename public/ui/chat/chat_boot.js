@@ -12,6 +12,7 @@
     import { createMessageFeed } from "./message_feed.js";
     import { createComposer } from "./composer.js";
     import { createChoicePanel } from "./choice_panel.js";
+    import { createTurnMachine } from "./turn_machine.js";
     import { createSearch } from "./search.js";
     import { compressImage } from "../image.js";
     import { openSettingsModal } from "../settings/settings_modal.js";
@@ -394,148 +395,29 @@
       e.preventDefault();
       if (!composer.busy) submitTurn(authorInput.value.trim());
     });
-
-    // Turn flow. Stop aborts the whole turn, fold included.
-    let activeStream = null;
-
-    function setBusy(busy) {
-      composer.setBusy(busy);
-      if (busy) notifier.setStatus("Writing a reply.");
-      else notifier.setStatus("");
-    }
-
-    /**
-     * Aborts the in-flight turn. The engine rolls its placeholder back, so this
-     * only marks the stream as stopped and lets `streamTurn`'s own settle path
-     * do the rendering, keeping one owner for the composer state.
-     */
-    function stopTurn() {
-      controller.cancel();
-      if (activeStream) activeStream.stopped = true;
-      else {
-        setBusy(false);
-        notifier.setStatus("");
-      }
-    }
-
-    function describeFailure(err) {
-      const raw = String(err?.message || err || "");
-      if (err?.name === "AbortError" || /aborted/i.test(raw)) return null;
-      if (/\b401\b|unauthor/i.test(raw)) return { text: "The provider rejected the API key. Check it in settings.", retry: true };
-      if (/\b429\b|rate limit/i.test(raw)) return { text: "The provider is rate limiting. Wait a moment, then retry.", retry: true };
-      if (/\b5\d\d\b|server error/i.test(raw)) return { text: "The provider had a server error. Retry in a moment.", retry: true };
-      if (/HTTP \d+/.test(raw)) return { text: `The provider returned ${raw}.`, retry: true };
-      if (/quota/i.test(raw)) return { text: "Storage quota exceeded. Free some space, then retry.", retry: false };
-      return { text: raw || "The reply failed.", retry: true };
-    }
-
-    async function streamTurn(promptHint, { persistPending = true } = {}) {
-      setBusy(true);
-      stickToBottom = isNearBottom();
-      let settledOk = false;
-      const streamId = `msg_${Date.now() + 1}`;
-      const stream = feed.beginStream(streamId, { autoFollow: stickToBottom });
-      const partial = { id: streamId, role: "assistant", content: "", timestamp: Date.now() };
-      const turn = { stream, msg: partial, stopped: false };
-      activeStream = turn;
-
-      let scrollScheduled = false;
-      const follow = () => {
-        if (!stickToBottom || scrollScheduled) return;
-        scrollScheduled = true;
-        requestAnimationFrame(() => {
-          scrollFeed();
-          scrollScheduled = false;
-        });
-      };
-
-      try {
-        const assistantMsg = await controller.streamResponse(
-          promptHint,
-          (chunk) => {
-            if (typeof chunk !== "string" || !chunk) return;
-            partial.content += chunk;
-            feed.appendChunk(stream, chunk);
-            follow();
-          },
-          (notice) => {
-            showToast(notice, "info");
-          },
-          { persistPending },
-        );
-        if (assistantMsg) Object.assign(partial, assistantMsg);
-        // A Stop mid-stream may leave the engine having persisted the partial
-        // reply; keep it as a real turn rather than throwing the text away.
-        feed.settleStream(stream, partial);
-        // Reconcile once so tray actions that depend on being the newest turn
-        // (the "Retry reply" action on a previously unanswered user turn) are
-        // recomputed now that a reply exists.
-        renderFeed();
-        settledOk = true;
-        composer.clearIfMatched(promptHint);
-      } catch (err) {
-        feed.failStream(stream);
-        if (turn.stopped) {
-          showToast("Stopped.", "info");
-        } else {
-          const described = describeFailure(err);
-          if (described) {
-            notifier.toast(described.text, {
-              tone: "error",
-              actionLabel: described.retry ? "Retry" : "",
-              onAction: described.retry ? () => streamTurn(promptHint, { persistPending }) : null,
-            });
-          }
-        }
-        // The controller drops a pending selection when its turn fails, so the
-        // panel must be repainted or it would sit in the disabled `submitting`
-        // state with no way forward.
-        if (mode === "choice") renderChoices();
-      } finally {
-        activeStream = null;
-        setBusy(false);
-        updateContextStats();
-        // In Choice Mode the panel owns focus after a turn; only the normal
-        // composer is refocused, and only on a fine pointer.
-        if (mode !== "choice" && window.matchMedia("(pointer: fine)").matches) composer.focus();
-      }
-
-      // Choice Mode: a successful turn is exactly when a fresh menu is wanted.
-      // This is auxiliary and awaited only for ordering, never for success: a
-      // choice failure cannot turn the settled reply into a failed turn.
-      if (settledOk && mode === "choice") {
-        renderChoices();
-        await requestChoices();
-      }
-    }
-
-    async function submitTurn(text) {
-      const value = (text ?? authorInput.value).trim();
-      if (!value || composer.busy) return;
-      controller.appendMessage({ role: "user", content: value });
-      renderFeed();
-      await streamTurn(value);
-    }
-
-    async function rerollLastTurn() {
-      if (composer.busy) return;
-      const lastUserPrompt = controller.reroll();
-      renderFeed();
-      await streamTurn(lastUserPrompt || "[Reroll the scene]");
-    }
-
-    /**
-     * Re-streams a trailing user turn that never got a reply — its generation
-     * failed, or the page closed mid-turn. The turn is already canonical, so
-     * nothing is appended: the same text goes back through the ordinary
-     * pipeline, which is why the reader never has to retype it.
-     */
-    async function retryUnansweredTurn() {
-      if (composer.busy) return;
-      const pending = controller.pendingUserTurn();
-      if (!pending) return;
-      await streamTurn(pending.content);
-    }
+    // Turn lifecycle. The bodies live in ui/chat/turn_machine.js; the boot
+    // supplies the DOM objects and the callbacks that are genuinely
+    // page-shaped: repainting the feed after a settle, the Choice Mode side
+    // effects, and the context-stats refresh. The `turns.*` names below are the
+    // stable call sites the source guards track.
+    const turns = createTurnMachine({
+      controller,
+      composer,
+      feed,
+      notifier,
+      showToast,
+      isNearBottom,
+      scrollFeed: () => scrollFeed(),
+      requestAnimationFrame: (fn) => requestAnimationFrame(fn),
+      matchFinePointer: () => window.matchMedia("(pointer: fine)").matches,
+      clearComposerInput: (promptHint) => composer.clearIfMatched(promptHint),
+      onSettled: () => renderFeed(),
+      onChoiceTurnFailed: () => { if (mode === "choice") renderChoices(); },
+      onChoiceTurnSettled: async () => { renderChoices(); await requestChoices(); },
+      isChoiceMode: () => mode === "choice",
+      onFinally: () => updateContextStats(),
+    });
+    const { streamTurn, submitTurn, rerollLastTurn, retryUnansweredTurn, stopTurn } = turns;
 
     // Context stats and ledger calculation.
     const contextLedger = $("ledger-context");
