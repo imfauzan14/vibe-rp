@@ -135,6 +135,7 @@ export class SessionController {
   }
 
   async loadSessions(sessionId) {
+    this.cancel();
     this.sessions = await this.db.getSessionsForCard(this.activeCard.id);
     this.#discardLiveChoices();
     this.activeSession = this.sessions.find(s => s.id === sessionId) || this.sessions[0];
@@ -145,6 +146,7 @@ export class SessionController {
   }
 
   async createSession({ id = null, title = null } = {}) {
+    this.cancel();
     const sess = {
       id: id || `sess_${Date.now()}`,
       cardId: this.activeCard.id,
@@ -168,6 +170,7 @@ export class SessionController {
   }
 
   switchSession(sess) {
+    this.cancel();
     // The live choice state belongs to the session being left. Discard it
     // without touching either session's persisted set, so returning to a
     // session restores its own choices.
@@ -338,13 +341,14 @@ export class SessionController {
     const turn = new AbortController();
     this.#activeTurn = turn;
     const signal = mergeSignals(externalSignal, turn);
+    const targetSession = this.activeSession;
     let assistantMsg = null;
     try {
       // Crash-safety checkpoint before the network call (defect 5). Kept inside
       // the try so a storage failure here cannot leak the turn controller.
-      if (persistPending) {
-        this.activeSession.updatedAt = Date.now();
-        await this.db.saveSession(this.activeSession);
+      if (persistPending && targetSession) {
+        targetSession.updatedAt = Date.now();
+        await this.db.saveSession(targetSession);
       }
       assistantMsg = {
         id: nextMessageId(),
@@ -352,10 +356,12 @@ export class SessionController {
         content: "",
         timestamp: Date.now()
       };
-      this.activeSession.messages.push(assistantMsg);
+      if (targetSession) {
+        targetSession.messages.push(assistantMsg);
+      }
       const returnedText = await this.engine.streamTurn({
         card: this.activeCard,
-        session: this.activeSession,
+        session: targetSession,
         settings: this.settings,
         persona: this.currentPersona,
         agentsContract: this.currentDirective ? (this.currentDirective.content ?? "") : (this.settings.agentsContract ?? ""),
@@ -382,9 +388,9 @@ export class SessionController {
     } catch (err) {
       // Defect 2: drop the placeholder so the transcript is byte-identical to
       // before the turn and no empty assistant message is ever persisted.
-      if (assistantMsg) {
-        const idx = this.activeSession.messages.indexOf(assistantMsg);
-        if (idx !== -1) this.activeSession.messages.splice(idx, 1);
+      if (assistantMsg && targetSession?.messages) {
+        const idx = targetSession.messages.indexOf(assistantMsg);
+        if (idx !== -1) targetSession.messages.splice(idx, 1);
       }
       // A turn that fails leaves the scene exactly as it was before the turn
       // started, so the choice machine must not stay in `submitting`: that
@@ -404,12 +410,16 @@ export class SessionController {
     // returns empty text without throwing. send() rolls the turn back so retry
     // is clean.
     if (!assistantMsg.content) {
-      const idx = this.activeSession.messages.indexOf(assistantMsg);
-      if (idx !== -1) this.activeSession.messages.splice(idx, 1);
+      if (assistantMsg && targetSession?.messages) {
+        const idx = targetSession.messages.indexOf(assistantMsg);
+        if (idx !== -1) targetSession.messages.splice(idx, 1);
+      }
       throw new Error("The model returned an empty reply. Retry, or check the endpoint and max output tokens for this model.");
     }
-    this.activeSession.updatedAt = Date.now();
-    await this.db.saveSession(this.activeSession);
+    if (targetSession) {
+      targetSession.updatedAt = Date.now();
+      await this.db.saveSession(targetSession);
+    }
     return assistantMsg;
   }
 

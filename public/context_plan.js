@@ -84,11 +84,26 @@ export function clipLedgerToTokens(text, maxTokens, marker = "\n- [older ledger 
   if (bytes.length <= byteBudget) {
     kept = str;
   } else {
-    kept = utf8Decoder.decode(bytes.subarray(0, byteBudget), { stream: true });
+    let end = byteBudget;
+    while (end > 0 && (bytes[end] & 0xc0) === 0x80) end--;
+    if (end > 0) {
+      const lead = bytes[end];
+      let need = 1;
+      if ((lead & 0xe0) === 0xc0) need = 2;
+      else if ((lead & 0xf0) === 0xe0) need = 3;
+      else if ((lead & 0xf8) === 0xf0) need = 4;
+      if (end + need <= byteBudget) {
+        end += need;
+      }
+    }
+    kept = new TextDecoder().decode(bytes.subarray(0, end));
     const nl = kept.lastIndexOf("\n");
     const sp = kept.lastIndexOf(" ");
     const cut = nl > kept.length * 0.5 ? nl : sp > kept.length * 0.5 ? sp : -1;
     if (cut > 0) kept = kept.slice(0, cut);
+    while (kept && estimateTokens(`${kept}${marker}`) > limit) {
+      kept = kept.slice(0, -1);
+    }
   }
   return `${kept}${marker}`;
 }

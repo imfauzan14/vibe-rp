@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { htmlToAppMarkup, decodeHtmlEntities, normalizeCard } from "../public/card_parse.js";
+import { htmlToAppMarkup, decodeHtmlEntities, normalizeCard, stripJsonComments, decodeBase64Utf8 } from "../public/card_parse.js";
 
 // A tag-shaped sequence that the converter is required never to emit.
 const TAG_RE = /<[a-zA-Z][^<>]*>/;
@@ -160,5 +160,33 @@ describe("normalizeCard HTML cleaning", () => {
   test("leaves already-clean fields untouched", () => {
     const card = normalizeCard({ name: "T", data: { description: "plain text" } });
     expect(card.data.description).toBe("plain text");
+  });
+});
+
+describe("stripJsonComments", () => {
+  test("preserves commas inside string literals while stripping trailing commas and comments", () => {
+    const input = `// Card definition
+    {
+      "name": "Elena",
+      /* greeting comment */
+      "greeting": "Wait, } what did you say?",
+      "items": ["apple", "orange", ],
+    }`;
+    const stripped = stripJsonComments(input);
+    const parsed = JSON.parse(stripped);
+    expect(parsed.name).toBe("Elena");
+    expect(parsed.greeting).toBe("Wait, } what did you say?");
+    expect(parsed.items).toEqual(["apple", "orange"]);
+  });
+});
+
+describe("decodeBase64Utf8", () => {
+  test("properly decodes UTF-8 multi-byte characters from base64", () => {
+    const text = "Aria (アリア) — Елена 🗡️";
+    const bytes = new TextEncoder().encode(text);
+    const binStr = Array.from(bytes, (b) => String.fromCharCode(b)).join("");
+    const b64 = btoa(binStr);
+    const decoded = decodeBase64Utf8(b64);
+    expect(decoded).toBe(text);
   });
 });

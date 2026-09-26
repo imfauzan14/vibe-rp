@@ -31,6 +31,9 @@ export function applyFold(session, { ledger, consumedAfter }) {
 export function resetLedger(session) {
   session.ledger = "";
   session.consumed = 0;
+  session.ledgerTruncated = false;
+  session.ledgerOverflowReported = false;
+  session.ledgerCondensedReported = false;
 }
 
 /** Stores the provider's usage report for the turn. */

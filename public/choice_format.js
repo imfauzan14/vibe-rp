@@ -27,7 +27,7 @@ const INVISIBLE_RE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u200B-\u200F
 // A leading list marker the model may add despite being told not to: "- ", "* ",
 // "1. ", "1) ", "[1] ", "(1) ", "• ". The bracketed and punctuated forms are
 // separate alternatives so "2 apples" is left alone (no bare-number marker).
-const LEADING_MARKER_RE = /^\s*(?:[-*\u2022\u2013\u2014]|\[\d{1,2}\]|\(\d{1,2}\)|\d{1,2}[.)])\s+/;
+const LEADING_MARKER_RE = /^\s*(?:[-*\u2022\u2013\u2014]|\[\d{1,2}\]|\(\d{1,2}\)|\d{1,2}[.)]|(?:Option|Choice)\s+(?:\d{1,2}|[A-Za-z])[.:)]|(?:Option|Choice|\b[A-Za-z]\b)[.:)]|[A-Za-z]\))\s+/i;
 const WRAPPING_QUOTES = [
   ['"', '"'],
   ["'", "'"],
@@ -111,13 +111,18 @@ export function normalizeChoiceText(value) {
   // A choice is one line: any newline, tab or run of whitespace becomes a space.
   text = text.replace(/[\r\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
   text = text.replace(LEADING_MARKER_RE, "").trim();
-  // A model sometimes wraps the whole line in quotes; the quotes are the
-  // model's punctuation, not part of the action.
+  // A model sometimes wraps the whole line in quotes or markdown asterisks;
+  // these are punctuation, not part of the action.
   for (const [open, close] of WRAPPING_QUOTES) {
     if (text.length > 1 && text.startsWith(open) && text.endsWith(close)) {
       text = text.slice(open.length, text.length - close.length);
       break;
     }
+  }
+  if (text.length > 4 && text.startsWith("**") && text.endsWith("**")) {
+    text = text.slice(2, -2).trim();
+  } else if (text.length > 2 && text.startsWith("*") && text.endsWith("*")) {
+    text = text.slice(1, -1).trim();
   }
   return text.trim();
 }
@@ -137,32 +142,59 @@ function dedupeKey(text) {
 }
 
 /**
- * Returns the first balanced JSON object or array in `text`, respecting string
- * literals and escapes so a brace inside a quoted choice cannot close it early.
- * Returns null when there is no complete slice.
+ * Searches for valid choice arrays inside JSON blocks, checking markdown code
+ * blocks first and scanning balanced JSON slices so preliminary metadata
+ * or thought objects (e.g. {"thought": "..."}) do not preempt the real choices.
  */
-function firstJsonSlice(text) {
-  const start = text.search(/[[{]/);
-  if (start === -1) return null;
-  const open = text[start];
-  const close = open === "{" ? "}" : "]";
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-  for (let i = start; i < text.length; i += 1) {
-    const ch = text[i];
-    if (inString) {
-      if (escaped) escaped = false;
-      else if (ch === "\\") escaped = true;
-      else if (ch === '"') inString = false;
-      continue;
+function findValidChoiceList(text) {
+  const blockMatches = text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi);
+  for (const m of blockMatches) {
+    const inner = m[1].trim();
+    try {
+      const parsed = JSON.parse(inner);
+      const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.choices) ? parsed.choices : null;
+      if (list && list.length > 0) return list;
+    } catch {}
+  }
+
+  let i = 0;
+  while (i < text.length) {
+    const nextStart = text.slice(i).search(/[[{]/);
+    if (nextStart === -1) break;
+    const start = i + nextStart;
+    const open = text[start];
+    const close = open === "{" ? "}" : "]";
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    let matched = false;
+
+    for (let j = start; j < text.length; j += 1) {
+      const ch = text[j];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (ch === "\\") escaped = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') inString = true;
+      else if (ch === open) depth += 1;
+      else if (ch === close) {
+        depth -= 1;
+        if (depth === 0) {
+          const slice = text.slice(start, j + 1);
+          try {
+            const parsed = JSON.parse(slice);
+            const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.choices) ? parsed.choices : null;
+            if (list && list.length > 0) return list;
+          } catch {}
+          i = j + 1;
+          matched = true;
+          break;
+        }
+      }
     }
-    if (ch === '"') inString = true;
-    else if (ch === open) depth += 1;
-    else if (ch === close) {
-      depth -= 1;
-      if (depth === 0) return text.slice(start, i + 1);
-    }
+    if (!matched) i = start + 1;
   }
   return null;
 }
@@ -191,18 +223,9 @@ function entryItem(entry) {
 function extractItems(raw) {
   // Strip internal <thought>, <think>, and <reasoning> scratchpad blocks before extracting choices
   const clean = typeof raw === "string" ? stripThoughtBlocks(raw) : "";
-  const slice = firstJsonSlice(clean);
-  if (slice) {
-    let parsed = null;
-    try {
-      parsed = JSON.parse(slice);
-    } catch {
-      parsed = null;
-    }
-    if (parsed) {
-      const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed.choices) ? parsed.choices : null;
-      if (list) return list.map(entryItem).filter(Boolean);
-    }
+  const list = findValidChoiceList(clean);
+  if (list && list.length > 0) {
+    return list.map(entryItem).filter(Boolean);
   }
   // Fallback: one candidate per non-empty line, fences and headings skipped.
   // Only used when it yields an actual list: a single line is far more likely

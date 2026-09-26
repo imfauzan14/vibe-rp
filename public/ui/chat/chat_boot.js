@@ -169,13 +169,17 @@
       });
       if (!ok) return;
       const source = controller.activeSession;
+      const sourceConsumed = Number(source.consumed) || 0;
+      // If the fork branches before the fold boundary, the prior ledger
+      // describes messages that were pruned from this fork. Reset to clean bounds.
+      const retainsFold = Boolean(source.ledger && sourceConsumed > 0 && idx >= sourceConsumed - 1);
       const forked = {
         id: `sess_${Date.now()}`,
         cardId: source.cardId,
         title: `${source.title || "Chat"} (fork)`,
         messages: messages.slice(0, idx + 1).map((m) => ({ ...m })),
-        ledger: source.ledger || "",
-        consumed: Number(source.consumed) || 0,
+        ledger: retainsFold ? (source.ledger || "") : "",
+        consumed: retainsFold ? sourceConsumed : 0,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };

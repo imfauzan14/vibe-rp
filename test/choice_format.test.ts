@@ -54,6 +54,11 @@ describe("choice parser - the instructed shape", () => {
       "1. Ask about the letter\n2. Stay silent\n3. Leave",
       ["Ask about the letter", "Stay silent", "Leave"],
     ],
+    [
+      "preliminary JSON metadata block before choices",
+      'Here is the analysis:\n{"thought":"Player is cornered","urgency":"high"}\n\nChoices:\n{"choices":[{"text":"Draw weapon."},{"text":"Flee down the hall."}]}',
+      ["Draw weapon.", "Flee down the hall."],
+    ],
   ])("parses %s", (_name, input, expected) => {
     expect(parseChoices(input).choices.map((c) => c.text)).toEqual(expected);
   });
@@ -90,9 +95,9 @@ describe("choice parser - validation and sanitation", () => {
       ["Ask about the letter.", "Leave."],
     ],
     [
-      "strips list markers and wrapping quotes",
-      '{"choices":[{"text":"- Do the thing"},{"text":"\\u2022 Another thing"},{"text":"[2] Bracket thing"},{"text":"\\"Quoted thing\\""}]}',
-      ["Do the thing", "Another thing", "Bracket thing", "Quoted thing"],
+      "strips list markers, option labels, asterisks, and wrapping quotes",
+      '{"choices":[{"text":"Option A: Do the thing"},{"text":"Choice 2: Another thing"},{"text":"*Action in asterisks*"},{"text":"**Bold action**"},{"text":"\\"Quoted thing\\""}]}',
+      ["Do the thing", "Another thing", "Action in asterisks", "Bold action", "Quoted thing"],
     ],
     [
       "collapses a multi-line entry into one line",

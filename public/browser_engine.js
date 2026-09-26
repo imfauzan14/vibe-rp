@@ -1240,7 +1240,7 @@ export class BrowserChatEngine {
     const contentType = (res.headers?.get?.("content-type") || "").toLowerCase();
     const isJsonBody = contentType.includes("application/json");
 
-    const decoder = utf8Decoder;
+    const decoder = new TextDecoder();
     let buffer = "";
     let usage = null;
     let finishReason = null;
@@ -1295,7 +1295,7 @@ export class BrowserChatEngine {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        buffer += utf8Decoder.decode(value, { stream: true });
+        buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() || "";
         for (const line of lines) {

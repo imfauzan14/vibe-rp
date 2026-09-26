@@ -38,7 +38,7 @@ export async function parseCardFile(file) {
   }
   if (ext === "png" || ext === "webp") {
     const buffer = await file.arrayBuffer();
-    const raw = ext === "png" ? parsePngChara(buffer) : parseWebpChara(buffer);
+    const raw = ext === "png" ? await parsePngChara(buffer) : parseWebpChara(buffer);
     if (!raw) {
       throw new Error(
         `No character data embedded in this ${ext.toUpperCase()}. On chub.ai, export as PNG (V2) or JSON.`

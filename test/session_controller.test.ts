@@ -162,6 +162,47 @@ describe("SessionController - send flow with fake engine + db", () => {
     expect(last.messages.some(m => m.content === "Hello world!")).toBe(true);
     expect(last.updatedAt).toBeGreaterThanOrEqual(0);
   });
+  test("switchSession aborts in-flight turn and targetSession retains its own messages without cross-session pollution", async () => {
+    let resolveStream: ((val: string) => void) | null = null;
+    const slowEngine = {
+      calls: [] as unknown[],
+      streamTurn(opts: unknown) {
+        slowEngine.calls.push(opts);
+        return new Promise<string>((res) => {
+          resolveStream = res;
+        });
+      },
+    };
+    const { ctl } = await makeController({ engine: slowEngine });
+    const session1 = ctl.activeSession;
+    const session2 = {
+      id: "sess_2",
+      cardId: session1.cardId,
+      title: "Second chat",
+      messages: [{ id: "m2", role: "assistant", content: "Hi from 2", timestamp: Date.now() }],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    ctl.sessions.push(session2);
+
+    // Start turn on session1
+    const streamPromise = ctl.streamResponse("prompt 1", () => {}, () => {}, { persistPending: false });
+    expect(ctl.activeSession).toBe(session1);
+    expect(session1.messages.length).toBe(2); // greeting + pending assistant
+    // Switch to session2 while stream is pending
+    ctl.switchSession(session2);
+    expect(ctl.activeSession).toBe(session2);
+
+    // Complete stream
+    resolveStream!("Reply for session 1");
+    await streamPromise;
+
+    // Session 1 got the reply cleanly
+    expect(session1.messages.at(-1)?.content).toBe("Reply for session 1");
+    // Session 2 was not polluted by session 1's reply
+    expect(session2.messages.length).toBe(1);
+    expect(session2.messages[0].content).toBe("Hi from 2");
+  });
 });
 
 describe("SessionController - ensemble greeting", () => {

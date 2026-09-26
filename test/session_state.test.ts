@@ -32,11 +32,20 @@ describe("applyFold", () => {
 });
 
 describe("resetLedger", () => {
-  test("clears ledger and consumed regardless of prior state", () => {
-    const session = { ledger: "prior facts", consumed: 7 };
+  test("clears ledger, consumed, and notice latches regardless of prior state", () => {
+    const session = {
+      ledger: "prior facts",
+      consumed: 7,
+      ledgerTruncated: true,
+      ledgerOverflowReported: true,
+      ledgerCondensedReported: true,
+    };
     resetLedger(session);
     expect(session.ledger).toBe("");
     expect(session.consumed).toBe(0);
+    expect(session.ledgerTruncated).toBe(false);
+    expect(session.ledgerOverflowReported).toBe(false);
+    expect(session.ledgerCondensedReported).toBe(false);
   });
 
   test("is idempotent on an already-empty session", () => {

@@ -4,9 +4,39 @@ import { utf8Decoder } from "./text.js";
 // No DOM/window/document references: pure byte/JSON parsing helpers.
 
 export function stripJsonComments(src) {
-  let out = "", inStr = false, esc = false;
+  let noComments = "", inStr = false, esc = false;
   for (let i = 0; i < src.length; i++) {
     const c = src[i];
+    if (inStr) {
+      noComments += c;
+      if (esc) esc = false;
+      else if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; noComments += c; continue; }
+    if (c === "/" && src[i + 1] === "/") {
+      while (i < src.length && src[i] !== "\n") i++;
+      noComments += "\n";
+      continue;
+    }
+    if (c === "/" && src[i + 1] === "*") {
+      i += 2;
+      while (i < src.length && !(src[i] === "*" && src[i + 1] === "/")) i++;
+      i++;
+      noComments += " ";
+      continue;
+    }
+    noComments += c;
+  }
+
+  // String-aware trailing comma removal: only drop commas outside of quoted strings
+  // that precede a closing brace or bracket.
+  let out = "";
+  inStr = false;
+  esc = false;
+  for (let i = 0; i < noComments.length; i++) {
+    const c = noComments[i];
     if (inStr) {
       out += c;
       if (esc) esc = false;
@@ -14,22 +44,21 @@ export function stripJsonComments(src) {
       else if (c === '"') inStr = false;
       continue;
     }
-    if (c === '"') { inStr = true; out += c; continue; }
-    if (c === "/" && src[i + 1] === "/") {
-      while (i < src.length && src[i] !== "\n") i++;
-      out += "\n";
+    if (c === '"') {
+      inStr = true;
+      out += c;
       continue;
     }
-    if (c === "/" && src[i + 1] === "*") {
-      i += 2;
-      while (i < src.length && !(src[i] === "*" && src[i + 1] === "/")) i++;
-      i++;
-      out += " ";
-      continue;
+    if (c === ",") {
+      let j = i + 1;
+      while (j < noComments.length && /\s/.test(noComments[j])) j++;
+      if (j < noComments.length && (noComments[j] === "}" || noComments[j] === "]")) {
+        continue;
+      }
     }
     out += c;
   }
-  return out.replace(/,\s*([}\]])/g, "$1");
+  return out;
 }
 
 // HTML in definition fields (source sites, exported cards) is inert junk here:
@@ -137,6 +166,16 @@ export function parseJsonLoose(text) {
 
 const latin1Decoder = new TextDecoder("latin1");
 
+export function decodeBase64Utf8(b64) {
+  try {
+    const bin = atob(b64);
+    const u8 = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    return new TextDecoder().decode(u8);
+  } catch {
+    return null;
+  }
+}
+
 export async function inflateDecompress(u8) {
   const ds = new DecompressionStream("deflate");
   const stream = new Blob([u8]).stream().pipeThrough(ds);
@@ -144,7 +183,7 @@ export async function inflateDecompress(u8) {
   return utf8Decoder.decode(out);
 }
 
-export function parsePngChara(buf) {
+export async function parsePngChara(buf) {
   const view = new DataView(buf);
   if (view.byteLength < 8 || view.getUint32(0) !== 0x89504e47) return null;
   const bytes = new Uint8Array(buf);
@@ -165,14 +204,18 @@ export function parsePngChara(buf) {
         const rest = data.subarray(k + 1);
         if (type === "tEXt") {
           const raw = latin1Decoder.decode(rest).trim();
-          // chub.ai encodes as base64; fall back to direct parse for plain-JSON embeds
-          try { return parseJsonLoose(atob(raw)); } catch { return parseJsonLoose(raw); }
+          const decoded = decodeBase64Utf8(raw);
+          return (decoded && parseJsonLoose(decoded)) || parseJsonLoose(raw);
         }
         if (type === "zTXt") {
-          return inflateDecompress(rest.subarray(1)).then((raw) => {
+          try {
+            const raw = await inflateDecompress(rest.subarray(1));
             const clean = String(raw || "").trim();
-            try { return parseJsonLoose(atob(clean)); } catch { return parseJsonLoose(clean); }
-          }).catch(() => null);
+            const decoded = decodeBase64Utf8(clean);
+            return (decoded && parseJsonLoose(decoded)) || parseJsonLoose(clean);
+          } catch {
+            return null;
+          }
         }
         // iTXt: compressionFlag(1) compressionMethod(1) lang\0 translated\0 [compressed] text
         const cflag = rest[0];
@@ -181,13 +224,18 @@ export function parsePngChara(buf) {
         while (p < rest.length && rest[p] !== 0) p++; p++;
         const payload = rest.subarray(p);
         if (cflag) {
-          return inflateDecompress(payload).then((raw) => {
+          try {
+            const raw = await inflateDecompress(payload);
             const clean = String(raw || "").trim();
-            try { return parseJsonLoose(atob(clean)); } catch { return parseJsonLoose(clean); }
-          }).catch(() => null);
+            const decoded = decodeBase64Utf8(clean);
+            return (decoded && parseJsonLoose(decoded)) || parseJsonLoose(clean);
+          } catch {
+            return null;
+          }
         }
-        const text = utf8Decoder.decode(payload).trim();
-        try { return parseJsonLoose(atob(text)); } catch { return parseJsonLoose(text); }
+        const text = new TextDecoder().decode(payload).trim();
+        const decoded = decodeBase64Utf8(text);
+        return (decoded && parseJsonLoose(decoded)) || parseJsonLoose(text);
       }
     }
     off = dataEnd + 4; // skip CRC
@@ -198,19 +246,25 @@ export function parsePngChara(buf) {
 export function tryExtractBase64Json(str) {
   const clean = String(str).replace(/\0/g, "").trim().replace(/^exif:\s*/i, "");
   if (!clean) return null;
-  // Strategy 1: whole chunk is base64-encoded JSON
-  try {
-    const json = JSON.parse(atob(clean));
-    if (json && typeof json === "object") return normalizeCard(json);
-  } catch { /* fall through */ }
+  // Strategy 1: whole chunk is base64-encoded JSON (UTF-8 safe)
+  const decoded1 = decodeBase64Utf8(clean);
+  if (decoded1) {
+    try {
+      const json = JSON.parse(decoded1);
+      if (json && typeof json === "object") return normalizeCard(json);
+    } catch { /* fall through */ }
+  }
   // Strategy 2: substring base64 scan (some encoders wrap with header bytes)
   const b64Match = clean.match(/[A-Za-z0-9+/]{40,}={0,2}/g);
   if (b64Match) {
     for (const seg of b64Match) {
-      try {
-        const json = JSON.parse(atob(seg));
-        if (json && typeof json === "object" && json.name) return normalizeCard(json);
-      } catch { /* continue */ }
+      const segDecoded = decodeBase64Utf8(seg);
+      if (segDecoded) {
+        try {
+          const json = JSON.parse(segDecoded);
+          if (json && typeof json === "object" && (json.name || json.data?.name)) return normalizeCard(json);
+        } catch { /* continue */ }
+      }
     }
   }
   // Strategy 3: chunk is raw JSON
@@ -221,16 +275,15 @@ export function tryExtractBase64Json(str) {
   return null;
 }
 
-export function scanExifIfdForChara(bytes, view, ifdStart, littleEndian) {
+export function scanExifIfdForChara(bytes, view, ifdStart, littleEndian, exifStart = 0) {
   // Minimal EXIF IFD entry scanner: look for UserComment tag 0x9286
   try {
     const entryCount = view.getUint16(ifdStart, littleEndian);
     for (let i = 0; i < entryCount; i++) {
       const entryOff = ifdStart + 2 + i * 12;
-      if (entryOff + 12 > bytes.length) break;
+      if (entryOff + 12 > view.byteLength) break;
       const tag = view.getUint16(entryOff, littleEndian);
       if (tag !== 0x9286) continue; // UserComment
-      const dataType = view.getUint16(entryOff + 2, littleEndian);
       const count = view.getUint32(entryOff + 4, littleEndian);
       let dataOff;
       if (count > 4) {
@@ -238,10 +291,12 @@ export function scanExifIfdForChara(bytes, view, ifdStart, littleEndian) {
       } else {
         dataOff = entryOff + 8;
       }
-      if (dataOff + count > bytes.length) break;
+      const start = exifStart + dataOff + 8;
+      const end = exifStart + dataOff + count;
+      if (end > bytes.length) break;
       // UserComment starts with 8-byte charset code (ASCII\0\0\0 or UNICODE\0 etc)
-      const payload = bytes.subarray(dataOff + 8, dataOff + count);
-      const text = utf8Decoder.decode(payload).replace(/\0/g, "").trim();
+      const payload = bytes.subarray(start, end);
+      const text = new TextDecoder().decode(payload).replace(/\0/g, "").trim();
       if (text) {
         const result = tryExtractBase64Json(text);
         if (result) return result;
@@ -280,7 +335,7 @@ export function parseWebpChara(buf) {
             const ifd0Offset = view.getUint32(exifStart + 4, le);
             const ifd0Start = exifStart + ifd0Offset;
             if (ifd0Start < dataEnd) {
-              const result = scanExifIfdForChara(bytes, new DataView(buf, exifStart), ifd0Offset, le);
+              const result = scanExifIfdForChara(bytes, new DataView(buf, exifStart), ifd0Offset, le, exifStart);
               if (result) return result;
             }
           }

@@ -203,6 +203,7 @@ class IdbStore {
       tx.objectStore("cards").put(card);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(IdbStore.#wrapStorageError(tx.error, "saveCard"));
+      tx.onabort = () => reject(IdbStore.#wrapStorageError(tx.error, "saveCard"));
     });
   }
 
@@ -213,6 +214,7 @@ class IdbStore {
       tx.objectStore("sessions").put(session);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(IdbStore.#wrapStorageError(tx.error, "saveSession"));
+      tx.onabort = () => reject(IdbStore.#wrapStorageError(tx.error, "saveSession"));
     });
   }
 
@@ -266,6 +268,7 @@ class IdbStore {
       tx.objectStore("sessions").delete(sessionId);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(IdbStore.#wrapStorageError(tx.error, "deleteSession"));
+      tx.onabort = () => reject(IdbStore.#wrapStorageError(tx.error, "deleteSession"));
     });
   }
 
@@ -295,6 +298,7 @@ class IdbStore {
       tx.objectStore("sessions").clear();
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(IdbStore.#wrapStorageError(tx.error, "clearAllSessions"));
+      tx.onabort = () => reject(IdbStore.#wrapStorageError(tx.error, "clearAllSessions"));
     });
   }
 
@@ -306,6 +310,7 @@ class IdbStore {
       tx.objectStore("sessions").clear();
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(IdbStore.#wrapStorageError(tx.error, "clearAllCards"));
+      tx.onabort = () => reject(IdbStore.#wrapStorageError(tx.error, "clearAllCards"));
     });
   }
 
@@ -331,6 +336,7 @@ class IdbStore {
 
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(IdbStore.#wrapStorageError(tx.error, "importRows"));
+      tx.onabort = () => reject(IdbStore.#wrapStorageError(tx.error, "importRows"));
     });
   }
 }
