@@ -358,7 +358,7 @@ export class SessionController {
         session: this.activeSession,
         settings: this.settings,
         persona: this.currentPersona,
-        agentsContract: this.currentDirective?.content || this.settings.agentsContract,
+        agentsContract: this.currentDirective ? (this.currentDirective.content ?? "") : (this.settings.agentsContract ?? ""),
         userPrompt: promptHint,
         signal,
         onChunk: (chunk, notice) => {
@@ -633,7 +633,7 @@ export class SessionController {
         session: this.activeSession,
         settings: this.settings,
         persona: this.currentPersona,
-        agentsContract: this.currentDirective?.content || this.settings.agentsContract,
+        agentsContract: this.currentDirective ? (this.currentDirective.content ?? "") : (this.settings.agentsContract ?? ""),
         count,
         charName: this.charName,
         playerName: this.currentPersona?.name || "the player",

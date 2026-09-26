@@ -201,8 +201,8 @@ const LEDGER_FRAMING_TOKENS = ledgerFramingTokens();
  */
 export function substituteCardPlaceholders(text, card, persona) {
   if (!text) return "";
-  const cName = card ? card.data?.name || card.name : "";
-  const uName = persona && persona.name ? persona.name : "";
+  const cName = String(card ? card.data?.name || card.name || "" : "").trim();
+  const uName = String(persona?.name || "").trim();
   return substitutePlaceholders(text, { user: uName || "User", char: cName || "Character" });
 }
 
@@ -354,11 +354,23 @@ export function buildSystemSections(card, persona, settings = {}) {
     });
   }
 
-  if (persona && persona.name) {
-    const pName = renderInlineField(sub(persona.name));
-    const pDesc = sub(persona.description || "");
-    const template = persona.template ? `\n${sub(String(persona.template).trim())}` : "";
-    sections.push({ id: "persona", text: `[User Persona: ${pName}]\n${pDesc}${template}`, required: true, priority: 950 });
+  const rawPersonaName = String(persona?.name || "").trim();
+  const rawPersonaDesc = String(persona?.description || persona?.persona || persona?.content || "").trim();
+  const rawPersonaTemplate = String(persona?.template || "").trim();
+
+  if (rawPersonaName || rawPersonaDesc || rawPersonaTemplate) {
+    const pName = renderInlineField(sub(rawPersonaName || (rawPersonaDesc ? "User" : "")));
+    const pBodyParts = [rawPersonaDesc ? sub(rawPersonaDesc) : "", rawPersonaTemplate ? sub(rawPersonaTemplate) : ""].filter(Boolean);
+    const pBody = pBodyParts.join("\n");
+    let text = "";
+    if (pName && pBody) {
+      text = `[User Persona: ${pName}]\n${pBody}`;
+    } else if (pName) {
+      text = `[User Persona: ${pName}]`;
+    } else {
+      text = `[User Persona]\n${pBody}`;
+    }
+    sections.push({ id: "persona", text, required: true, priority: 950 });
   }
 
   // Cross-lingual adaptation & epistemic boundaries split into two sections:
@@ -372,7 +384,8 @@ export function buildSystemSections(card, persona, settings = {}) {
   //   demeanor. Important but gracefully degradable — the running ledger
   //   tracks who knows what, so dropping it never breaks session state.
   //   Priority 20: yields after mes_example under pressure.
-  if (persona?.name || contract) {
+  const hasPersona = Boolean(rawPersonaName || rawPersonaDesc || rawPersonaTemplate);
+  if (hasPersona || contract) {
     sections.push({
       id: "operationalPrecedence",
       text:
@@ -507,8 +520,9 @@ export function planChoiceRequest({
   }
 
   let personaHint = "";
-  if (persona && persona.name) {
-    const pDesc = persona.description ? substituteCardPlaceholders(persona.description, card, persona).replace(/\s+/g, " ").trim() : "";
+  if (persona) {
+    const rawDesc = persona.description || persona.persona || persona.content || "";
+    const pDesc = rawDesc ? substituteCardPlaceholders(rawDesc, card, persona).replace(/\s+/g, " ").trim() : "";
     const pTemplate = persona.template ? substituteCardPlaceholders(persona.template, card, persona).replace(/\s+/g, " ").trim() : "";
     const combined = [pDesc, pTemplate].filter(Boolean).join(" ");
     if (combined) {
@@ -796,7 +810,10 @@ export class BrowserChatEngine {
       }
       postHistoryInstructions = typeof arg4 === "string" ? arg4 : "";
     }
-    const payload = [{ role: "system", content: systemPrompt }];
+    const payload = [];
+    if (typeof systemPrompt === "string" && systemPrompt.trim()) {
+      payload.push({ role: "system", content: systemPrompt.trim() });
+    }
     if (ledger) payload.push({ role: "user", content: `${LEDGER_OPEN}${ledger}${LEDGER_CLOSE}` });
     for (const msg of history || []) {
       if (!msg || !msg.content) continue;
@@ -1468,8 +1485,15 @@ export class BrowserChatEngine {
    * array that will be sent, and `inputTokens` is its measured size.
    */
   static planRequest({ card, session, settings, persona, agentsContract, window = null }) {
-    const activePersona = persona || { name: "You" };
-    const activeSettings = agentsContract ? { ...settings, agentsContract } : settings;
+    const hasPersonaContent = Boolean(
+      persona && (
+        String(persona.name || "").trim() ||
+        String(persona.description || persona.persona || persona.content || "").trim() ||
+        String(persona.template || "").trim()
+      )
+    );
+    const activePersona = hasPersonaContent ? persona : null;
+    const activeSettings = agentsContract !== undefined ? { ...settings, agentsContract } : settings;
     const budgets = this.resolveBudgets(activeSettings);
     const contextWindow = Math.max(0, Number(window) || budgets.contextWindow);
 
@@ -1651,8 +1675,15 @@ export class BrowserChatEngine {
    * and nothing leaves the payload without being summarized first.
    */
   static async streamTurn({ card, session, settings, persona, agentsContract, onChunk, onNotice, signal }) {
-    const activePersona = persona || { name: "You" };
-    const activeSettings = agentsContract ? { ...settings, agentsContract } : settings;
+    const hasPersonaContent = Boolean(
+      persona && (
+        String(persona.name || "").trim() ||
+        String(persona.description || persona.persona || persona.content || "").trim() ||
+        String(persona.template || "").trim()
+      )
+    );
+    const activePersona = hasPersonaContent ? persona : null;
+    const activeSettings = agentsContract !== undefined ? { ...settings, agentsContract } : settings;
     const budgets = this.resolveBudgets(activeSettings);
     const all = Array.isArray(session.messages) ? session.messages : [];
     const consumed = Math.max(1, Number(session.consumed) || 1);
@@ -1840,8 +1871,16 @@ export class BrowserChatEngine {
     playerName = "",
     signal,
   } = {}) {
-    const activeSettings = agentsContract ? { ...settings, agentsContract } : settings;
-    const request = planChoiceRequest({ card, session, settings: activeSettings, persona, count, charName, playerName });
+    const hasPersonaContent = Boolean(
+      persona && (
+        String(persona.name || "").trim() ||
+        String(persona.description || persona.persona || persona.content || "").trim() ||
+        String(persona.template || "").trim()
+      )
+    );
+    const activePersona = hasPersonaContent ? persona : null;
+    const activeSettings = agentsContract !== undefined ? { ...settings, agentsContract } : settings;
+    const request = planChoiceRequest({ card, session, settings: activeSettings, persona: activePersona, count, charName, playerName });
     const { base, headers } = this.#resolveEndpoint(activeSettings);
 
     const choiceModel = String(activeSettings.choiceModel || activeSettings.model || "").trim();

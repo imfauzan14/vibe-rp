@@ -431,7 +431,7 @@
         session: sess || { messages: [], ledger: "", consumed: 1 },
         settings: controller.settings,
         persona: controller.currentPersona,
-        agentsContract: controller.currentDirective?.content || controller.settings.agentsContract,
+        agentsContract: controller.currentDirective ? (controller.currentDirective.content ?? "") : (controller.settings.agentsContract ?? ""),
       });
       const b = request.breakdown;
       const window = request.contextWindow;

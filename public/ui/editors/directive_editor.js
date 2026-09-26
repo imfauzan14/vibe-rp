@@ -41,8 +41,7 @@ export function openDirectiveEditor({ directive = null, onSave, host } = {}) {
     class: "rp-textarea rp-textarea--mono",
     rows: 10,
     value: directive?.content || "",
-    placeholder: "System prompt instructions, bans and formatting rules.",
-    attrs: { required: "" },
+    placeholder: "System prompt instructions, bans and formatting rules (leave empty for no system prompt).",
   });
 
   const error = el("p", { class: "rp-error", hidden: true });

@@ -124,3 +124,116 @@ describe("Default Generation Parameters", () => {
     expect(b.promptBudget).toBeGreaterThan(32768 * 0.5);
   });
 });
+
+describe("Empty & Simple System Prompts, Personas, and Cards Contract", () => {
+  test("formatSystemPrompt with empty contract and empty persona outputs only character section", () => {
+    const card = { data: { name: "Aria", description: "A wandering knight." } };
+    const prompt = BrowserChatEngine.formatSystemPrompt(card, null, { agentsContract: "" });
+    expect(prompt).toContain("### CHARACTER IN SCENE: Aria");
+    expect(prompt).toContain("[Description: A wandering knight.]");
+    expect(prompt).not.toContain("[User Persona");
+    expect(prompt).not.toContain("Operational Precedence:");
+    expect(prompt).not.toContain("Epistemic Boundary");
+  });
+
+  test("formatSystemPrompt with simple name-only persona has no trailing dangling newline", () => {
+    const card = { data: { name: "Aria" } };
+    const prompt = BrowserChatEngine.formatSystemPrompt(card, { name: "Rowan" }, { agentsContract: "" });
+    expect(prompt).toContain("[User Persona: Rowan]");
+    expect(prompt).not.toMatch(/\[User Persona: Rowan\]\n(?!\n)/); // No single trailing newline before next block
+    expect(prompt).toContain("Operational Precedence:");
+    expect(prompt).toContain("Epistemic Boundary");
+  });
+
+  test("formatSystemPrompt with description-only persona defaults name to User and preserves description", () => {
+    const card = { data: { name: "Aria" } };
+    const prompt = BrowserChatEngine.formatSystemPrompt(card, { description: "A tired cartographer." }, { agentsContract: "" });
+    expect(prompt).toContain("[User Persona: User]\nA tired cartographer.");
+    expect(prompt).toContain("Operational Precedence:");
+  });
+
+  test("formatSystemPrompt with whitespace persona omits persona section completely", () => {
+    const card = { data: { name: "Aria" } };
+    const prompt = BrowserChatEngine.formatSystemPrompt(card, { name: "   ", description: "" }, { agentsContract: "" });
+    expect(prompt).not.toContain("[User Persona");
+    expect(prompt).not.toContain("Operational Precedence");
+  });
+
+  test("formatSystemPrompt with minimal contract and null persona includes contract and operational boundaries", () => {
+    const card = { data: { name: "Aria" } };
+    const prompt = BrowserChatEngine.formatSystemPrompt(card, null, { agentsContract: "Speak in short sentences." });
+    expect(prompt).toContain("Speak in short sentences.");
+    expect(prompt).toContain("### CHARACTER IN SCENE: Aria");
+    expect(prompt).not.toContain("[User Persona");
+    expect(prompt).toContain("Operational Precedence:");
+  });
+
+  test("formatSystemPrompt with null card and null persona falls back to default character", () => {
+    const prompt = BrowserChatEngine.formatSystemPrompt(null, null, { agentsContract: "" });
+    expect(prompt).toBe("### CHARACTER IN SCENE: Character");
+  });
+
+  test("assembleMessages omits empty system message when system prompt is empty or whitespace", () => {
+    const messages = [{ role: "user", content: "Hello!" }];
+    const payloadEmpty = BrowserChatEngine.assembleMessages("", messages, "", "");
+    expect(payloadEmpty).toHaveLength(1);
+    expect(payloadEmpty[0].role).toBe("user");
+    expect(payloadEmpty[0].content).toBe("Hello!");
+
+    const payloadWhitespace = BrowserChatEngine.assembleMessages("   \n  ", messages, "", "");
+    expect(payloadWhitespace).toHaveLength(1);
+    expect(payloadWhitespace[0].role).toBe("user");
+  });
+
+  test("assembleMessages keeps non-empty system prompt as head", () => {
+    const messages = [{ role: "user", content: "Hello!" }];
+    const payload = BrowserChatEngine.assembleMessages("Direct system prompt.", messages, "", "");
+    expect(payload).toHaveLength(2);
+    expect(payload[0].role).toBe("system");
+    expect(payload[0].content).toBe("Direct system prompt.");
+  });
+
+  test("planRequest with null persona and empty contract does not synthesize [User Persona: You]", () => {
+    const plan = BrowserChatEngine.planRequest({
+      card: { data: { name: "Elena" } },
+      session: { messages: [{ role: "user", content: "Hi" }] },
+      settings: { maxContextTokens: 8192, maxTokens: 500 },
+      persona: null,
+      agentsContract: "",
+    });
+    expect(plan.systemPrompt).not.toContain("[User Persona");
+    expect(plan.systemPrompt).not.toContain("Operational Precedence");
+    expect(plan.breakdown.persona).toBe(0);
+    expect(plan.payload[0].role).toBe("system");
+    expect(plan.payload[0].content).toBe("### CHARACTER IN SCENE: Elena");
+    expect(plan.impossible).toBe(false);
+  });
+
+  test("planChoiceRequest with null persona and empty contract provides clean defaults", () => {
+    const req = BrowserChatEngine.planChoiceRequest({
+      card: { data: { name: "Elena" } },
+      session: { messages: [{ role: "user", content: "Hi" }] },
+      settings: { maxContextTokens: 8192, maxTokens: 500, agentsContract: "" },
+      persona: null,
+      count: 3,
+    });
+    const system = req.payload[0].content;
+    expect(system).toContain("Scene Context: Elena opposite the protagonist.");
+    expect(system).not.toContain("\nUser Persona (");
+    expect(system).not.toContain("System & Craft Directives");
+    expect(req.payload.at(-1)?.content).toContain("[the protagonist]");
+  });
+
+  test("planChoiceRequest with nameless persona description includes description under the protagonist", () => {
+    const req = BrowserChatEngine.planChoiceRequest({
+      card: { data: { name: "Elena" } },
+      session: { messages: [{ role: "user", content: "Hi" }] },
+      settings: { maxContextTokens: 8192, maxTokens: 500 },
+      persona: { description: "An apprentice healer." },
+      count: 3,
+    });
+    const system = req.payload[0].content;
+    expect(system).toContain("Scene Context: Elena opposite the protagonist.");
+    expect(system).toContain("User Persona (the protagonist): An apprentice healer.");
+  });
+});
