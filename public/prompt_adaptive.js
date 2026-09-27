@@ -127,7 +127,7 @@ export const PROSE_TICS = [
     // player is still writing paragraphs is a decay: the scene stops building.
     // Growth from the session's own earlier replies counts as decay too, which
     // catches a session that opened long and tapered off.
-    note: "The replies have narrowed to a couple of lines. Give this one a full beat: a paragraph of action, one of dialogue, and the reaction that follows.",
+    note: "Calibrate response depth to match the scene's dramatic momentum. Expand into physical presence, dialogue nuance, and immediate consequence rather than collapsing into brief exchanges.",
     count: (_text, replies, context = {}) => {
       const short = replies.filter((r) => countWords(r) < 70);
       if (short.length < 3) return 0;
@@ -140,7 +140,7 @@ export const PROSE_TICS = [
     id: "triads",
     priority: 52,
     threshold: 2,
-    note: "Break the three-item lists. Two specifics, or one, do more work than three in a row.",
+    note: "Vary syntactic structure. Favor one striking, concrete detail over predictable three-item series.",
     count: (text) => countMatches(text, /\b[\w'-]+,\s+[\w'-]+,\s+and\s+[\w'-]+/gi),
   },
   {
@@ -168,7 +168,7 @@ export const PROSE_TICS = [
     id: "uniformBlocks",
     priority: 42,
     threshold: 1,
-    note: "Paragraphs have settled into one length. Vary them: a one-line paragraph for the turn, a long one for the build.",
+    note: "Vary paragraph lengths to match dramatic pacing: sharp single lines for pivotal beats and expansive passages for atmospheric immersion.",
     count: (_text, replies) => {
       for (const reply of replies.slice(0, 3)) {
         const lengths = reply.split(/\n{2,}/).map((p) => countWords(p)).filter((n) => n > 0);
@@ -396,7 +396,7 @@ export function buildSceneGuidance(signals, { maxTokens = GUIDANCE_MAX_TOKENS, i
   add(
     "scope",
     96,
-    `- Write ${who} and the world around them. Describe ${player} only through what anyone present could see or hear, and stop where ${player} must choose or speak.`
+    `- Turn scope: Write ${who} and immediate environmental consequence. Perceive ${player} strictly through observable physical cues, and stop cleanly where ${player} must act or speak.`
   );
 
   // Prose corrections, least urgent first. They are the measured
@@ -430,7 +430,7 @@ export function buildSceneGuidance(signals, { maxTokens = GUIDANCE_MAX_TOKENS, i
   // generic-reminder tier (35-38%), the lock keeps the narrative register from
   // sliding, and the lane statement is the last thing the model reads.
   const dueForReinject = s.assistantTurns > 0 && s.assistantTurns % REINJECT_EVERY_TURNS === 0;
-  if (identity && (dueForReinject || s.folded)) add("reinject", 83, `- Stay ${who}: ${identity}`);
+  if (identity && (dueForReinject || s.folded)) add("reinject", 83, `- Persona anchor: Ground ${who}'s responses in their core psychological drivers, distinctive vocabulary, and established friction (${identity}). Never soften into bland compliance.`);
 
   const { pov, tense } = s.narration || {};
   if ((pov || tense) && s.assistantTurns >= 2) {
@@ -449,7 +449,7 @@ export function buildSceneGuidance(signals, { maxTokens = GUIDANCE_MAX_TOKENS, i
     add(
       "puppet",
       100,
-      `- An earlier reply wrote ${player} as a speaker. Give ${player} no lines, no thoughts, and no decisions; end the scene where their move belongs.`
+      `- Hard agency boundary: An earlier turn spoke for ${player}. Never write dialogue, thoughts, sensations, or actions for ${player}; end cleanly where their turn begins.`
     );
   }
 
