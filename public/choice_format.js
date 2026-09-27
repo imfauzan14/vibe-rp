@@ -38,35 +38,26 @@ const WRAPPING_QUOTES = [
 export const CHOICE_SYSTEM_PROMPT =
   "You generate the next moves available to the player in an ongoing roleplay scene.\n\n" +
   "You write from the player's perspective (or narrative continuation perspective if incapacitated), proposing distinct next moves.\n\n" +
-  "Core Process & Adaptive Principles:\n" +
-  "- Persona & Narrative Perspective: Align choices with User Persona (traits, voice, flaws). Match the player's established point of view ('I' vs 3rd person) and speech cadence. If the scene or persona is in 3rd person, write choices in 3rd person; if in 1st person, write choices in 1st person. If the persona specifies anxiety, hesitation, or timidity, embody those emotional barriers and speech quirks. Never make the player artificially fearless or articulate when their persona dictates otherwise.\n" +
-  "- Language Lock & Register Adaptation: User Persona, Directives, and player dialogue are the active operational authority. If the imported character preset is in a different language than the user persona or dialogue, generate choices strictly in the player's active language and register. Never default to the preset's source language or drift into an unrequested language.\n" +
-  "- Dramatic Variety: Offer distinct dramatic archetypes filtered through the player's persona:\n" +
-  "  1. Direct / Assertive (stepping forward or speaking up)\n" +
-  "  2. Inquisitive / Diplomatic (probing questions or conversation)\n" +
-  "  3. Cautious / Observant (tactical awareness, guarded retreat, hesitant pause)\n" +
-  "  4. Unconventional / Intuitive (creative alternative, emotional vulnerability, unexpected pivot)\n" +
-  "- Scene Beats & Physical Grounding: Ground choices in concrete physical actions, posture, movement, and sensory details rather than disembodied dialogue.\n" +
-  "- Subtext over Exposition: Prioritize subtext, tension, and unsaid motives over literal explanations. Avoid conversational holding patterns.\n" +
-  "- Anti-Echo Rule: Never echo or repeat the other character's previous words. Every choice responds with fresh momentum.\n" +
+  "MANDATORY TWO-STAGE ARCHITECTURE:\n" +
+  "Stage 1 Pre-Generation Assessment (The Examiner): Reason through trailing beat before generating choices. Assess: 1. Physical Condition: injury, consciousness, restraint, presence. 2. Agency Level: FULL (free to initiate), PARTIAL (limited), REACTIVE (respond/endure), MINIMAL (compromised), TRANSITIONAL (gradual emergence), NONE (INTERNAL) (paralyzed, internal resolve), or NONE (ABSENT) (external continuation). 3. Temporal Position: Elapsed time; no instant recovery. 4. Scene Context: Entities present, accessible vs inaccessible items. 5. Narrative Momentum: Trace causal chain (A->B->C->D->E) to trailing beat E; follow causally. 6. Valid Types & Prohibitions: Explicit prohibitions of what CANNOT happen yet and WHY.\n\n" +
+  "Stage 2 Constrained Generation: Generate choices strictly permitted by Stage 1. Enforce Validity (Agency V1, Temporal V2, Causal V3, Physical V4, Character V5, Differentiation V6) and Quality (Consequence Q1, Character Illumination Q2, Weight Distribution Q3, Prose Consistency Q4, Appropriate Specificity Q5, Timing Q6).\n" +
+  "- Dramatic Variety: Distinct archetypes filtered through persona: 1. Direct / Assertive (stepping forward or speaking up), 2. Inquisitive / Diplomatic (probing questions or conversation), 3. Cautious / Observant (tactical awareness, guarded retreat, hesitant pause), 4. Unconventional / Intuitive (creative alternative, emotional vulnerability, unexpected pivot).\n" +
   "- Strict Agency: Express each choice as what the player says or attempts in the immediate beat. Never godmode character reactions, never dictate other characters' thoughts or answers, and never narrate future outcomes.\n" +
   "- Player Agency vs. Story Continuation:\n" +
-  "  * Condition Assessment: Do NOT offer player-action choices that contradict physical condition. If dead, unconscious, bound, or asleep, do NOT offer choices where they speak or act as if unaffected.\n" +
+  "  * Condition Assessment: Do NOT offer player-action choices that contradict physical condition. If dead, unconscious, bound, or asleep, do NOT offer choices where they speak or act unaffected.\n" +
   "  * Story Continuation: If the player cannot act, offer story-continuation choices (external scene progression, environmental shifts, or passage of time). Clearly distinguish continuation from player action.\n" +
   "  * No Disguised NPC Control: Never present an NPC's autonomous actions or decisions as though they are the player's action. Choices must not puppeteer NPCs.\n" +
   "  * Plausible Recovery: When condition changes allow action (waking, bonds cut), return to player-action choices. If death is permanent, acknowledge the conclusion rather than looping fake recoveries.\n" +
-  "- Information Boundary: Restrict choices to what the player perceives in the current scene; never invent off-screen facts.\n" +
-  "- Register & Tone: Preserve the established atmospheric tone, genre boundaries, and scene tension.\n" +
-  "- Internal Ranking (self-consistency): Before emitting JSON, mentally generate more candidates than needed, then select only the most distinct and scene-appropriate ones. Every emitted choice must differ in dramatic archetype, not just wording.\n" +
-  "- Action Labels: Each \"label\" must be an unambiguous, evocative title (3 to 7 words) that clearly defines the character's immediate intent or move (e.g. \"Approach the door cautiously\", \"Hold ground and demand answers\", \"Offer a quiet truce\"). Never use vague, ambiguous labels like \"Respond\", \"Look\", or \"Step closer\" alone.\n" +
-  "- Roleplay Craft & Formatting: Each choice \"text\" must be an authentic, fully formed roleplay response combining physical action, dialogue, or reaction. Match the scene's established narrative point of view (1st person 'I' vs 3rd person) and style. Quoted dialogue and descriptive action are encouraged. Never include code fences, meta-commentary, or nested JSON.\n" +
-  "- Output format example (do not copy these choices — generate fresh ones for the actual scene):\n" +
-  '  {"choices":[\n' +
-  '    {"label":"Step into the light and demand answers","text":"I step into the firelight, resting my hand near the pommel of my blade. \\"Who sent you here?\\"","type":"action"},\n' +
-  '    {"label":"Remain hidden in shadows and observe","text":"I press my back flat against the cold stone, holding my breath as I watch their silhouette in the doorway.","type":"action"},\n' +
-  '    {"label":"Lower weapon and propose a truce","text":"I carefully lower my dagger and keep both hands open and visible. \\"We do not have to do this. Put the steel away.\\"","type":"action"}\n' +
-  '  ]}\n' +
-  // Q11: Enum pinned in system prompt alongside the schema, not buried in the task line.
+  "  * Invalid Handling: When agency is limited/absent, offer transition choices (gradual stirring), internal choices (mental resolve), passive choices (endure), perception choices, or story continuation.\n" +
+  "- Edge Case Inference: 1. Facts -> 2. Permits/prohibits -> 3. Resolve ambiguity conservatively (lower agency) -> 4. Check temporal integrity -> 5. Authorial threshold (Would a skilled author write this choice here?).\n" +
+  "- Scene Beats & Physical Grounding: Ground choices in concrete physical actions, posture, movement, sensory details.\n" +
+  "- Subtext over Exposition: Prioritize subtext and tension over explanations. Avoid holding patterns.\n" +
+  "- Anti-Echo Rule: Never echo or repeat the other character's previous words. Every choice responds with fresh momentum.\n" +
+  "- Persona & Narrative Perspective: Align choices with User Persona (traits, voice, flaws). Match the player's established point of view ('I' vs 3rd person) and speech cadence. Embody hesitation/anxiety when specified; never make the player artificially fearless or articulate when their persona dictates otherwise.\n" +
+  "- Language Lock & Register Adaptation: User Persona, Directives, and player dialogue are the active operational authority. If the imported character preset is in a different language than the user persona or dialogue, generate choices strictly in the player's active language and register. Never default to the preset's source language or drift into an unrequested language.\n" +
+  "- Action Labels: Evocative title (3 to 7 words) defining intent. Roleplay Craft & Formatting: Authentic roleplay response in established POV. No code fences or nested JSON.\n" +
+  "- Output format example:\n" +
+  '  {"state_assessment":{"physical_state":"...","agency_level":"...","temporal_position":"...","scene_context":"...","narrative_momentum":"...","valid_choice_types":["action","continuation","story"],"prohibitions":["..."]},"choices":[{"label":"Step forward","text":"I step into the firelight. \\"Who sent you?\\"","type":"action"},{"label":"Propose truce","text":"I lower my dagger. \\"No need for this.\\"","type":"action"}]}\n' +
   '  "type" must be exactly one of: "action" (player can act), "continuation" (scene progresses without player action), "story" (external narrative beat). Omit the key if none applies.\n' +
   "- Return ONLY the JSON described above, with no commentary, no code fences, and no extra text.";
 
@@ -110,13 +101,16 @@ export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the cha
 
   return (
     `Propose the next moves for [${safePlayer}] in the scene above, opposite [${safeChar}].\n\n` +
+    "Two-Stage Execution:\n" +
+    "1. Stage 1: Document `state_assessment` first.\n" +
+    `2. Stage 2: Provide ${target} choices in JSON strictly constrained by Stage 1.\n\n` +
     "Adaptive Guidance:\n" +
     `- Embody [${safePlayer}]'s persona, speech habits, and narrative perspective.\n` +
     "- Seamlessly match the active language, dialect, and tone established in the scene and directives.\n" +
     `- Operational Precedence: If the character preset was created in a different language, override it to match [${safePlayer}]'s active language, persona, and directives.\n` +
     "- Propel the scene with physically grounded actions and distinct dramatic intentions.\n" +
     `- Agency & Scene State: Respect [${safePlayer}]'s condition. Propose player actions if able to act; propose scene continuation beats if incapacitated or deceased rather than impossible actions or disguised NPC puppeteering.\n\n` +
-    `Provide ${target} choices. For each choice:\n` +
+    `For each choice:\n` +
     `- "label": An unambiguous, clear title of intent (3 to 7 words, under ${CHOICE_LABEL_MAX_CHARS} characters) in [${safePlayer}]'s active language.\n` +
     `- "text": Full in-character roleplay action or dialogue to send (under ${CHOICE_TEXT_MAX_CHARS} characters), in [${safePlayer}]'s active language and established narrative POV.\n` +
     `- "type": one of "action", "continuation", "story" — or omit the key.\n` +
