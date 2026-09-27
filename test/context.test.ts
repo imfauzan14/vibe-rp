@@ -32,6 +32,9 @@ import {
   LEDGER_OPEN,
   LEDGER_CLOSE,
   ledgerFramingTokens,
+  buildSceneGuidance,
+  ensembleCast,
+  GUIDANCE_MAX_TOKENS,
 } from "../public/browser_engine.js";
 import { words, SSE_OK, presetOfTokens, captureGeneration, resetFetch } from "./helpers.js";
 
@@ -850,3 +853,120 @@ describe("user-authored inline fields cannot inject section headings", () => {
     expect(roster.text).not.toContain("r".repeat(161));
   });
 });
+
+describe("Adaptive steering - guidance assembly and budgeting", () => {
+  test("ensembleCast normalizes multi-format roster shapes and handles malformed members", () => {
+    // 1. extensions.group.members
+    const cardGroup = {
+      data: {
+        extensions: {
+          group: {
+            members: [
+              "Plain String Name",
+              { name: "Object Name", role: "Leader", voice: "Calm" },
+              { char_name: "Alt Char Name", description: "Scout" },
+              { character_name: "Alt Character Name", personality: "Wise" },
+              null,
+              { role: "nameless member" },
+            ],
+          },
+        },
+      },
+    };
+    const rosterGroup = ensembleCast(cardGroup);
+    expect(rosterGroup).toHaveLength(4);
+    expect(rosterGroup[0]).toEqual({ name: "Plain String Name", role: "", voice: "" });
+    expect(rosterGroup[1]).toEqual({ name: "Object Name", role: "Leader", voice: "Calm" });
+    expect(rosterGroup[2]).toEqual({ name: "Alt Char Name", role: "Scout", voice: "" });
+    expect(rosterGroup[3]).toEqual({ name: "Alt Character Name", role: "", voice: "Wise" });
+
+    // 2. card.characters and card.data.characters
+    const cardDirect = {
+      characters: ["Direct Member", { name: "Direct Obj" }],
+    };
+    expect(ensembleCast(cardDirect)).toHaveLength(2);
+
+    // 3. empty card or missing roster
+    expect(ensembleCast(null)).toEqual([]);
+    expect(ensembleCast({})).toEqual([]);
+  });
+
+  test("buildSceneGuidance respects dual-priority: text order vs survival trimming", () => {
+    // Construct signals that trigger multiple guidance items:
+    // - scope (keep: 96)
+    // - puppet (keep: 100)
+    // - reinject (keep: 83)
+    // - contrast tic (keep: 70)
+    // - triad tic (keep: 52)
+    const signals = {
+      charName: "Elena",
+      playerName: "Player",
+      folded: false,
+      assistantTurns: 8, // triggers reinject
+      puppetBleed: 1, // triggers puppet
+      slopHits: 0,
+      absentCast: [],
+      narration: { pov: null, tense: null },
+      tics: [
+        { id: "triads", priority: 52, keep: 52, note: "Break triads." },
+        { id: "contrast", priority: 70, keep: 70, note: "Cut contrast." },
+      ],
+    };
+
+    // Full budget: all items fit. Text order is ascending priority so highest recency weight sits last.
+    const full = buildSceneGuidance(signals, { maxTokens: 400, identity: "royal blade" });
+    expect(full.notes).toContain("scope");
+    expect(full.notes).toContain("puppet");
+    expect(full.notes).toContain("reinject");
+    expect(full.notes).toContain("triads");
+    expect(full.notes).toContain("contrast");
+
+    // Puppet is priority 100, so it appears at the end of the text.
+    const lastNote = full.notes[full.notes.length - 1];
+    expect(lastNote).toBe("puppet");
+
+    // Constrained budget: lowest `keep` value items get trimmed first.
+    // triads (keep 52) drops before contrast (keep 70), which drops before reinject (83), scope (96), puppet (100).
+    const trimmed = buildSceneGuidance(signals, { maxTokens: 50, identity: "royal blade" });
+    expect(trimmed.notes).not.toContain("triads");
+    // High-survival items remain
+    expect(trimmed.notes).toContain("puppet");
+    expect(trimmed.tokens).toBeLessThanOrEqual(54); // estimateTokens + 4 margin
+  });
+
+  test("planRequest budgets adaptive guidance adaptively according to contextWindow", () => {
+    const card = {
+      data: {
+        name: "Elena",
+        description: "A stoic knight.",
+        personality: "Loyal and cautious.",
+      },
+    };
+    const session = {
+      messages: [
+        { role: "assistant", content: "I am ready." },
+        { role: "user", content: "Let's move out." },
+      ],
+      ledger: "Previous summary of events.",
+      consumed: 1,
+    };
+
+    // Small window (2048): floor of 80 tokens (2048 * 0.012 = ~24 -> clamped to 80)
+    const smallSettings = { apiEndpoint: "https://x.test/v1", model: "m", maxContextTokens: 2048, maxTokens: 256 };
+    const planSmall = BrowserChatEngine.planRequest({ card, session, settings: smallSettings });
+    expect(planSmall.breakdown.adaptiveTokens).toBeGreaterThan(0);
+    expect(planSmall.breakdown.adaptiveTokens).toBeLessThanOrEqual(84);
+    expect(planSmall.adaptiveNotes).toBeDefined();
+    expect(Array.isArray(planSmall.adaptiveNotes)).toBe(true);
+    // breakdown.lore remains backwards-compatible composite: loreTokens + adaptiveTokens
+    expect(planSmall.breakdown.lore).toBe(planSmall.breakdown.loreTokens + planSmall.breakdown.adaptiveTokens);
+
+    // Large window (65536): ceiling clamped to GUIDANCE_MAX_TOKENS (320)
+    const largeSettings = { apiEndpoint: "https://x.test/v1", model: "m", maxContextTokens: 65536, maxTokens: 1000 };
+    const planLarge = BrowserChatEngine.planRequest({ card, session, settings: largeSettings });
+    expect(planLarge.breakdown.adaptiveTokens).toBeGreaterThan(0);
+    expect(planLarge.breakdown.adaptiveTokens).toBeLessThanOrEqual(GUIDANCE_MAX_TOKENS + 4);
+    expect(planLarge.breakdown.lore).toBe(planLarge.breakdown.loreTokens + planLarge.breakdown.adaptiveTokens);
+  });
+});
+

@@ -20,12 +20,43 @@ import {
 } from "./choice_format.js";
 import { substitutePlaceholders, stripThoughtBlocks, utf8Decoder, renderInlineField } from "./text.js";
 import {
+  analyzeTurnState,
+  buildSceneGuidance,
+  detectNarration,
+  GUIDANCE_MAX_TOKENS,
+} from "./prompt_adaptive.js";
+import {
   applyFold,
   noteUsage,
   markLedgerTruncated,
   setOverflowReported,
   setCondensedReported,
 } from "./session_state.js";
+import {
+  estimateTokens,
+  countMessages,
+  cleanPromptText,
+  SUMMARY_MIN_TOKENS,
+  SUMMARY_DEFAULT_TOKENS,
+  SUMMARY_MAX_TOKENS,
+  SUMMARY_REASONING_HEADROOM,
+  SUMMARY_FLOOR_TOKENS,
+  TOKEN_SAFETY_MARGIN,
+  MIN_INPUT_HEADROOM,
+  MIN_OUTPUT_TOKENS,
+  resolveSafetyMargin,
+  SUMMARY_TARGET_WORDS,
+  SUMMARY_UPDATE_TARGET_WORDS,
+  LEDGER_OPEN,
+  LEDGER_CLOSE,
+  LEDGER_HARD_MAX_TOKENS,
+  ledgerFramingTokens,
+  clipLedgerToTokens,
+  resolveSummaryBudget,
+  fitFoldLedgerTokens,
+  resolveContextBudgets,
+  allocateContext as rawAllocateContext,
+} from "./context_plan.js";
 export {
   estimateTokens,
   countMessages,
@@ -50,30 +81,14 @@ export {
   fitFoldLedgerTokens,
   resolveContextBudgets,
 } from "./context_plan.js";
-import {
-  estimateTokens,
-  countMessages,
-  cleanPromptText,
-  SUMMARY_MIN_TOKENS,
-  SUMMARY_DEFAULT_TOKENS,
-  SUMMARY_MAX_TOKENS,
-  SUMMARY_REASONING_HEADROOM,
-  SUMMARY_FLOOR_TOKENS,
-  TOKEN_SAFETY_MARGIN,
-  MIN_INPUT_HEADROOM,
-  MIN_OUTPUT_TOKENS,
-  SUMMARY_TARGET_WORDS,
-  SUMMARY_UPDATE_TARGET_WORDS,
-  LEDGER_OPEN,
-  LEDGER_CLOSE,
-  LEDGER_HARD_MAX_TOKENS,
-  ledgerFramingTokens,
-  clipLedgerToTokens,
-  resolveSummaryBudget,
-  fitFoldLedgerTokens,
-  resolveContextBudgets,
-  allocateContext as rawAllocateContext,
-} from "./context_plan.js";
+export {
+  analyzeTurnState,
+  buildSceneGuidance,
+  detectNarration,
+  PROSE_TICS,
+  SLOP_LEXICON,
+  GUIDANCE_MAX_TOKENS,
+} from "./prompt_adaptive.js";
 // indicates parameter support or rejection via standard responses or HTTP 400.
 const modelCapabilities = new Map();
 
@@ -256,6 +271,67 @@ export function selectLorebookEntries(card, { budget = 1000, constantOnly = fals
 }
 
 /**
+ * Extracts a concise summary phrase of the character's identity/personality
+ * for adaptive steering re-injection (e.g. "Stay Elena: <identity>").
+ */
+export function characterIdentity(card, persona = null) {
+  if (!card) return "";
+  const rawParts = [
+    card.data?.personality || card.personality || "",
+    card.data?.description || card.description || "",
+    card.data?.system_prompt || card.system_prompt || "",
+  ].filter(Boolean);
+  if (!rawParts.length) return "";
+  const clean = substituteCardPlaceholders(rawParts.join(" "), card, persona)
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!clean) return "";
+  return renderInlineField(clean, 120);
+}
+
+/**
+ * The ensemble roster, normalised once.
+ *
+ * A group card may carry its cast in `extensions.group.members` (TavernAI group
+ * cards), `extensions.characters` (some exporters), or a top-level `characters`
+ * array on `card.data` — and any shape may use `name`, `char_name` or
+ * `character_name`. Every consumer (the stable prefix, the summarizer's
+ * speaker attribution, the Choice request, the adaptive steering signal) reads
+ * this one function, so a card that renders in one place renders in all of them.
+ *
+ * Members without a name are dropped rather than padded, and every field is
+ * flattened through `renderInlineField`: rendering a roster field raw let a
+ * member's role open a new line and read as a section heading.
+ */
+export function ensembleCast(card) {
+  const extGroup = card ? card.data?.extensions?.group || card.extensions?.group : null;
+  const rawRoster =
+    (Array.isArray(extGroup?.members) && extGroup.members) ||
+    (Array.isArray(card?.data?.extensions?.characters) && card.data.extensions.characters) ||
+    (Array.isArray(card?.data?.characters) && card.data.characters) ||
+    (Array.isArray(card?.characters) && card.characters) ||
+    [];
+  return rawRoster
+    .map((member) => {
+      if (!member) return null;
+      if (typeof member === "string") {
+        const name = renderInlineField(member);
+        return name ? { name, role: "", voice: "" } : null;
+      }
+      const name = renderInlineField(String(member.name || member.char_name || member.character_name || ""));
+      if (!name) return null;
+      // Every roster field shares one flatten rule; role and voice then get a
+      // longer clamp than the name.
+      return {
+        name,
+        role: renderInlineField(String(member.role || member.description || ""), 160),
+        voice: renderInlineField(String(member.voice || member.personality || member.traits || ""), 160),
+      };
+    })
+    .filter(Boolean);
+}
+
+/**
  * The stable prefix as individually measurable, individually classifiable
  * sections, in render order.
  *
@@ -307,38 +383,11 @@ export function buildSystemSections(card, persona, settings = {}) {
     const loreContent = constantLore.map((e) => `[World Lore: ${sub(e.content)}]`).join("\n\n");
     sections.push({ id: "constantLore", text: `### CONSTANT WORLD LORE\n${loreContent}`, required: false, priority: 20 });
   }
-  // Ensemble roster: `extensions.group.members` (TavernAI group cards),
-  // `extensions.characters` (some exporters), or a top-level
-  // `characters` array on card.data. A member is accepted when it has a name;
-  // role/voice are optional and omitted when absent (no "Unknown" padding).
-  const extGroup = card ? card.data?.extensions?.group || card.extensions?.group : null;
-  const rawRoster =
-    (Array.isArray(extGroup?.members) && extGroup.members) ||
-    (Array.isArray(card?.data?.extensions?.characters) && card.data.extensions.characters) ||
-    (Array.isArray(card?.data?.characters) && card.data.characters) ||
-    (Array.isArray(card?.characters) && card.characters) ||
-    [];
-  const rostered = rawRoster
-    .map((m) => {
-      if (!m) return null;
-      if (typeof m === "string") return m.trim() ? { name: renderInlineField(m) } : null;
-      const nm = renderInlineField(String(m.name || m.char_name || m.character_name || ""));
-      if (!nm) return null;
-      // Every roster field shares one flatten rule; role and voice then get a
-      // longer clamp than the name. Rendering these raw let a member's role
-      // open a new roster line — or a new section — at a different width than
-      // the rest of the card.
-      return {
-        name: nm,
-        role: renderInlineField(String(m.role || m.description || ""), 160),
-        voice: renderInlineField(String(m.voice || m.personality || m.traits || ""), 160),
-      };
-    })
-    .filter(Boolean);
-  // The primary character may appear in the roster too; drop the duplicate so
-  // the section adds only *additional* cast. De-duplicate case-insensitively.
+  // Ensemble roster: the cast for multi-character play, read through the one
+  // normaliser. The primary character may appear in the roster too; drop the
+  // duplicate so the section adds only *additional* cast (case-insensitively).
   const mainName = String(card?.data?.name || card?.name || "").trim().toLowerCase();
-  const ensemble = rostered.filter((m) => m.name.toLowerCase() !== mainName);
+  const ensemble = ensembleCast(card).filter((member) => member.name.toLowerCase() !== mainName);
   if (ensemble.length > 0) {
     const rosterLines = ensemble.map((m) => {
       const bits = [`- ${m.name}`];
@@ -495,17 +544,14 @@ export function planChoiceRequest({
   // personality, so the choice model calibrates against the whole cast rather
   // than one member. Single-character cards fall through to the legacy hint.
   let charHint = "";
-  const rosterSrc = [card?.data?.extensions?.group?.members, card?.extensions?.group?.members, card?.data?.extensions?.characters, card?.data?.characters, card?.characters]
-    .find((v) => Array.isArray(v) && v.length > 0) || [];
-  if (rosterSrc.length > 0) {
-    const rosterBits = rosterSrc.map((m) => {
-      if (!m) return "";
-      if (typeof m === "string") return renderInlineField(m) || "";
-      const nm = renderInlineField(String(m.name || m.char_name || m.character_name || ""));
-      if (!nm) return "";
-      const rl = renderInlineField(String(m.role || m.description || ""), 80);
-      return rl ? `${nm} (${rl})` : nm;
-    }).filter(Boolean).slice(0, 8);
+  const roster = ensembleCast(card);
+  if (roster.length > 0) {
+    const rosterBits = roster
+      .map((member) => {
+        const role = renderInlineField(member.role, 80);
+        return role ? `${member.name} (${role})` : member.name;
+      })
+      .slice(0, 8);
     if (rosterBits.length > 1) {
       charHint = `\nEnsemble Cast: ${rosterBits.join(", ")}`;
     }
@@ -927,13 +973,8 @@ export class BrowserChatEngine {
     // then check each assistant turn for a leading `Name:` tag matching a cast
     // member. Turns that already declare their speaker keep that attribution;
     // narrator turns and single-character cards fall through to the card name.
-    const rosterSrc = [card?.data?.extensions?.group?.members, card?.extensions?.group?.members, card?.data?.extensions?.characters, card?.data?.characters, card?.characters]
-      .find((v) => Array.isArray(v) && v.length > 0) || [];
     const castNames = new Set([String(cName).toLowerCase()]);
-    for (const m of rosterSrc) {
-      const nm = typeof m === "string" ? m.trim() : String(m?.name || m?.char_name || m?.character_name || "").trim();
-      if (nm) castNames.add(nm.toLowerCase());
-    }
+    for (const member of ensembleCast(card)) castNames.add(member.name.toLowerCase());
     const lines = [];
     for (const m of messages || []) {
       if (!m || !m.content) continue;
@@ -1535,14 +1576,42 @@ export class BrowserChatEngine {
       constantOnly: false,
       recentText,
     });
-    let fullPostHistory = postHistory;
+    let worldInfo = postHistory;
     if (dynamicLore.length > 0) {
       const loreText = dynamicLore
         .map((e) => `[World Info: ${substituteCardPlaceholders(e.content, card, activePersona)}]`)
         .join("\n");
-      fullPostHistory = fullPostHistory ? `${loreText}\n\n${fullPostHistory}` : loreText;
+      worldInfo = worldInfo ? `${loreText}\n\n${worldInfo}` : loreText;
     }
-    const guidanceTokens = fullPostHistory.trim() ? estimateTokens(fullPostHistory) + 4 : 0;
+
+    // Adaptive steering: the measured behavior-specific tier, derived from this
+    // session's own recent output. It rides the tail (appended last, after the
+    // world info and post-history instructions) so it corrects behavior at the
+    // recency position without invalidating the cached prefix, and it is charged
+    // to the allocator like any other required input.
+    //
+    // The allowance scales with the window: a correction is a few lines, never a
+    // second preset, and on a small window even that must be smaller.
+    const adaptiveBudget = Math.max(80, Math.min(GUIDANCE_MAX_TOKENS, Math.floor(contextWindow * 0.012)));
+    const sceneState = analyzeTurnState({
+      messages: all,
+      charName: card ? card.data?.name || card.name || "" : "",
+      playerName: activePersona?.name || "",
+      castNames: ensembleCast(card).map((member) => member.name),
+      folded: Boolean(session?.ledger),
+    });
+    const adaptive = buildSceneGuidance(sceneState, {
+      identity: characterIdentity(card, activePersona),
+      maxTokens: adaptiveBudget,
+    });
+
+    const postHistoryText = [worldInfo, adaptive.text].filter(Boolean).join("\n\n");
+    const fullPostHistory = postHistoryText;
+    // One charge, two buckets: the breakdown has to attribute exactly what the
+    // planner is charged, or the inspector would disagree with the send.
+    const loreTokens = worldInfo.trim() ? estimateTokens(worldInfo) + 4 : 0;
+    const adaptiveTokens = adaptive.tokens;
+    const guidanceTokens = loreTokens + adaptiveTokens;
 
     // Required dynamic content: the pinned opening and the current turn. Both
     // are kept verbatim, so the allocator must reserve room for them before it
@@ -1656,6 +1725,8 @@ export class BrowserChatEngine {
         optionalStatic: includedOptionalTokens,
         persona: personaTokens,
         lore: guidanceTokens,
+        loreTokens,
+        adaptiveTokens,
         ledger: ledgerTokens,
         history: historyTokens,
         currentInput: currentTurnTokens,
@@ -1663,6 +1734,7 @@ export class BrowserChatEngine {
         safetyMargin: budgets.safetyMargin,
         remaining: Math.max(0, contextWindow - inputTokens - outputTokens),
       },
+      adaptiveNotes: adaptive.notes || [],
       includedSections: [...includedIds],
       excludedSections,
       impossible: inputTokens + outputTokens > contextWindow,
