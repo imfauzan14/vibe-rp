@@ -440,6 +440,27 @@ export function buildSystemSections(card, persona, settings = {}) {
   //   this section carries only the consequence the contract cannot state,
   //   because it depends on what the card happened to be written in.
   //
+  //   Two defects fixed here (2026-09-28), both found by contract_control.mjs:
+  //
+  //   1. The section named only the Character Preset. The contract grants
+  //      language authority to the *reader* — User Persona and System
+  //      Directives — but nothing told the model that a persona written in
+  //      another language means the reader's language is that one. Measured:
+  //      English contract + Indonesian persona came out English, with the
+  //      persona's +5 signal outvoted by the contract's -11 and this section's
+  //      own -4. It now names the persona too.
+  //
+  //   2. The text was hardcoded English. It is `required`, so it could never be
+  //      dropped, which put a permanent English block directly beneath the
+  //      Indonesian contract — a leak in the exact place that matters most,
+  //      since output language tracks the instruction text's language. It now
+  //      follows the contract's language, so the Indonesian payload stays
+  //      Indonesian throughout.
+  //
+  //   The English branch differs from the previous text by one clause: it now
+  //   names "the Character Preset or the User Persona" where it named only the
+  //   former. Everything else is unchanged.
+  //
   // epistemicBoundary (Degradable, ~110 tok): Anti-omniscience. Important but
   //   gracefully degradable — the running ledger tracks who knows what, so
   //   dropping it never breaks session state. Priority 20: yields after
@@ -454,12 +475,37 @@ export function buildSystemSections(card, persona, settings = {}) {
   // rather than restating it.
   const hasPersona = Boolean(rawPersonaName || rawPersonaDesc || rawPersonaTemplate);
   if (hasPersona || contract) {
+    // The contract supplies the authority rule; this supplies the mechanism it
+    // cannot state, because the mechanism depends on what the active contract
+    // is written in. Two consequences follow from one fact — a foreign-language
+    // slot exists — and both must be named: a Character Preset written in
+    // another language, and a User Persona written in another language. Naming
+    // only the first left an Indonesian persona with no grant at all, so the
+    // English contract won by default even though it assigns language authority
+    // to the reader.
+    //
+    // Text language tracks the contract, for the same reason the contract pair
+    // exists: output language follows the language of the instruction text, and
+    // this section is `required` (never dropped), so an English block here
+    // would sit permanently under an Indonesian contract.
+    //
+    // Detection is by Indonesian function words, not by matching the built-in's
+    // heading. Matching a literal (`/Panduan Penulisan Naratif/`) would break
+    // silently the moment anyone renamed or edited the preset, and it would fail
+    // for a user-authored Indonesian contract — the section would quietly revert
+    // to English. Function words are closed-class, so a handful of hits is a
+    // reliable signal and an English contract scores zero. Same principle the
+    // language tests use, for the same reason.
+    const contractIsIndonesian = /(?<![a-zA-Z])(dan|yang|dengan|untuk|tidak|adalah|dari|dalam|kamu|ini|itu)(?![a-zA-Z])/i.test(contract);
     sections.push({
       id: "operationalPrecedence",
-      text:
-        "[Operational Precedence: where the Character Preset was written in another language, adapt " +
-        "its speech and prose into the user's active language while keeping the character's core " +
-        "personality; dialogue examples show personality, not scene language or canon.]",
+      text: contractIsIndonesian
+        ? "[Prioritas Operasional: bila Preset Karakter atau Persona Pengguna ditulis dalam bahasa lain, " +
+          "serap ucapan dan prosanya ke dalam bahasa aktif pembaca sambil mempertahankan inti kepribadian " +
+          "tokoh; contoh dialog menunjukkan kepribadian, bukan bahasa adegan atau kanon.]"
+        : "[Operational Precedence: where the Character Preset or the User Persona was written in another " +
+          "language, adapt its speech and prose into the user's active language while keeping the " +
+          "character's core personality; dialogue examples show personality, not scene language or canon.]",
       required: true,
       priority: 960,
     });

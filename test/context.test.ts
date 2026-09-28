@@ -36,6 +36,7 @@ import {
   ensembleCast,
   GUIDANCE_MAX_TOKENS,
 } from "../public/browser_engine.js";
+import { DEFAULT_AGENTS_CONTRACT, DEFAULT_AGENTS_CONTRACT_ID } from "../public/local_db.js";
 import { words, SSE_OK, presetOfTokens, captureGeneration, resetFetch } from "./helpers.js";
 
 afterEach(() => {
@@ -546,6 +547,85 @@ describe("Context planners - history hygiene and lore selection", () => {
     expect(sys).toContain("Operational Precedence:");
     expect(sys).toContain("Epistemic Boundary (Anti-Omniscience)");
     expect(sys).toContain("must NOT know or call them by their persona name");
+  });
+
+  // The precedence section is `required`, so it is never dropped. Every other
+  // assertion about it in this suite is a `toContain` presence check, which
+  // means none of them would notice if the section said the wrong thing or was
+  // written in the wrong language. These two assert its content.
+  test("operationalPrecedence names the User Persona, not only the Character Preset", () => {
+    const card = { data: { name: "Elena", description: "An alchemist.", scenario: "A storm." } };
+    const persona = { name: "Fauzan", description: "An engineer from a distant land." };
+    const plan = BrowserChatEngine.planRequest({
+      card,
+      session: { messages: [{ role: "user", content: "I knock." }] },
+      persona,
+      settings: {},
+    });
+    const precedenceLine = plan.systemPrompt
+      .split("\n")
+      .find((l: string) => l.includes("Operational Precedence:"));
+    // The contract grants language authority to the reader — User Persona and
+    // System Directives. A persona written in another language is the clearest
+    // signal of what the reader's language is, so this section must name it.
+    expect(precedenceLine).toContain("Character Preset");
+    expect(precedenceLine).toContain("User Persona");
+  });
+
+  test("operationalPrecedence follows the active contract's language", () => {
+    const card = { data: { name: "Elena", description: "An alchemist.", scenario: "A storm." } };
+    const persona = { name: "Fauzan", description: "An engineer from a distant land." };
+    const session = { messages: [{ role: "user", content: "I knock." }] };
+
+    const idPlan = BrowserChatEngine.planRequest({
+      card,
+      session,
+      persona,
+      settings: { agentsContract: DEFAULT_AGENTS_CONTRACT_ID },
+    });
+    const enPlan = BrowserChatEngine.planRequest({
+      card,
+      session,
+      persona,
+      settings: { agentsContract: DEFAULT_AGENTS_CONTRACT },
+    });
+
+    // Indonesian contract -> the required precedence section must be Indonesian
+    // too. An English block here would sit permanently under the Indonesian
+    // contract, and output language tracks the instruction text's language.
+    expect(idPlan.systemPrompt).toContain("Prioritas Operasional");
+    expect(idPlan.systemPrompt).not.toContain("Operational Precedence:");
+
+    // English contract -> unchanged English text.
+    expect(enPlan.systemPrompt).toContain("Operational Precedence:");
+    expect(enPlan.systemPrompt).not.toContain("Prioritas Operasional");
+  });
+
+  // The detection keys off Indonesian function words, not the built-in's
+  // heading, so it keeps working for a renamed preset or a user-authored
+  // Indonesian contract. If it silently regressed to an English block here, the
+  // whole point of the Indonesian contract would leak at the highest priority.
+  test("operationalPrecedence detects Indonesian by function words, not by the preset's title", () => {
+    const card = { data: { name: "Elena", description: "An alchemist.", scenario: "A storm." } };
+    const session = { messages: [{ role: "user", content: "I knock." }] };
+
+    // A user-authored Indonesian contract with none of the built-in's wording.
+    const customId = BrowserChatEngine.planRequest({
+      card,
+      session,
+      settings: { agentsContract: "Kamu menulis cerita bersama pembaca. Jaga kesinambungan dan suasana." },
+    });
+    expect(customId.systemPrompt).toContain("Prioritas Operasional");
+
+    // An English contract that happens to contain an Indonesian-looking word
+    // must not flip the section to Indonesian.
+    const enWithLoanword = BrowserChatEngine.planRequest({
+      card,
+      session,
+      settings: { agentsContract: DEFAULT_AGENTS_CONTRACT + "\nA note about warung food." },
+    });
+    expect(enWithLoanword.systemPrompt).toContain("Operational Precedence:");
+    expect(enWithLoanword.systemPrompt).not.toContain("Prioritas Operasional");
   });
 });
 
