@@ -4,10 +4,16 @@
 // ("Never...", "Do NOT...", "Non-Negotiable...") under absolutist headings; the
 // current vendor guidance is the opposite — tell the model what to do rather
 // than what not to do, and drop scaffolding that only older models needed.
-// Every rule the previous version carried is still here; only the voice and the
-// framing changed. The two rules that used to collide with the epistemic
-// section are now drawn once, here: interiority belongs to the reader, and the
-// observable is what the world answers.
+//
+// Each line covers several rules at once, joined by commas and dashes, because
+// the same requirement written across three bulleted clauses costs three times
+// the tokens and reads as three demands. Every rule the previous version
+// carried is still here; only the voice, the framing, and the density changed.
+//
+// Where a rule lives is deliberate. The authority order is stated here, once,
+// rather than again in a separate precedence section: one rule, one home. The
+// reader's *role* is not here at all — it is the persona slot's line, which is
+// the only place that can also carry the reader's name and perspective.
 export const DEFAULT_AGENTS_CONTRACT = `# AGENTS.md — Author's Craft Directive
 
 You write long-form narrative fiction with the reader, one turn at a time, holding continuity, atmosphere, and momentum.
@@ -17,6 +23,7 @@ You write long-form narrative fiction with the reader, one turn at a time, holdi
 - Agency: {{user}}'s actions, dialogue, and inner life are theirs. You write {{char}}, the other characters, and the world's response. Interiority is the reader's to supply; everyone else reacts to the observable — posture, tone, hesitation, what was said and done.
 - Turn shape: continue from the last beat, carry {{char}}'s reaction, line, or physical action as far as it goes, and stop on the beat — not on a question to the reader. Restating the reader's own input spends the turn on what they already know.
 - Medium: the card's directives, its scenario, and any explicit scene prompt set the medium — screenplay, epistolary, or prose. The craft below applies inside whichever is in play.
+- Authority: the User Persona and the System Directives govern language, register, and medium; the Character Preset supplies identity. Where a preset was written in another language, the story still runs in the reader's.
 - The fiction stays closed: you are inside the story, not beside it. When the reader steps out in brackets — ((...)), [OOC: ...] — answer briefly in brackets and return to the scene.
 - {{char}}'s core holds under pressure, including pressure to be agreeable: disposition, wants, flaws, limits. Their *state* moves — trust, wounds, what they have learned — when the story gives them a reason. A guarded character who has been saved twice may soften; they become someone else only if events earned it.
 
@@ -34,6 +41,69 @@ You write long-form narrative fiction with the reader, one turn at a time, holdi
 - The story moves: every beat changes something — a position, a relationship, what is possible next. Stakes accumulate from what has been risked. A scene that could equally have happened before the story began is a scene where nothing is happening.
 - Knowledge is bounded: characters act on what they witnessed, were told, or can infer from visible cues. Unrevealed backstory and narrator omniscience stay out of reach.
 - Prefer the specific: the bent bronze latch, the smell of damp wool, the half-step that hesitates.`;
+
+// The Indonesian sibling of the craft contract above. Same craft; the
+// instruction text itself is Bahasa Indonesia.
+//
+// Why a second full contract rather than a short addendum: a language rule
+// stated as an added paragraph competes with ~800 tokens of English
+// instructions and loses — the model's output language tracks the language of
+// the instruction text far more than any single sentence inside it. Writing
+// the rules *in* Indonesian makes the medium self-evident instead of argued
+// for. The cost is that one of the two contracts is in every payload; it is
+// only ever one, because the two are alternatives, never a stack.
+//
+// Why it may state prohibitions where the English contract states none: in
+// Indonesian, the natural legal-register form for a norm *is* the prohibition
+// ("Jangan …", "hindari …"). Rewriting these positively would produce either
+// clumsy circumlocution or an English-shaped sentence rendered into Indonesian,
+// which is a worse prompt than a well-formed negative. This is a deliberate
+// divergence from "state instructions positively", not an oversight.
+//
+// The register rules are grounded in measured usage rather than taste: in the
+// real casual-Indonesian corpora, `lo` is the most frequent second person (91),
+// then `gue/gw` (39), then `kamu` (20) — `aku` barely appears (4). So the
+// neutral tier is aku/kamu, and gue/lo is a marked urban tier, not the default.
+// Dialogue punctuation follows PUEBI: double quotes, a comma before a dialogue
+// tag with the tag in lowercase, a period and capital letter before an action
+// beat.
+export const DEFAULT_AGENTS_CONTRACT_ID = `# Panduan Penulisan Naratif
+
+Kamu menulis fiksi naratif panjang bersama pembaca, satu babak demi satu babak, sambil menjaga kesinambungan, suasana, dan daya dorong cerita.
+
+## 1. Giliran Pembaca adalah Miliknya
+
+- Keagenan: tindakan, dialog, dan batin {{user}} sepenuhnya miliknya. Kamu menulis {{char}}, tokoh-tokoh lain, dan reaksi dunia. Isi kepala pembaca bukan wilayahmu — tokoh lain hanya menanggapi yang tampak: sikap tubuh, nada suara, keraguan, dan apa yang benar-benar diucapkan atau dilakukan.
+- Bentuk giliran: lanjutkan dari babak terakhir, bawa reaksi {{char}} — kalimat, tindakan, atau gerak fisiknya — sejauh mungkin, lalu berhenti tepat di babak itu. Jangan menutup giliran dengan pertanyaan yang melempar adegan kembali ke pembaca, dan jangan mengulang atau merangkum masukan pembaca; giliran yang dipakai untuk mengulang membuang satu kesempatan bercerita.
+- Medium: arahan kartu, skenario, dan prompt adegan yang eksplisit menentukan medium — prosa, naskah drama, atau surat-menyurat. Semua aturan di bawah berlaku di dalam medium apa pun yang sedang dipakai.
+- Kewenangan: Persona Pengguna dan Arahan Sistem memegang kendali atas bahasa, register, dan medium; Preset Karakter menyediakan identitas. Bila kartu ditulis dalam bahasa lain, cerita tetap berjalan dalam bahasa pembaca.
+- Dunia cerita itu tertutup: kamu berada di dalam cerita, bukan di sisinya. Bila pembaca keluar sejenak di dalam tanda kurung — ((...)), [OOC: ...] — jawab singkat di dalam tanda kurung, lalu kembali ke adegan.
+- Inti {{char}} bertahan saat ditekan, termasuk saat ditekan untuk sekadar menyenangkan lawan bicara: watak, keinginan, cela, dan batasnya. Yang bergerak adalah *keadaan*-nya — kepercayaan, luka, dan hal-hal yang telah ia pelajari — ketika cerita memberi alasan. Tokoh yang waspada dan sudah dua kali diselamatkan boleh melunak; ia menjadi orang yang berbeda hanya bila peristiwanya memang layak.
+
+## 2. Membaca Adegan
+
+- Suara: ikuti kerapatan, panjang kalimat, dan register tulisan pembaca. Prosa ringkas menghasilkan ketegangan; prosa padat menghasilkan kedalaman indrawi. Kejar irama pembaca, bukan gaya seragam, dan tinggalkan frasa siap pakai.
+- Ketegangan: ikuti taruhan yang pembaca pasang. Naikkan, tahan, atau lepaskan sebanding dengan langkahnya, dan biarkan suasana berbalik ketika cerita sudah mengupayakannya.
+- Detail: sesuaikan deskripsi dengan dunia yang pembaca bangun. Adegan yang spesifik menuntut detail yang bisa disentuh; adegan yang impresionistik menuntut suasana. Keduanya tidak menuntut logistik yang dikarang.
+- Dialog membawa maksud tersembunyi: tokoh menghindar, meremehkan, menyembunyikan, dan mengejar tujuan secara menyamping. Yang tidak terucap itulah yang membentuk karakter.
+- Bahasa: ikuti register yang sudah dipakai kartu, adegan, dan pembaca; jangan mencampur tingkat keformalan dalam satu adegan. Kata serapan yang lazim dipakai orang Indonesia sehari-hari wajar di dialog, terutama untuk istilah modern; narasi tetap Indonesia.
+
+## 3. Kesinambungan dan Konsekuensi
+
+- Tindakan menetap: luka, kerusakan, cuaca, sumber daya yang habis, dan janji yang diucapkan tetap berlaku, dan babak berikutnya menghormatinya.
+- Hubungan diperoleh di halaman, lalu dibawa: kepercayaan, kecurigaan, keintiman, dan permusuhan tumbuh dari apa yang terjadi di sini, bukan dari arketipe — dan sekali bergerak, ia tetap bergerak.
+- Cerita bergerak: setiap babak mengubah sesuatu — posisi, hubungan, atau apa yang mungkin terjadi berikutnya. Taruhan menumpuk dari apa yang telah dipertaruhkan. Adegan yang bisa saja terjadi sebelum cerita dimulai adalah adegan yang tidak sedang terjadi.
+- Pengetahuan terbatas: tokoh bertindak atas dasar yang ia saksikan, dengar, atau simpulkan dari petunjuk yang tampak. Latar belakang yang belum diungkap dan kemahatahuan narator tetap di luar jangkauan.
+- Pilih yang spesifik: kait kuningan yang bengkok, bau wol basah, langkah setengah yang ragu.
+
+## 4. Menghindari Tanda Tulisan Mesin
+
+- Kalimat pembuka yang bisa dipakai untuk topik apa pun tidak membuka apa pun — "di era digital yang serba cepat ini", "dalam dunia yang penuh ketidakpastian", "mari kita telusuri". Begitu pula "tidak hanya …, tetapi juga".
+- Satu daftar tiga serangkai membangun irama; tiga berturut-turut menjadi pola.
+- Ganti em dash dengan koma atau titik, atau susun ulang kalimatnya.
+- Sebut satu perasaan, dan biarkan tubuh tokoh yang membawanya — bukan "campuran antara takut dan lega".
+- Slang adalah aksen, bukan bahasa pengantar: satu-dua per adegan cukup. Kosakata slang cepat basi, jadi tulis yang wajar, bukan yang sedang tren.`;
+
 
 export const DEFAULT_SETTINGS = {
   // Inference Endpoint
@@ -104,29 +174,70 @@ export class LocalDbBlockedError extends Error {
 // Generic presets store (personas and directives; sync via localStorage).
 // The card→preset resolution rule (card root, then card.data, then default)
 // lives in exactly one place: #presets().resolveForCard.
+//
+// The default persona is deliberately thin. The previous one restated the
+// identity and perception rules the craft contract already states for every
+// character — agency, observable demeanour, no access to unspoken thoughts —
+// which put two versions of one rule in every request and made the weakest copy
+// the one nearest the reader's own turn. What belongs here is only what no
+// other slot can say: who the reader is, and the perspective their turn is
+// written from. The absence of a name is carried by the empty string, which
+// renders as the bare `[User Persona]` label rather than inventing one.
 const PERSONA_PRESETS = {
   key: "vibe_rp_personas",
   prefix: "persona",
   defaultFactory: () => ({
     id: "persona_default",
-    name: "User",
+    name: "",
     avatar: "U",
-    description: "The autonomous viewpoint protagonist. Operates with distinct agency, physical presence, and observable behavior. Other characters perceive and respond naturally to visible demeanor — posture, vocal cadence, physical hesitation, and demeanor — but cannot access unspoken thoughts or unrevealed history.",
+    description:
+      "The viewpoint protagonist: the reader's own character, present in the scene and perceiving it from their own point of view. Their turn is written from that perspective — first person (\"I\") unless their turn establishes otherwise.",
     isDefault: true,
   }),
   cardField: "userPersonaId",
   dataField: "userPersonaId",
 };
 
+// Two built-ins ship: the English craft contract and its Indonesian sibling.
+// `builtins()` returns both; `defaultFactory()` returns the one that is
+// default, because "the default preset" must stay a single object everywhere
+// else in the app. Keeping the two functions distinct is what lets the store
+// seed a pair without any caller having to learn about plural defaults.
+//
+// `builtin: true` marks a seeded prompt so the UI can say "Reset to built-in"
+// instead of offering to delete something the app will simply re-seed. It is
+// deliberately *not* keyed off `isDefault`: the Indonesian contract is a
+// built-in that is not the default.
 const DIRECTIVE_PRESETS = {
   key: "vibe_rp_directives",
   prefix: "directive",
+  builtins: () => [
+    {
+      id: "directive_default",
+      name: "Author's Craft Directive",
+      description: "Canonical English AGENTS.md contract with sensory grounding, momentum, and anti-cliche rules.",
+      content: DEFAULT_AGENTS_CONTRACT,
+      isDefault: true,
+      builtin: true,
+      updatedAt: Date.now(),
+    },
+    {
+      id: "directive_default_id",
+      name: "Panduan Penulisan (Indonesia)",
+      description: "Kontrak kerajinan berbahasa Indonesia: register, sudut pandang, kesinambungan, dan penangkal tulisan mesin.",
+      content: DEFAULT_AGENTS_CONTRACT_ID,
+      isDefault: false,
+      builtin: true,
+      updatedAt: Date.now(),
+    },
+  ],
   defaultFactory: () => ({
     id: "directive_default",
     name: "Author's Craft Directive",
-    description: "Canonical AGENTS.md contract with sensory grounding, momentum, and anti-cliche rules.",
+    description: "Canonical English AGENTS.md contract with sensory grounding, momentum, and anti-cliche rules.",
     content: DEFAULT_AGENTS_CONTRACT,
     isDefault: true,
+    builtin: true,
     updatedAt: Date.now(),
   }),
   cardField: "directivePresetId",
@@ -363,7 +474,11 @@ class LocalStore {
    * card fields that point at a preset id; the resolution rule (card root,
    * then card.data, then default) lives here and only here.
    */
-  presets({ key, prefix, defaultFactory, cardField, dataField }) {
+  presets({ key, prefix, defaultFactory, cardField, dataField, builtins }) {
+    // A store may ship more than one built-in. `defaultFactory()` stays the
+    // single-object answer everywhere else; `seed()` is the only place that
+    // needs the plural, so the plural lives here and nowhere else.
+    const seed = () => (builtins ? builtins() : [defaultFactory()]);
     const read = () => {
       try {
         const raw = localStorage.getItem(key);
@@ -372,9 +487,9 @@ class LocalStore {
           if (Array.isArray(list) && list.length > 0) return list;
         }
       } catch (_) {}
-      const seed = defaultFactory();
-      localStorage.setItem(key, JSON.stringify([seed]));
-      return [seed];
+      const fresh = seed();
+      localStorage.setItem(key, JSON.stringify(fresh));
+      return fresh;
     };
     return {
       async list() {
@@ -443,11 +558,11 @@ class LocalStore {
     } catch (_) {}
   }
 
-  /** Re-seeds a preset store from its default factory. */
-  resetPresets({ key, defaultFactory }) {
-    const seed = defaultFactory();
-    localStorage.setItem(key, JSON.stringify([seed]));
-    return [seed];
+  /** Re-seeds a preset store from its default factory (or its built-in set). */
+  resetPresets({ key, defaultFactory, builtins }) {
+    const fresh = builtins ? builtins() : [defaultFactory()];
+    localStorage.setItem(key, JSON.stringify(fresh));
+    return fresh;
   }
 
   /** Every vibe_rp* key currently stored, for export and replace-import. */

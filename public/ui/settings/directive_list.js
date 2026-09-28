@@ -10,6 +10,10 @@
 //       onSetDefault(directive) -> Promise
 //       host                  -> optional toast host
 //   - Rows are keyed by directive id and reused across refreshes.
+//   - A built-in row shows a "Built-in" badge and offers no Delete: the store
+//     re-seeds built-ins on reset, so a delete would silently undo itself.
+//     Edit and Set default stay available — a built-in is a starting point,
+//     not a locked record.
 //
 // Exports
 //   mountDirectiveList(root, options) -> { refresh, destroy }
@@ -30,6 +34,12 @@ function buildRow(directive, handlers, existing) {
   const heading = el("div", { class: "rp-directive-row__heading" }, [
     el("h3", { class: "rp-directive-row__title", text: directive.name || "Unnamed prompt" }),
     directive.isDefault ? el("span", { class: "rp-badge rp-badge--annotation", text: "Default" }) : null,
+    // A built-in that is not the default still needs saying, because the app
+    // re-seeds it on reset — deleting it is a no-op the user should be able to
+    // predict rather than discover.
+    directive.builtin && !directive.isDefault
+      ? el("span", { class: "rp-badge rp-badge--annotation", text: "Built-in" })
+      : null,
   ]);
 
   const blurb = el("p", { class: "rp-directive-row__blurb", text: preview(directive) });
@@ -49,7 +59,7 @@ function buildRow(directive, handlers, existing) {
       text: "Edit",
       onclick: () => handlers.onEdit(directive),
     }),
-    directive.isDefault
+    directive.isDefault || directive.builtin
       ? null
       : el("button", {
           type: "button",

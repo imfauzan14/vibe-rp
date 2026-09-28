@@ -28,15 +28,46 @@ cast for multi-character play).
 The reader's own character: `{ name, description, avatar?, template? }`. Held in
 localStorage, not on the card. The persona and the **directives** (see below)
 are the *operational authority* for language, register and narrative medium; the
-card defines character identity. That precedence is a product rule, not a
-prompting preference.
+card defines character identity. That precedence is stated in the craft contract
+— one home — rather than in a separate precedence section.
+
+The persona slot owns exactly one thing no other slot can: the reader's role and
+the perspective their turn is written from. It does **not** restate agency,
+perception, or the observability boundary; those are the contract's, stated once
+for every character. The built-in persona is therefore unnamed and short — an
+empty `name` renders as the bare `[User Persona]` label rather than inventing a
+name, and the persona editor requires a name before saving so the shipped
+default is the only nameless one.
 
 ### Directive
 
-A user-authored behavioural instruction. `DEFAULT_AGENTS_CONTRACT` is the
-default one: an in-character author's craft contract (voice, pacing,
-anti-cliché). Directives are narrative-writing prompts, never an instruction
-channel for changing the repository.
+A user-authored behavioural instruction. Two built-ins ship and are seeded into
+`vibe_rp_directives` on first read: `DEFAULT_AGENTS_CONTRACT` and its Indonesian
+sibling `DEFAULT_AGENTS_CONTRACT_ID` — an in-character author's craft contract
+(voice, pacing, anti-cliché). Directives are narrative-writing prompts, never an
+instruction channel for changing the repository.
+
+The pair is **alternative, never additive**: exactly one contract is in any
+payload, selected by the resolved directive for the card. `builtins()` on the
+preset descriptor returns both; `defaultFactory()` still returns the single
+default, because "the default preset" must stay a single object everywhere else.
+A seeded prompt carries `builtin: true` so the UI can show a Built-in badge and
+withhold Delete, which the store would simply re-seed.
+
+The contract is also the single home for the authority rule — which layer
+governs language, register and medium, and which supplies identity. It is
+stated there and nowhere else; the `operationalPrecedence` section carries only
+the consequence the contract cannot state, because it depends on what language
+a particular card was written in. The contract does not name the reader: their
+identity belongs to the persona slot, so the two can never disagree.
+
+The Indonesian contract states its rules **in Indonesian**, and that is the
+mechanism, not a translation convenience: output language tracks the language of
+the instruction text far more than any single sentence inside it, so writing the
+rules in the target language makes the medium self-evident instead of argued
+for. It may use prohibitions where the English contract uses positive framing,
+because in Indonesian the prohibition is the natural normative form. Its
+register rules come from measured corpus frequency rather than taste.
 
 ### Session
 

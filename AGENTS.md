@@ -6,7 +6,42 @@ Vibe RP is a browser-first roleplay client for interactive fiction and character
 
 **Core Pattern**: Zero-backend architecture. All logic runs in the browser, all data stays local. The server (`serve.js`) is static file hosting with SPA routing plus a security-header layer.
 
-**Craft Directive System**: Characters can define their own personas and behavioral directives. The default directive (`DEFAULT_AGENTS_CONTRACT` in `public/local_db.js`) is an in-character author's craft contract (voice, pacing, anti-cliche rules). It is a narrative-writing prompt, not an instruction channel for changing this repository. Do not conflate the two.
+**Craft Directive System**: Characters can define their own personas and behavioral directives. Two built-in directives ship: `DEFAULT_AGENTS_CONTRACT` (English) and `DEFAULT_AGENTS_CONTRACT_ID` (Bahasa Indonesia) in `public/local_db.js`. Both are an in-character author's craft contract (voice, pacing, anti-cliche rules). They are a narrative-writing prompt, not an instruction channel for changing this repository. Do not conflate the two.
+
+The three identity slots are separate on purpose, so a rule can only be in one
+of them:
+
+| Slot | Owns | Must not contain |
+| --- | --- | --- |
+| Craft contract (`agentsContract`) | Craft, continuity, the authority rule, and how identity behaves (`{{char}}`'s core holds) | What the reader *is*; the card's own character details |
+| Card (`system_prompt`, `description`, `personality`, `scenario`) | Who `{{char}}` is | Style or continuity rules |
+| Persona (`persona.description` / `template`) | The reader's role and narrative perspective | Agency, perception, or observability rules — those are the contract's, stated once for every character |
+
+`tools/prompt_eval.mjs` gates this: `CONTRACT_SINGLE_DEFINITION` asserts the
+authority rule is in the contract and the reader's identity is not.
+
+### The bilingual contract pair
+
+The two built-ins are **alternatives, never a stack** — exactly one contract is
+in any payload, chosen by the resolved directive. That changes what can go
+wrong. Duplication is not the risk; **divergence** is: the Indonesian contract
+silently becoming a lesser prompt as the English one gains a rule.
+
+- `BILINGUAL_PARITY` in `tools/prompt_eval.mjs` tracks one obligation per entry
+  with the phrase carrying it in each language, and fails if a rule is present
+  in one contract and not the other — in **either** direction.
+- The Indonesian contract **may state prohibitions where the English one states
+  none.** In Indonesian the natural normative form is the prohibition
+  ("Hindari …"), and forcing a positive rewrite produces either clumsy
+  circumlocution or an English-shaped sentence rendered into Indonesian. This is
+  a deliberate, documented divergence from "state instructions positively".
+- Register rules are grounded in measured corpus frequency, not taste: in real
+  casual Indonesian, `lo` is the most frequent second person (91), then
+  `gue/gw` (39), then `kamu` (20), with `aku` at 4. So the neutral tier is
+  aku/kamu and gue/lo is a *marked* urban tier, not the default. The contract
+  tells the model to follow the register the preset already establishes.
+- Dialogue punctuation follows PUEBI (double quotes, comma before a dialogue tag
+  with the tag lowercase, period plus capital before an action beat).
 
 **Security posture**: API keys are stored in localStorage in plaintext by design, because a local-first tool has nowhere else to put them. All rendered card and model text passes through `public/safe_html.js`. A Content-Security-Policy is set by the server, never by the client.
 
@@ -30,24 +65,24 @@ The dependency direction is one-way: UI modules depend on controllers, controlle
 
 Top-level logic (all zero DOM unless noted):
 
-- **`public/browser_engine.js`** (~2150 lines): `BrowserChatEngine`. Prompt assembly, the four context rules, ledger folding, SSE streaming, the universal allocator, and auxiliary choice generation. Re-exports the pure planning helpers from `context_plan.js` and the session-write accessors from `session_state.js` so callers keep one import surface.
-- **`public/context_plan.js`** (~205 lines): pure planning. Token estimation, `cleanPromptText`, the summary budgets, and `allocateContext`. Owns the ledger-framing cost (`LEDGER_OPEN`/`LEDGER_CLOSE`, `ledgerFramingTokens()`) so every charge site reads one value.
+- **`public/browser_engine.js`** (~2358 lines): `BrowserChatEngine`. Prompt assembly, the four context rules, ledger folding, SSE streaming, the universal allocator, and auxiliary choice generation. Re-exports the pure planning helpers from `context_plan.js` and the session-write accessors from `session_state.js` so callers keep one import surface.
+- **`public/context_plan.js`** (~220 lines): pure planning. Token estimation, `cleanPromptText`, the summary budgets, and `allocateContext`. Owns the ledger-framing cost (`LEDGER_OPEN`/`LEDGER_CLOSE`, `ledgerFramingTokens()`) so every charge site reads one value.
 - **`public/session_state.js`** (~70 lines): the session-write seam (`applyFold`, `resetLedger`, `noteUsage`, `markLedgerTruncated`, `setOverflowReported`, `setCondensedReported`). The engine decides *when*; this module owns *how* the controller's session is mutated, so the fold returns a value and one place applies it. `resetLedger` handles explicit ledger clears (user transcript edits).
-- **`public/session_controller.js`** (~745 lines): `SessionController`. Session lifecycle, modal state machine, message transitions, send/stream flow, retry of an unanswered turn, and the Choice Mode state machine. Accepts `options.signal` and exposes `cancel()`.
-- **`public/local_db.js`** (~760 lines): `LocalDb` plus its two backends. `IdbStore` owns IndexedDB (cards, sessions); `LocalStore` owns localStorage (personas, directives, settings). `LocalDb` is a facade: an instance drives its own stores and accepts injected ones, while the statics delegate to a default instance. `DB_VERSION` is 2.
+- **`public/session_controller.js`** (~766 lines): `SessionController`. Session lifecycle, modal state machine, message transitions, send/stream flow, retry of an unanswered turn, and the Choice Mode state machine. Accepts `options.signal` and exposes `cancel()`.
+- **`public/local_db.js`** (~789 lines): `LocalDb` plus its two backends. `IdbStore` owns IndexedDB (cards, sessions); `LocalStore` owns localStorage (personas, directives, settings). `LocalDb` is a facade: an instance drives its own stores and accepts injected ones, while the statics delegate to a default instance. `DB_VERSION` is 2.
 - **`public/text.js`** (~60 lines): the cycle-free leaf every other pure module may import. `utf8Decoder`, `substitutePlaceholders`, `stripThoughtBlocks`, `renderInlineField`.
 - **`public/safe_html.js`** (~40 lines): `escapeHtml` and `escapeAttr`. The single escaping point for the whole app.
 - **`public/message_format.js`** (~160 lines): pure `formatProse` and `formatMessages` view models.
-- **`public/choice_format.js`** (~265 lines): the Choice Mode prompt and the resilient parser for untrusted model output (zero DOM).
-- **`public/card_parse.js`** (284 lines): character-card parsing (JSONC strip, normalize, PNG/WebP `chara` extraction).
+- **`public/choice_format.js`** (~328 lines): the Choice Mode prompt and the resilient parser for untrusted model output (zero DOM).
+- **`public/card_parse.js`** (348 lines): character-card parsing (JSONC strip, normalize, PNG/WebP `chara` extraction).
 - **`public/remote_import.js`** (266 lines): URL import, character-page API mapping, direct card-file fetch.
 - **`public/session_refresh.js`** (336 lines): refresh-token exchange, single-flight, proactive refresh.
-- **`public/sw.js`** (436 lines): offline shell cache. Never caches cross-origin or non-GET requests.
+- **`public/sw.js`** (447 lines): offline shell cache. Never caches cross-origin or non-GET requests.
 
 Page shells (markup plus a thin bootstrap only):
 
 - **`public/index.html`** (92 lines): character library shell. Imports `ui/library_page.js`.
-- **`public/chat.html`** (184 lines): conversation shell. Loads `ui/chat/chat_boot.js` with `<script src>`.
+- **`public/chat.html`** (192 lines): conversation shell. Loads `ui/chat/chat_boot.js` with `<script src>`.
 
 Shared UI modules (**`public/ui/`**, 30 modules, ~7000 lines). Reuse these instead of re-implementing:
 
@@ -260,7 +295,7 @@ bun test test/
 
 ### Stats
 
-597 tests, 10870 expect() calls, 30 files (measured with `bun test test/`).
+613 tests, 10951 expect() calls, 30 files (measured with `bun test test/`).
 
 ### Existing Test Files
 
@@ -302,6 +337,63 @@ bun test test/
 - Prompt assembly modifications
 - Message handling edge cases (cancellation, rollback, forking)
 - Anything touching escaping or storage migrations
+
+## Prompt Engineering Conventions
+
+Every prompt in this repo was authoring, rewriting, or reordering on the basis of
+a rule that cannot be repeated at more than one site. These are the rules.
+
+`bun run eval` (`tools/prompt_eval.mjs`) is the measurement loop. The structural
+mode is offline and deterministic, so it is a real gate; `--live` scores real
+generations and `--compare <json>` diffs two runs. Run it after any prompt change.
+
+- **One home per rule.** A rule stated twice in one payload makes the model
+  reconcile two versions, and the version nearest the generation head wins by
+  accident rather than by design. State it once, in the layer that owns it.
+- **Update the eval patterns in the same change as any rewording.** They match
+  literal prompt text, so a reworded prompt with stale patterns makes the gate
+  silently stop checking. Patterns must also be placeholder-free — `{{user}}` and
+  `{{char}}` are substituted before the payload exists, so a pattern containing
+  one can never match.
+- **State instructions positively.** Prohibitions are a minority of any prompt
+  here; the contract carries zero. Negative constraints still exist, but they
+  cluster in the compaction prompts where they are doing extraction work.
+- **Prefer the short construction, and only count what it saves.** Comma-joining
+  clauses saves tokens; restructuring a sentence does not. Measure before
+  believing a rewrite is a saving — one attempt at this made the contract 16
+  tokens *larger* while reading tighter.
+- **Do not pin a prompt's exact wording in a test unless the wording *is* the
+  contract.** Assert the requirement instead. A test that counted the player's
+  name in the choice task line turned a legitimate rewording into a failure.
+- **Do not mandate emitted reasoning.** Steer with `reasoning_effort`; gate a
+  manual chain-of-thought ask behind `shouldDeliberate(settings)` so a reasoning
+  model is not taxed with an instruction to think.
+- **A character's core holds; their state moves.** Never reintroduce "hold steady
+  regardless of pressure" or "never soften into compliance" — that is the
+  emotional-rigidity trap, and it pins a character to their opening state for the
+  whole story.
+
+### Measured facts about these prompts
+
+Re-derive rather than quoting these; `bun run eval` prints them.
+
+- The stable prefix is ~76% instruction and ~24% content across the scenario
+  set. That ratio is the number to watch when adding a rule.
+- The craft contract is ~800 tokens. It grew by 55 when the authority rule moved
+  into it and by 0 when the persona's identity claim was removed from it —
+  the persona slot fell 86 → 67 and the precedence section 98 → 69, so the
+  rework is net-negative while adding a rule.
+- The Indonesian contract is ~1,152 tokens against the English ~800. Part of
+  that is inherent — Indonesian runs ~1.80 tokens/word against English ~1.59 on
+  the same content (+13%), which is a property of the tokenizer, not of the
+  prose. The rest is three deliberate additions the English contract has no
+  counterpart for: the Bahasa register bullet, the machine-writing section, and
+  the elongated turn-shape and scene-reading rules. **Do not "fix" the gap by
+  cutting the Indonesian contract to English's line count** — the parity gate
+  will fire, correctly.
+- The default persona carries no name, deliberately. Naming it `"User"` made
+  `{{user}}` render as that literal string, so an unnamed reader addressed
+  themselves by it.
 
 Skip tests for:
 

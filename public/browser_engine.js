@@ -430,10 +430,15 @@ export function buildSystemSections(card, persona, settings = {}) {
   // Cross-lingual adaptation and epistemic boundaries, split so the allocator
   // can degrade them independently rather than dropping one bundled block:
   //
-  // operationalPrecedence (Required, ~60 tok): The single language-authority
-  //   sentence. Undropable — without it a foreign-language preset silently
-  //   overrides the user's language on every turn. Short so additions cannot
-  //   silently inflate the Required budget.
+  // operationalPrecedence (Required, ~55 tok): the language-authority sentence.
+  //   Undropable — without it a foreign-language preset silently overrides the
+  //   user's language on every turn. It used to also state *who is the
+  //   authority over what* ("the User Persona and System Directives are the
+  //   active authority for language, register, and medium. The Character Preset
+  //   defines identity"), which is the contract's rule and was therefore a
+  //   second copy of it in every request; that half is now the contract's, and
+  //   this section carries only the consequence the contract cannot state,
+  //   because it depends on what the card happened to be written in.
   //
   // epistemicBoundary (Degradable, ~110 tok): Anti-omniscience. Important but
   //   gracefully degradable — the running ledger tracks who knows what, so
@@ -452,11 +457,9 @@ export function buildSystemSections(card, persona, settings = {}) {
     sections.push({
       id: "operationalPrecedence",
       text:
-        "[Operational Precedence: the User Persona and System Directives are the active authority " +
-        "for language, register, and medium. The Character Preset defines identity; where it was " +
-        "written in another language, adapt speech and prose into the user's active language while " +
-        "keeping the character's core personality. Dialogue examples show personality, not scene " +
-        "language or canon.]",
+        "[Operational Precedence: where the Character Preset was written in another language, adapt " +
+        "its speech and prose into the user's active language while keeping the character's core " +
+        "personality; dialogue examples show personality, not scene language or canon.]",
       required: true,
       priority: 960,
     });

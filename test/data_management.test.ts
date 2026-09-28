@@ -3,7 +3,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import fs from "node:fs";
 import path from "node:path";
-import { LocalDb, DEFAULT_SETTINGS, DEFAULT_AGENTS_CONTRACT } from "../public/local_db.js";
+import { LocalDb, DEFAULT_SETTINGS, DEFAULT_AGENTS_CONTRACT, DEFAULT_AGENTS_CONTRACT_ID } from "../public/local_db.js";
 import {
   readBrowserCookies,
   restoreBrowserCookies,
@@ -347,7 +347,8 @@ describe("LocalDb storage management, export and import", () => {
     expect(stats.cardCount).toBe(2);
     expect(stats.sessionCount).toBe(1);
     expect(stats.personaCount).toBe(2);
-    expect(stats.directiveCount).toBe(2);
+    // Two built-in directives (English + Indonesian) plus the saved one.
+    expect(stats.directiveCount).toBe(3);
     expect(stats.usage).toBe(1048576);
     expect(stats.quota).toBe(1073741824);
 
@@ -495,13 +496,23 @@ describe("LocalDb storage management, export and import", () => {
     LocalDb.resetPersonas();
     const personas = await LocalDb.getAllPersonas();
     expect(personas.length).toBeGreaterThan(0); // restored default
-    expect(personas.some((p: any) => p.name === "User")).toBe(true);
+    // The default persona carries no name, deliberately: `{{user}}` renders as
+    // the reader's own name when they have one, and naming the default "User"
+    // made every unnamed reader address themselves by that literal string. The
+    // assertion is on the identity the slot owns, not on a display string.
+    expect(personas.some((p: any) => p.id === "persona_default" && !p.name)).toBe(true);
+    expect(personas.some((p: any) => /viewpoint protagonist/i.test(p.description || ""))).toBe(true);
 
-    // Reset directives
+    // Reset directives: both built-ins come back, and the default is the
+    // English contract. Asserting on `[0]` alone would hide the Indonesian
+    // built-in being dropped by the reset path.
     LocalDb.resetDirectives();
     const directives = await LocalDb.getAllDirectives();
-    expect(directives.length).toBeGreaterThan(0); // restored default craft contract
+    expect(directives).toHaveLength(2);
+    expect(directives.map((d: any) => d.id)).toEqual(["directive_default", "directive_default_id"]);
     expect(directives[0].content).toBe(DEFAULT_AGENTS_CONTRACT);
+    expect((directives[1] as any).content).toBe(DEFAULT_AGENTS_CONTRACT_ID);
+    expect(directives.filter((d: any) => d.isDefault)).toHaveLength(1);
 
     // Reset settings
     LocalDb.resetSettings();

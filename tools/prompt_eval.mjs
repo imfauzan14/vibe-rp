@@ -30,7 +30,7 @@ import {
   BrowserChatEngine, estimateTokens,
   SUMMARY_PROMPT, SUMMARY_UPDATE_PROMPT, SUMMARY_SYSTEM_PROMPT, LEDGER_COMPRESS_PROMPT,
 } from "../public/browser_engine.js";
-import { DEFAULT_SETTINGS, DEFAULT_AGENTS_CONTRACT } from "../public/local_db.js";
+import { DEFAULT_SETTINGS, DEFAULT_AGENTS_CONTRACT, DEFAULT_AGENTS_CONTRACT_ID } from "../public/local_db.js";
 import { CHOICE_SYSTEM_PROMPT, choicePrompt } from "../public/choice_format.js";
 import { PROSE_TICS, SLOP_LEXICON, detectNarration } from "../public/prompt_adaptive.js";
 
@@ -43,6 +43,26 @@ const opt = (name, fallback = null) => {
 };
 
 const filler = (n) => ("The cartographer traced the dead city's spine. ".repeat(Math.ceil(n / 10) + 1)).slice(0, n * 6);
+
+// The built-in persona, read from the app rather than retyped here: a change to
+// the default must show up in this harness without an edit. The store seeds
+// from its factory, so the factory is the source of truth.
+const DEFAULT_PERSONA_RESOLVED = (() => {
+  const raw = globalThis.localStorage?.getItem("vibe_rp_personas");
+  if (raw) {
+    try {
+      const list = JSON.parse(raw);
+      const found = list.find((p) => p?.id === "persona_default");
+      if (found?.description) return found.description;
+    } catch {}
+  }
+  // No localStorage in this process: fall back to the shipped default text.
+  return (
+    "The viewpoint protagonist: the reader's own character, present in the scene and " +
+    "perceiving it from their own point of view. Their turn is written from that " +
+    'perspective — first person ("I") unless their turn establishes otherwise.'
+  );
+})();
 
 // ───────────────────────── scenarios ─────────────────────────
 // One fixed set, so a before/after diff compares like with like.
@@ -102,13 +122,22 @@ const SCENARIOS = [
   { name: "rp/ensemble-cast", card: card({ preset: 400, roster: true }), session: session({ turns: 5 }), persona: PERSONA },
   { name: "rp/folded-ledger", card: card({ preset: 400 }), session: session({ turns: 10, folded: true }), persona: PERSONA },
   { name: "rp/no-persona", card: card({ preset: 400 }), session: session({ turns: 5 }), persona: null },
+  // The shipped default: an unnamed persona whose whole job is role and
+  // perspective. This is the scenario the default-system-prompt work is
+  // measured against, so it is its own row rather than folded into PERSONA.
+  { name: "rp/default-persona", card: card({ preset: 400 }), session: session({ turns: 5 }), persona: null, defaultPersona: true },
   { name: "rp/tics-clustering", card: card({ preset: 400 }), session: session({ turns: 6, reply: "tics" }), persona: PERSONA },
   { name: "rp/triads", card: card({ preset: 400 }), session: session({ turns: 6, reply: "triads" }), persona: PERSONA },
   { name: "rp/short-replies", card: card({ preset: 400 }), session: session({ turns: 6, reply: "short" }), persona: PERSONA },
   { name: "rp/uniform-blocks", card: card({ preset: 400 }), session: session({ turns: 6, reply: "uniform" }), persona: PERSONA },
   { name: "rp/window-8192", card: card({ preset: 400 }), session: session({ turns: 6 }), persona: PERSONA, window: 8192 },
   { name: "rp/window-2048", card: card({ preset: 400 }), session: session({ turns: 6 }), persona: PERSONA, window: 2048 },
+  // The Indonesian built-in directive. Same craft, Indonesian instruction text,
+  // so it is a different contract rather than a different scenario shape.
+  { name: "rp/contract-id", card: card({ preset: 400 }), session: session({ turns: 5 }), persona: PERSONA, contract: "id" },
 ];
+
+const contractFor = (s) => (s?.contract === "id" ? DEFAULT_AGENTS_CONTRACT_ID : DEFAULT_AGENTS_CONTRACT);
 
 const settingsFor = (s) => ({
   ...DEFAULT_SETTINGS,
@@ -116,7 +145,7 @@ const settingsFor = (s) => ({
   apiKey: opt("key", process.env.VIBE_RP_API_KEY || ""),
   model: opt("model", process.env.VIBE_RP_MODEL || ""),
   maxTokens: 1200,
-  agentsContract: DEFAULT_AGENTS_CONTRACT,
+  agentsContract: contractFor(s),
   ...(s.window ? { maxContextTokens: s.window } : {}),
 });
 
@@ -147,13 +176,19 @@ const CONFLICT_PAIRS = [
   { id: "name-known-vs-unknown", kind: "reconciled-by-design",
     a: /\[User Persona: Rowan\]/, b: /must NOT know or call them by their persona name/ },
   { id: "mirror-vs-expand", kind: "competing calibration",
-    a: /match the density, sentence length, and register of the reader's prose/,
+    a: /match the reader's density, sentence length, and register/,
     b: /Write into the scene's momentum/ },
   { id: "density-vs-momentum", kind: "competing calibration",
-    a: /scale description to the world the reader has built/,
+    a: /scale description to the world the reader built/,
     b: /Write into the scene's momentum/ },
   { id: "handoff-duplicated", kind: "redundancy",
-    a: /on the beat, not on a question to the reader/, b: /handing the scene back with a question/ },
+    a: /on the beat — not on a question to the reader/, b: /handing the scene back with a question/ },
+  // The authority rule has one home: the contract. The precedence section used
+  // to restate it ("the User Persona and System Directives are the active
+  // authority..."), so both sides of this pair could appear in one request.
+  // It must now appear once, in the contract, and never in the section.
+  { id: "authority-stated-twice", kind: "redundancy",
+    a: /are the active authority/, b: /\[Operational Precedence/ },
   // NOTE: an earlier version of this list paired the contract's "don't restate
   // the player's own input" with the guidance's "don't rewind the story". Those
   // are different failure modes — restating the player's words vs rewinding the
@@ -172,21 +207,82 @@ const SINGLE_DEFINITION = [
   { id: "no-duplicate-agency-prohibition", re: /physical sensations, or inner thoughts/g, expect: 0 },
   { id: "no-duplicate-observable-rule", re: /DO realistically perceive and react/g, expect: 0 },
   { id: "turn-boundary-stated-once", re: /stop cleanly where .* must act or speak/g, expect: 0 },
+  // The persona's identity claim moved to the contract. Keeping the old
+  // phrasing here would let it return unnoticed.
+  { id: "persona-no-identity-restatement", re: /Operates with distinct agency, physical presence/g, expect: 0 },
 ];
+// The Indonesian contract carries the same obligation in Indonesian, so the
+// one English-literal check above cannot be applied to it. Keyed by contract,
+// not by scenario: what varies is which contract is loaded, and the check is a
+// property of that text.
+const SINGLE_DEFINITION_ID = [
+  { id: "interiority-boundary-in-contract", re: /batin .{0,12}sepenuhnya miliknya/g, expect: 1 },
+];
+const singleDefFor = (s) => (s?.contract === "id" ? SINGLE_DEFINITION_ID : SINGLE_DEFINITION);
+// Checking that a rule left the *contract* cannot be done against the assembled
+// payload, because the persona slot is allowed to say it and the payload cannot
+// tell the two apart. `reader-identity-not-in-contract` therefore asserts on the
+// contract text itself, once, rather than per scenario — the distinction the
+// whole layer split turns on is *which slot* a rule lives in.
+const CONTRACT_SINGLE_DEFINITION = [
+  { id: "reader-identity-not-in-contract", re: /viewpoint protagonist|distinct agency/g, expect: 0 },
+  { id: "authority-in-contract", re: /govern language, register, and medium/g, expect: 1 },
+];
+
+// The two built-in contracts are alternatives, never a stack, so the risk is
+// not duplication but *divergence*: the Indonesian one drifting into a lesser
+// prompt as the English one gains rules. Each entry names one obligation and
+// the phrase that carries it in each language. A missing phrase is a rule that
+// did not survive translation; that is the failure this catches.
+//
+// Matching on a phrase rather than on meaning is deliberate and is the same
+// trade every pattern in this file makes: it is checkable. When a rule is
+// legitimately reworded, both patterns move together in the same commit.
+const BILINGUAL_PARITY = [
+  { id: "agency", en: /actions, dialogue, and inner life are theirs/i, id_re: /tindakan, dialog, dan batin/i },
+  { id: "turn-shape", en: /stop on the beat/i, id_re: /berhenti tepat di babak itu/i },
+  { id: "medium", en: /set the medium/i, id_re: /menentukan medium/i },
+  { id: "authority", en: /govern language, register, and medium/i, id_re: /memegang kendali atas bahasa, register, dan medium/i },
+  { id: "closed-fiction", en: /the fiction stays closed/i, id_re: /Dunia cerita itu tertutup/i },
+  { id: "core-holds-state-moves", en: /core holds under pressure/i, id_re: /bertahan saat ditekan/i },
+  { id: "voice-matching", en: /match the reader's density/i, id_re: /ikuti kerapatan/i },
+  { id: "tension", en: /follow the stakes/i, id_re: /ikuti taruhan/i },
+  { id: "subtext", en: /Dialogue carries subtext/i, id_re: /maksud tersembunyi/i },
+  { id: "actions-persist", en: /Actions persist/i, id_re: /Tindakan menetap/i },
+  { id: "relationships-earned", en: /Relationships are earned/i, id_re: /Hubungan diperoleh/i },
+  { id: "story-moves", en: /The story moves/i, id_re: /Cerita bergerak/i },
+  { id: "knowledge-bounded", en: /Knowledge is bounded/i, id_re: /Pengetahuan terbatas/i },
+  { id: "prefer-specific", en: /Prefer the specific/i, id_re: /Pilih yang spesifik/i },
+];
+
+function checkBilingualParity() {
+  const missing = [];
+  for (const row of BILINGUAL_PARITY) {
+    const inEn = row.en.test(DEFAULT_AGENTS_CONTRACT);
+    const inId = row.id_re.test(DEFAULT_AGENTS_CONTRACT_ID);
+    // A rule present in one and not the other is divergence, in either
+    // direction — including a rule the Indonesian contract carries alone.
+    if (inEn !== inId) missing.push({ rule: row.id, inEn, inId });
+  }
+  return missing;
+}
 
 function structural() {
   const rows = [];
   for (const s of SCENARIOS) {
     const settings = settingsFor(s);
+    const persona = s.defaultPersona
+      ? { id: "persona_default", name: "", description: DEFAULT_PERSONA_RESOLVED, isDefault: true }
+      : s.persona;
     const plan = BrowserChatEngine.planRequest({
-      card: s.card, session: s.session, settings, persona: s.persona,
-      agentsContract: DEFAULT_AGENTS_CONTRACT, window: s.window || null,
+      card: s.card, session: s.session, settings, persona,
+      agentsContract: contractFor(s), window: s.window || null,
     });
     const payloadText = JSON.stringify(plan.payload);
     const guidance = plan.postHistory || "";
     const instructionText = [plan.systemPrompt, guidance].join("\n");
     const conflicts = CONFLICT_PAIRS.filter((p) => p.a.test(payloadText) && p.b.test(payloadText)).map((p) => ({ id: p.id, kind: p.kind }));
-    const singleDef = SINGLE_DEFINITION
+    const singleDef = singleDefFor(s)
       .map((c) => ({ id: c.id, count: (payloadText.match(c.re) || []).length, expect: c.expect }))
       .filter((c) => c.count !== c.expect)
       .map((c) => ({ id: c.id, count: c.count, expect: c.expect }));
@@ -197,6 +293,12 @@ function structural() {
       systemPromptTokens: estimateTokens(plan.systemPrompt),
       guidanceTokens: estimateTokens(guidance),
       historyTokens: plan.breakdown.history,
+      // Per-slot attribution of the stable prefix. The three identity slots are
+      // reported apart because the point of the layer split is which slot a
+      // rule lives in, and a combined total cannot show a rule migrating.
+      contractTokens: plan.includedSections.includes("contract") ? estimateTokens(contractFor(s)) : 0,
+      characterTokens: plan.breakdown.requiredStatic - (plan.includedSections.includes("contract") ? estimateTokens(contractFor(s)) : 0),
+      personaSlotTokens: plan.breakdown.persona,
       instructionDensity: instructionDensity(instructionText),
       sections: plan.includedSections,
       excluded: plan.excludedSections,
@@ -212,6 +314,13 @@ function structural() {
     settings: settingsFor({}), persona: PERSONA, count: 4,
   });
 
+  // Contract-level checks: which layer a rule lives in is a property of the
+  // authored text, not of any one assembled payload.
+  const contractChecks = CONTRACT_SINGLE_DEFINITION
+    .map((c) => ({ id: c.id, count: (DEFAULT_AGENTS_CONTRACT.match(c.re) || []).length, expect: c.expect }))
+    .filter((c) => c.count !== c.expect);
+  const parityGaps = checkBilingualParity();
+
   const prompts = {
     agentsContract: instructionDensity(DEFAULT_AGENTS_CONTRACT),
     choiceSystem: instructionDensity(CHOICE_SYSTEM_PROMPT),
@@ -223,6 +332,11 @@ function structural() {
 
   const tokenCosts = {
     agentsContract: estimateTokens(DEFAULT_AGENTS_CONTRACT),
+    agentsContractId: estimateTokens(DEFAULT_AGENTS_CONTRACT_ID),
+    // The three identity slots, measured apart so a rule migrating between them
+    // shows up as a delta rather than hiding inside a total.
+    defaultPersona: estimateTokens(DEFAULT_PERSONA_RESOLVED),
+    defaultPersonaSlot: estimateTokens(`[User Persona]\n${DEFAULT_PERSONA_RESOLVED}`) + 4,
     choiceSystem: estimateTokens(CHOICE_SYSTEM_PROMPT),
     choiceTask: estimateTokens(choicePrompt(4, { charName: "Elena Voss", playerName: "Rowan" })),
     choiceRequest: choice.inputTokens,
@@ -230,7 +344,7 @@ function structural() {
     compactionTotal: estimateTokens(SUMMARY_SYSTEM_PROMPT) + estimateTokens(SUMMARY_PROMPT) + estimateTokens(SUMMARY_UPDATE_PROMPT) + estimateTokens(LEDGER_COMPRESS_PROMPT),
   };
 
-  return { rows, prompts, tokenCosts };
+  return { rows, prompts, tokenCosts, contractChecks, parityGaps, parityTotal: BILINGUAL_PARITY.length };
 }
 
 // One generation against the real engine.
@@ -448,6 +562,14 @@ function printStructural(r) {
     );
   }
 
+  console.log("\nSLOT ATTRIBUTION — where the stable prefix's tokens go");
+  console.log("  scenario              contract  character  persona   (persona slot = persona + label)");
+  for (const row of r.rows) {
+    console.log(
+      `  ${row.scenario.padEnd(22)} ${String(row.contractTokens).padStart(6)} ${String(row.characterTokens).padStart(11)} ${String(row.personaSlotTokens).padStart(8)}`,
+    );
+  }
+
   console.log("\nINSTRUCTION DENSITY — authored prompt text");
   console.log("  prompt            words  lines   neg  absol   neg/line");
   for (const [name, d] of Object.entries(r.prompts)) {
@@ -473,6 +595,25 @@ function printStructural(r) {
   } else {
     for (const row of bad) {
       for (const c of row.singleDef) console.log(`    ${row.scenario.padEnd(22)} ${c.id}: found ${c.count}, expected ${c.expect}`);
+    }
+  }
+
+  console.log("\n  contract-layer checks (which slot a rule lives in):");
+  if (!(r.contractChecks || []).length) {
+    console.log("    (none) — the contract holds the authority rule and no reader-identity claim");
+  } else {
+    for (const c of r.contractChecks) console.log(`    ${c.id}: found ${c.count}, expected ${c.expect}`);
+  }
+
+  // The two built-in contracts are alternatives, so the risk is divergence
+  // rather than duplication: a rule the English contract gained and the
+  // Indonesian one did not.
+  console.log("\n  bilingual parity (EN vs ID built-in contract):");
+  if (!(r.parityGaps || []).length) {
+    console.log(`    (none) — all ${r.parityTotal} tracked obligations present in both`);
+  } else {
+    for (const g of r.parityGaps) {
+      console.log(`    ${g.rule}: EN=${g.inEn} ID=${g.inId}`);
     }
   }
 }

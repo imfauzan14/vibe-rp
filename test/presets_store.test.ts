@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from "bun:test";
-import { LocalDb, DEFAULT_AGENTS_CONTRACT } from "../public/local_db.js";
+import { LocalDb, DEFAULT_AGENTS_CONTRACT, DEFAULT_AGENTS_CONTRACT_ID } from "../public/local_db.js";
 
 interface Preset {
   id: string;
@@ -33,9 +33,16 @@ describe("Generic presets store", () => {
 
   test("defaults seeded on first read (directives)", async () => {
     const list = (await LocalDb.getAllDirectives()) as Preset[];
-    expect(list).toHaveLength(1);
-    expect(list[0].id).toBe("directive_default");
+    // Two built-ins ship: the English craft contract and the Indonesian one.
+    // Exactly one of them is the default, which is the invariant that matters.
+    expect(list).toHaveLength(2);
+    expect(list.map((d) => d.id)).toEqual(["directive_default", "directive_default_id"]);
+    expect(list.filter((d) => d.isDefault)).toHaveLength(1);
     expect(list[0].content).toBe(DEFAULT_AGENTS_CONTRACT);
+    expect(list[1].content).toBe(DEFAULT_AGENTS_CONTRACT_ID);
+    // Both are marked built-in so the UI does not offer to delete what the app
+    // would simply re-seed.
+    expect(list.every((d) => d.builtin === true)).toBe(true);
   });
 
   test("save/get roundtrip assigns id and persists", async () => {
