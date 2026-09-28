@@ -139,7 +139,7 @@ export function makeControllerDb({ cards = [makeControllerCard()], sessions = []
 }
 
 interface ControllerEngineOpts {
-  onStream?: ((args: { userPrompt?: string; onChunk: (c: string) => void } & Record<string, unknown>) => Promise<string>) | null;
+  onStream?: ((args: { onChunk: (c: string) => void } & Record<string, unknown>) => Promise<string>) | null;
   choices?: Array<string | { id?: string; text: string; label?: string }>;
   choiceError?: unknown;
   streamError?: unknown;
@@ -161,8 +161,12 @@ export function makeControllerEngine({ onStream = null, choices = null, choiceEr
     choiceCalls: 0,
     lastArgs: null,
     lastChoiceArgs: null,
-    async streamTurn(args: { userPrompt?: string; onChunk: (c: string) => void } & Record<string, unknown>) {
-      engine.calls.push(typeof args.userPrompt === "string" ? args.userPrompt : "");
+    async streamTurn(args: { onChunk: (c: string) => void } & Record<string, unknown>) {
+      // The engine reads the turn from the transcript; there is no separate
+      // prompt argument to record. Recording the newest user message is what
+      // proves the transcript carried it.
+      const messages = Array.isArray(args.session?.messages) ? (args.session.messages as Array<{ role?: string; content?: string }>) : [];
+      engine.calls.push(messages.filter((m) => m?.role === "user").at(-1)?.content ?? "");
       engine.streamCalls += 1;
       engine.lastArgs = args;
       if (streamError) throw streamError;
@@ -433,11 +437,17 @@ function fakeMatchesOne(node: { tagName: string; getAttribute: (k: string) => st
   if (tag) {
     if (node.tagName !== tag[1].toUpperCase()) return false;
     rest = rest.slice(tag[1].length);
-  } else if (rest[0] !== "." && rest[0] !== "[") {
+  } else if (rest[0] !== "." && rest[0] !== "[" && rest[0] !== "#") {
     return false;
   }
   while (rest.length) {
-    if (rest[0] === ".") {
+    if (rest[0] === "#") {
+      // The real DOM resolves `#id`; panels are queried by id, so the fake
+      // matcher has to understand it or a panel cannot be mounted in a test.
+      const m = rest.match(/^#([\w-]+)/);
+      if (!m || node.getAttribute("id") !== m[1]) return false;
+      rest = rest.slice(m[0].length);
+    } else if (rest[0] === ".") {
       const m = rest.match(/^\.([\w-]+)/);
       if (!m || !fakeClassesOf(node).has(m[1])) return false;
       rest = rest.slice(m[0].length);

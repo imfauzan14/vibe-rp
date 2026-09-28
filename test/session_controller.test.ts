@@ -60,12 +60,27 @@ describe("SessionController - reroll semantics", () => {
     expect(ctl.messages.at(-1).role).toBe("user");
   });
 
-  test("returns null (caller substitutes hint) when prior message is not user", async () => {
+  test("refuses to reroll when there is no player turn to re-run", async () => {
     const { ctl } = await makeController();
-    // Only the init assistant message
+    // Only the init assistant message. Reroll re-runs a player turn, so with
+    // none it must leave the card's authored opening exactly as it is: popping
+    // it would send the engine a request with no user turn in it at all.
     const prompt = ctl.reroll();
     expect(prompt).toBeNull();
-    expect(ctl.messages.length).toBe(0);
+    expect(ctl.messages.length).toBe(1);
+    expect(ctl.messages[0].content).toBe(ctl.greeting());
+  });
+
+  test("refuses to reroll a reply that no player turn asked for", async () => {
+    const { ctl } = await makeController();
+    // Reachable by deleting your own message and keeping the reply, so the
+    // transcript reads [greeting, reply]. Popping there would re-run the
+    // greeting as if the player had said it.
+    ctl.appendMessage({ role: "assistant", content: "creak" });
+    const prompt = ctl.reroll();
+    expect(prompt).toBeNull();
+    expect(ctl.messages.length).toBe(2);
+    expect(ctl.messages.at(-1).content).toBe("creak");
   });
 
   test("no-op on empty messages returns null", async () => {
@@ -186,7 +201,7 @@ describe("SessionController - send flow with fake engine + db", () => {
     ctl.sessions.push(session2);
 
     // Start turn on session1
-    const streamPromise = ctl.streamResponse("prompt 1", () => {}, () => {}, { persistPending: false });
+    const streamPromise = ctl.streamResponse(() => {}, () => {}, { persistPending: false });
     expect(ctl.activeSession).toBe(session1);
     expect(session1.messages.length).toBe(2); // greeting + pending assistant
     // Switch to session2 while stream is pending

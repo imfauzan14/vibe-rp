@@ -24,10 +24,34 @@ import { describe, test, expect } from "bun:test";
 import fs from "node:fs";
 import path from "node:path";
 import { mountEnginePanel } from "../public/ui/settings/engine_panel.js";
+import { mountParamsPanel, PARAM_SPECS } from "../public/ui/settings/params_panel.js";
+import { makeFakeElement as makeElement } from "./helpers.ts";
 
 const ROOT = path.join(import.meta.dir, "..");
 const PUBLIC = path.join(ROOT, "public");
 const read = (rel) => fs.readFileSync(path.join(PUBLIC, rel), "utf8");
+
+interface FakeSlider {
+  value: string;
+  textContent: string;
+  setAttribute(k: string, v: string): void;
+  dispatch(t: string): void;
+}
+
+/** A root carrying one slider + readout per spec, as the modal's markup does. */
+function makeParamsRoot(values: Record<string, number> = {}) {
+  const root = makeElement("div") as unknown as FakeSlider & { appendChild(c: unknown): unknown; querySelector(s: string): unknown };
+  for (const spec of PARAM_SPECS) {
+    const slider = makeElement("input") as unknown as FakeSlider;
+    slider.setAttribute("id", spec.slider);
+    if (values[spec.key] !== undefined) slider.value = String(values[spec.key]);
+    const readout = makeElement("span") as unknown as FakeSlider;
+    readout.setAttribute("id", spec.readout);
+    root.appendChild(slider);
+    root.appendChild(readout);
+  }
+  return root;
+}
 
 describe("Unified settings surface", () => {
   test("the chat-only settings panel module no longer exists", () => {
@@ -259,5 +283,64 @@ describe("Unified settings surface", () => {
         globalHost.document = origDoc;
       }
     }
+  });
+});
+
+// A parameter change is not a form submission: the reply ceiling and the
+// context budget both decide what the very next request can carry, so they have
+// to take effect when the reader lets go of the control. The readout used to
+// follow the drag while the value only landed on a separate "Save parameters"
+// press — so the number on screen described a request the app was not building,
+// and closing the modal discarded the change in silence.
+describe("Parameters apply as they are adjusted", () => {
+  test("a settled slider writes its own key, with no separate save", () => {
+    const root = makeParamsRoot({ maxContextTokens: 65536 });
+    const saved: Array<Record<string, number>> = [];
+    mountParamsPanel(root as unknown as HTMLElement, {
+      getParams: () => ({ maxContextTokens: 65536, maxTokens: 1200 }),
+      saveParams: (patch: Record<string, number>) => saved.push(patch),
+    });
+
+    const slider = root.querySelector("#popup-slider-context") as unknown as FakeSlider;
+    const readout = root.querySelector("#popup-val-context") as unknown as FakeSlider;
+
+    slider.value = "8192";
+    slider.dispatch("input");
+    // The readout follows the drag, so the reader can see the value they are
+    // choosing — but nothing is written until the value settles.
+    expect(readout.textContent).toBe("8192");
+    expect(saved).toEqual([]);
+
+    slider.dispatch("change");
+    expect(saved).toEqual([{ maxContextTokens: 8192 }]);
+
+    // The reply ceiling is the other half of the same contract.
+    const tokens = root.querySelector("#popup-slider-tokens") as unknown as FakeSlider;
+    tokens.value = "400";
+    tokens.dispatch("change");
+    expect(saved).toEqual([{ maxContextTokens: 8192 }, { maxTokens: 400 }]);
+  });
+
+  test("the panel has no save control left to be redundant with", () => {
+    const modal = read("ui/settings/settings_modal.js");
+    expect(modal).not.toContain("popup-save-params-btn");
+    expect(modal).not.toContain("popup-params-status");
+  });
+
+  test("the markup default is the only default: refresh does not invent one", () => {
+    // A second copy of the default in the spec table is a value that can drift
+    // from the control the reader actually sees, so the spec carries none.
+    for (const spec of PARAM_SPECS) {
+      expect("fallback" in spec).toBe(false);
+    }
+    const root = makeParamsRoot();
+    const slider = root.querySelector("#popup-slider-tokens") as unknown as FakeSlider;
+    slider.value = "1200"; // the markup default
+    const panel = mountParamsPanel(root as unknown as HTMLElement, {
+      getParams: () => ({}),
+      saveParams: () => {},
+    });
+    panel.refresh();
+    expect(slider.value).toBe("1200");
   });
 });

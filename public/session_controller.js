@@ -10,7 +10,7 @@
 
 import { LocalDb } from "./local_db.js";
 import { BrowserChatEngine } from "./browser_engine.js";
-import { applyFold, resetLedger } from "./session_state.js";
+import { applyFold, resetLedger, captureLedgerState, restoreLedgerState } from "./session_state.js";
 
 const GREETING_FALLBACK = "The door closes behind you. Silence settles into the corridor.";
 const INITIAL_TITLE = "Chapter 1: The Initial Approach";
@@ -242,6 +242,31 @@ export class SessionController {
   }
 
   /**
+   * Whether the stored ledger's description of the transcript is broken by a
+   * mutation at absolute index `idx`.
+   *
+   * The ledger summarizes the range `[1, consumed)`. Index 0 is the pinned
+   * opening and is never folded, so rewriting it leaves the ledger intact.
+   * Rewriting anything inside the range makes the ledger assert a fact the
+   * story no longer contains — and the model is told to treat the ledger as
+   * settled canon it must never contradict, so the stale fact wins over the
+   * transcript the reader is looking at.
+   *
+   * Deleting also breaks coverage from the other side: removing the pinned
+   * opening shifts the message that was at index 1 into the pinned slot, so it
+   * would be sent verbatim *and* summarized in the same request. `removes`
+   * separates the two, because an edit at index 0 changes nothing the ledger
+   * describes.
+   */
+  #ledgerDescribes(idx, { removes = false } = {}) {
+    const sess = this.activeSession;
+    if (!sess?.ledger) return false;
+    const consumed = Math.max(1, Number(sess.consumed) || 1);
+    if (removes && idx === 0) return consumed > 1;
+    return idx >= 1 && idx < consumed;
+  }
+
+  /**
    * Forks a message instead of mutating it (append-only invariant). The new
    * revision keeps the original's id and position — so the transcript stays
    * append-only and the provider's byte-stable prefix is undisturbed — while the
@@ -253,6 +278,10 @@ export class SessionController {
     const idx = msgs.findIndex(m => m.id === id);
     if (idx === -1) return null;
     const original = msgs[idx];
+    // The ledger is a summary of this message, so it now states something the
+    // story does not. Drop it and let the next turn rebuild one from what
+    // remains, rather than send the model a fact the reader edited away.
+    if (this.#ledgerDescribes(idx)) resetLedger(this.activeSession);
     const fork = {
       ...original,
       content,
@@ -271,44 +300,55 @@ export class SessionController {
     const msgs = sess?.messages || [];
     const idx = msgs.findIndex(m => m.id === id);
     if (idx === -1) return false;
-    // Keep ledger coverage aligned with absolute message indices. Deleting
-    // msg_init (index 0) invalidates the whole ledger bookkeeping: the pinned
-    // message becomes a ledger-covered one, so reset to empty state (the next
-    // plan re-pins and consumed=0 normalizes back to 1).
-    const consumed = Number(sess?.consumed) || 0;
-    if (idx === 0) {
-      // Clearing the pinned opening resets all ledger bookkeeping; route
-      // through the session-write seam so the mutation has one owner.
-      if (sess) resetLedger(sess);
-    } else if (idx < consumed) {
-      sess.consumed = consumed - 1;
-    }
+    // Coverage is positional, so a deletion inside the ledger's range moves the
+    // boundary — but the content is wrong too, not just the index: the ledger
+    // still describes the message being removed. Re-indexing would leave the
+    // model reciting a turn the reader deleted, so the summary is dropped
+    // instead. The transcript becomes the continuity again, and the next fold
+    // rebuilds a ledger from it.
+    if (this.#ledgerDescribes(idx, { removes: true })) resetLedger(sess);
     msgs.splice(idx, 1);
     // The scene the choices described has been altered.
     this.invalidateChoices();
     return true;
   }
 
+  /**
+   * Snapshots the ledger's derived state so a deletion can be undone exactly.
+   * Pairs with `restoreLedgerSnapshot`.
+   */
+  captureLedgerSnapshot() {
+    return this.activeSession ? captureLedgerState(this.activeSession) : null;
+  }
+
+  /** Puts back what `captureLedgerSnapshot` took, for an undo. */
+  restoreLedgerSnapshot(snapshot) {
+    return this.activeSession ? restoreLedgerState(this.activeSession, snapshot) : false;
+  }
 
   /**
    * Pops the trailing assistant message and returns the prompt that produced
-   * it (the preceding user message), or null when there is nothing to reuse —
-   * the caller substitutes the reroll hint in that case.
+   * it (the preceding user message), or null when there is nothing to reuse.
+   *
+   * Reroll re-runs a turn the player took, so it needs one: the newest turn
+   * must be the character's reply and the turn before it must be the player's.
+   * Without that, popping would either discard the card's authored opening
+   * greeting — the only message in a fresh chat — and leave the engine a
+   * request with no user turn in it at all, or destroy a reply that no turn
+   * asked for. Returning null without touching the transcript keeps the reader
+   * exactly where they were.
    */
   reroll() {
     const msgs = this.activeSession?.messages || [];
-    if (msgs.length === 0) return null;
-    let prompt = null;
-    if (msgs[msgs.length - 1].role === "assistant") {
-      msgs.pop();
-      if (msgs.length > 0 && msgs[msgs.length - 1].role === "user") {
-        prompt = msgs[msgs.length - 1].content;
-      }
-      // The response the choices were generated from is gone, so the set is
-      // stale; a fresh set is generated once the replacement settles.
-      this.invalidateChoices();
-    }
-    return prompt;
+    if (msgs.length < 2) return null;
+    const last = msgs[msgs.length - 1];
+    const previous = msgs[msgs.length - 2];
+    if (last?.role !== "assistant" || previous?.role !== "user") return null;
+    msgs.pop();
+    // The response the choices were generated from is gone, so the set is
+    // stale; a fresh set is generated once the replacement settles.
+    this.invalidateChoices();
+    return previous.content;
   }
 
   // Streaming orchestration
@@ -330,8 +370,12 @@ export class SessionController {
    * Cancellation (defect 4): `options.signal` and `cancel()` both feed a
    * per-turn AbortController whose signal is forwarded to the engine for the
    * whole turn, summarizer/fold request included.
+   *
+   * There is no separate "the prompt" argument: the engine reads the turn from
+   * the transcript, which is the only place it can be. A hint passed alongside
+   * it was always a second copy of a message already in `session.messages`.
    */
-  async streamResponse(promptHint, onChunk, onNotice, options = {}) {
+  async streamResponse(onChunk, onNotice, options = {}) {
     const { persistPending = true, signal: externalSignal } = options;
     // A new turn supersedes any turn still in flight, so two generations can
     // never run at once: a double-submit, or Retry pressed while the previous
@@ -365,7 +409,6 @@ export class SessionController {
         settings: this.settings,
         persona: this.currentPersona,
         agentsContract: this.currentDirective ? (this.currentDirective.content ?? "") : (this.settings.agentsContract ?? ""),
-        userPrompt: promptHint,
         signal,
         onChunk: (chunk, notice) => {
           // Defensive: a null/undefined chunk must never be stringified into the
@@ -436,7 +479,7 @@ export class SessionController {
    */
   async send(userText, onChunk, onNotice, options = {}) {
     const userMsg = this.appendMessage({ role: "user", content: userText });
-    const assistantMsg = await this.streamResponse(userText, onChunk, onNotice, options);
+    const assistantMsg = await this.streamResponse(onChunk, onNotice, options);
     return { userMsg, assistantMsg };
   }
 
@@ -449,7 +492,7 @@ export class SessionController {
   async retryLastTurn(onChunk, onNotice, options = {}) {
     const pending = this.pendingUserTurn();
     if (!pending) return null;
-    return this.streamResponse(pending.content, onChunk, onNotice, options);
+    return this.streamResponse(onChunk, onNotice, options);
   }
 
   /**

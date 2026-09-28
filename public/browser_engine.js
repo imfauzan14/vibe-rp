@@ -1852,7 +1852,9 @@ export class BrowserChatEngine {
     if (!usage) return null;
     if (typeof usage.prompt_tokens === "number") return usage.prompt_tokens;
     if (typeof usage.input_tokens === "number") return usage.input_tokens;
-    const parts = [usage.input_tokens, usage.cache_read_input_tokens, usage.cache_creation_input_tokens].filter(
+    // Anthropic reports `input_tokens` for the uncached part only and bills the
+    // cached and freshly-written parts beside it, so the two sum to the bill.
+    const parts = [usage.cache_read_input_tokens, usage.cache_creation_input_tokens].filter(
       (n) => typeof n === "number"
     );
     return parts.length ? parts.reduce((a, b) => a + b, 0) : null;
@@ -2536,17 +2538,25 @@ export class BrowserChatEngine {
    * recognisable and stable.
    */
   static #overflowReport(request, ledgerCondensed) {
-    const { breakdown, contextWindow, inputTokens, outputTokens } = request;
+    const { breakdown, contextWindow, inputTokens, outputTokens, overheadTokens = 0 } = request;
     const components = [
       { name: "static preset", tokens: breakdown.requiredStatic + breakdown.optionalStatic + breakdown.persona },
       { name: "continuity ledger", tokens: breakdown.ledger },
       { name: "writing guidance", tokens: breakdown.lore },
       { name: "current message", tokens: breakdown.currentInput },
+      // A gateway's hidden preamble is input the app never assembled, so it is
+      // absent from the breakdown. Naming the largest *visible* component while
+      // the preamble is what pushed the request over would send the reader to
+      // shrink the one thing that is not the problem.
+      ...(overheadTokens > 0 ? [{ name: "provider preamble", tokens: overheadTokens }] : []),
     ].sort((a, b) => b.tokens - a.tokens);
     const biggest = components[0];
     const ledgerNote = ledgerCondensed ? " (the ledger was condensed for this request; the stored transcript is unchanged)" : "";
     const detail = request.plan.overflow && request.plan.overflowWarning ? `${request.plan.overflowWarning} ` : "";
-    return `${detail}The required content (${components.map((c) => `${c.name} ~${c.tokens}`).join(", ")}) exceeds the configured prompt budget: ~${inputTokens} input tokens plus a ${outputTokens}-token reply do not fit the ${contextWindow}-token window. The largest component is the ${biggest.name}; raise the context window or shrink it.${ledgerNote}`;
+    // What the provider is billed, not what the app assembled: the difference is
+    // the whole reason this report can name a component the breakdown omits.
+    const billedInput = inputTokens + overheadTokens;
+    return `${detail}The required content (${components.map((c) => `${c.name} ~${c.tokens}`).join(", ")}) exceeds the configured prompt budget: ~${billedInput} input tokens plus a ${outputTokens}-token reply do not fit the ${contextWindow}-token window. The largest component is the ${biggest.name}; raise the context window or shrink it.${ledgerNote}`;
   }
 
   /**

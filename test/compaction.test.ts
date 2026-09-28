@@ -1016,7 +1016,7 @@ describe("Fix 2 - compaction desync", () => {
     }
   });
 
-  test("deleteMessage inside covered range decrements consumed", () => {
+  test("deleteMessage inside the covered range clears the ledger instead of re-indexing it", () => {
     const { SessionController } = require("../public/session_controller.js");
     const ctl = new SessionController();
     ctl.activeSession = {
@@ -1030,14 +1030,83 @@ describe("Fix 2 - compaction desync", () => {
       ledger: "some ledger",
       consumed: 3,
     };
-    // Delete m1 (idx 1 < consumed 3): consumed must drop to 2 so coverage
-    // stays aligned after the splice.
+    // m1 sits inside [1, consumed): the ledger summarizes it, so removing the
+    // message leaves the ledger asserting a turn the reader deleted. Dropping
+    // the summary is the only repair that keeps the model honest — decrementing
+    // `consumed` would fix the index and leave the false fact in place.
     expect(ctl.deleteMessage("m1")).toBe(true);
     expect(ctl.activeSession.messages.length).toBe(3);
-    expect(ctl.activeSession.consumed).toBe(2);
-    // Delete outside covered range: consumed untouched.
+    expect(ctl.activeSession.ledger).toBe("");
+    expect(ctl.activeSession.consumed).toBe(0);
+  });
+
+  test("deleteMessage outside the covered range leaves the ledger untouched", () => {
+    const { SessionController } = require("../public/session_controller.js");
+    const ctl = new SessionController();
+    ctl.activeSession = {
+      id: "s1",
+      messages: [
+        { id: "m0", role: "assistant", content: "greeting" },
+        { id: "m1", role: "user", content: "one" },
+        { id: "m2", role: "assistant", content: "two" },
+        { id: "m3", role: "user", content: "three" },
+      ],
+      ledger: "some ledger",
+      consumed: 2,
+    };
+    // m3 is live tail: the ledger never described it, so nothing about the
+    // ledger is now wrong and it is kept.
     expect(ctl.deleteMessage("m3")).toBe(true);
+    expect(ctl.activeSession.ledger).toBe("some ledger");
     expect(ctl.activeSession.consumed).toBe(2);
+  });
+
+  test("editing a covered message clears the ledger; editing the pinned opening does not", () => {
+    const { SessionController } = require("../public/session_controller.js");
+    const ctl = new SessionController();
+    const messages = () => [
+      { id: "m0", role: "assistant", content: "greeting" },
+      { id: "m1", role: "user", content: "one" },
+      { id: "m2", role: "assistant", content: "two" },
+      { id: "m3", role: "user", content: "three" },
+    ];
+    ctl.activeSession = { id: "s1", messages: messages(), ledger: "some ledger", consumed: 3 };
+    ctl.editMessage("m1", "one, rewritten");
+    expect(ctl.activeSession.ledger).toBe("");
+    // Negative control: index 0 is the pinned opening and is never folded, so
+    // the ledger does not describe it and rewriting it breaks nothing.
+    ctl.activeSession = { id: "s1", messages: messages(), ledger: "some ledger", consumed: 3 };
+    ctl.editMessage("m0", "a different opening");
+    expect(ctl.activeSession.ledger).toBe("some ledger");
+    expect(ctl.activeSession.consumed).toBe(3);
+  });
+
+  test("an undo restores the ledger state the deletion cleared", () => {
+    const { SessionController } = require("../public/session_controller.js");
+    const ctl = new SessionController();
+    const removed = { id: "m1", role: "user", content: "one" };
+    ctl.activeSession = {
+      id: "s1",
+      messages: [
+        { id: "m0", role: "assistant", content: "greeting" },
+        removed,
+        { id: "m2", role: "assistant", content: "two" },
+      ],
+      ledger: "some ledger",
+      consumed: 2,
+      ledgerTruncated: true,
+    };
+    const snapshot = ctl.captureLedgerSnapshot();
+    ctl.deleteMessage("m1");
+    expect(ctl.activeSession.ledger).toBe("");
+    // The undo path the chat page runs: put the message back, then put the
+    // derived state back. Restoring the text alone would leave consumed at 0
+    // while a ledger still described the transcript.
+    ctl.activeSession.messages.splice(1, 0, removed);
+    expect(ctl.restoreLedgerSnapshot(snapshot)).toBe(true);
+    expect(ctl.activeSession.ledger).toBe("some ledger");
+    expect(ctl.activeSession.consumed).toBe(2);
+    expect(ctl.activeSession.ledgerTruncated).toBe(true);
   });
 
   test("deleting msg_init resets ledger and consumed to empty state", () => {

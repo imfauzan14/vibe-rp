@@ -44,7 +44,7 @@ describe("Choice Mode - the core loop", () => {
     // The UI flow: append the user turn, then stream it (not `send`, which
     // appends internally).
     ctl.appendMessage({ role: "user", content: choice.text });
-    await ctl.streamResponse(choice.text);
+    await ctl.streamResponse();
     // Exactly one user message and one assistant message were added.
     expect(ctl.messages.length).toBe(before + 2);
     expect(ctl.messages.at(-2).content).toBe("Ask about the letter.");
@@ -86,7 +86,7 @@ describe("Choice Mode - the core loop", () => {
     // state: the reader still sees which line they picked while it streams.
     expect(ctl.choiceState.status).toBe(CHOICE_STATUS.SUBMITTING);
     expect(ctl.choiceState.selectedId).toBe(first.id);
-    await ctl.streamResponse(first.text);
+    await ctl.streamResponse();
     expect(engine.streamCalls).toBe(2); // greeting turn + one selection
   });
 
@@ -105,7 +105,7 @@ describe("Choice Mode - the core loop", () => {
     const firstSource = ctl.choiceState.sourceId;
     const choice = ctl.selectChoice(ctl.choiceState.choices[0].id);
     ctl.appendMessage({ role: "user", content: choice.text });
-    await ctl.streamResponse(choice.text);
+    await ctl.streamResponse();
     await ctl.requestChoices();
     expect(ctl.choiceState.status).toBe(CHOICE_STATUS.READY);
     expect(ctl.choiceState.sourceId).not.toBe(firstSource);
@@ -288,7 +288,7 @@ describe("Choice Mode - a failed turn never dead-ends the machine", () => {
     const pick = ctl.selectChoice(ctl.choiceState.choices[0].id);
     expect(ctl.choiceState.status).toBe(CHOICE_STATUS.SUBMITTING);
     ctl.appendMessage({ role: "user", content: pick.text });
-    await expect(ctl.streamResponse(pick.text)).rejects.toThrow("HTTP 500");
+    await expect(ctl.streamResponse()).rejects.toThrow("HTTP 500");
     // Recoverable: idle, with the user turn kept so the turn can be retried.
     expect(ctl.choiceState.status).toBe(CHOICE_STATUS.IDLE);
     expect(ctl.choiceState.selectedId).toBeNull();

@@ -133,6 +133,10 @@ export function openSettingsModal(options = {}) {
       ]),
       el("p", { class: "rp-help", text: "A reasoning model works the scene out on its own, so the ask is skipped for it. Use Always for a small local model that benefits from being told to think." }),
     ]),
+    el("div", { class: "rp-field" }, [
+      el("button", { type: "button", id: "popup-forget-limits-btn", class: "rp-btn rp-btn--ghost rp-btn--sm", text: "Forget learned model limits" }),
+      el("p", { class: "rp-help", text: "The app keeps what this endpoint told it: the model's real context window, any hidden per-request preamble it bills, and which parameters it accepts or ignores. Clear that if you change endpoints under the same name, or if a limit was learned from a response that was not about this model." }),
+    ]),
     // The session-import control is a library-only concern (it unlocks full
     // card definitions during import). Only render it when the caller supplies
     // a `saveSession` handler, so the chat surface does not carry a hidden
@@ -161,17 +165,18 @@ export function openSettingsModal(options = {}) {
     ]),
   ]);
 
-  // Parameters panel.
+  // Parameters panel. Every control here applies to the next request as soon as
+  // it settles, so there is no confirmation step: the reply ceiling is a
+  // reservation taken out of the window, and the context budget is the window,
+  // which means the effect of a change is visible in the context inspector
+  // immediately and in the next turn's payload.
   const paramsPanel = el("div", { class: "rp-tabpanel rp-settings__panel", id: "settings-params-tab", hidden: true }, [
     guidance(
       "Sampler and context controls",
-      "Balance creative unpredictability against narrative coherence. These values go to the model on every request."
+      "Balance creative unpredictability against narrative coherence. Every value here is sent with the next request the moment you let go of the control."
     ),
     ...PARAM_FIELDS,
-    el("p", { id: "popup-params-status", class: "rp-settings__status", attrs: { role: "status" } }),
-    el("div", { class: "rp-settings__footer" }, [
-      el("button", { type: "button", id: "popup-save-params-btn", class: "rp-btn rp-btn--primary", text: "Save parameters" }),
-    ]),
+    el("p", { class: "rp-help", text: "Max response tokens is a ceiling on one reply, taken out of the window before history is sized. Max context budget is the whole request window; the continuity ledger folds when history approaches it." }),
   ]);
 
   // Personas panel.
@@ -237,7 +242,6 @@ export function openSettingsModal(options = {}) {
   const params = mountParamsPanel(paramsPanel, {
     getParams: options.getSettings,
     saveParams: options.saveSettings,
-    host,
   });
   const personas = mountPersonaList(personaRoot, {
     load: options.listPersonas,

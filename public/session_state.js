@@ -36,6 +36,36 @@ export function resetLedger(session) {
   session.ledgerCondensedReported = false;
 }
 
+/**
+ * Captures the derived state a reversible action has to be able to put back.
+ *
+ * `resetLedger` is destructive on purpose, but a UI action built on it can be
+ * undone (deleting a message, then changing your mind), and an undo that
+ * restores `messages` without restoring `consumed` leaves the coverage index
+ * describing a different run of the transcript — so the next fold summarizes
+ * messages the ledger already holds.
+ */
+export function captureLedgerState(session) {
+  return {
+    ledger: session.ledger,
+    consumed: session.consumed,
+    ledgerTruncated: session.ledgerTruncated,
+    ledgerOverflowReported: session.ledgerOverflowReported,
+    ledgerCondensedReported: session.ledgerCondensedReported,
+  };
+}
+
+/** Puts back what `captureLedgerState` took. */
+export function restoreLedgerState(session, snapshot) {
+  if (!session || !snapshot) return false;
+  session.ledger = snapshot.ledger;
+  session.consumed = snapshot.consumed;
+  session.ledgerTruncated = snapshot.ledgerTruncated;
+  session.ledgerOverflowReported = snapshot.ledgerOverflowReported;
+  session.ledgerCondensedReported = snapshot.ledgerCondensedReported;
+  return true;
+}
+
 /** Stores the provider's usage report for the turn. */
 export function noteUsage(session, usage) {
   session.lastUsage = usage;

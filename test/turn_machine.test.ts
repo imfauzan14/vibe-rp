@@ -25,8 +25,8 @@ function makeController({ reply = "The reply.", fail = null } = {}) {
       calls.push(["cancel"]);
       return true;
     },
-    async streamResponse(promptHint, onChunk) {
-      calls.push(["streamResponse", promptHint]);
+    async streamResponse(onChunk) {
+      calls.push(["streamResponse"]);
       if (fail) throw fail;
       if (onChunk) {
         for (const part of ["The ", "reply."]) onChunk(part);
@@ -160,7 +160,7 @@ describe("entries", () => {
     const { machine, controller } = rig();
     await machine.submitTurn("hello");
     expect(controller.calls[0]).toEqual(["appendMessage", { role: "user", content: "hello" }]);
-    expect(controller.calls[1]).toEqual(["streamResponse", "hello"]);
+    expect(controller.calls[1]).toEqual(["streamResponse"]);
   });
 
   test("submitTurn ignores an empty turn and a busy composer", async () => {
@@ -176,14 +176,14 @@ describe("entries", () => {
     const { machine, controller } = rig();
     await machine.rerollLastTurn();
     expect(controller.calls[0]).toEqual(["reroll"]);
-    expect(controller.calls[1]).toEqual(["streamResponse", "prior prompt"]);
+    expect(controller.calls[1]).toEqual(["streamResponse"]);
   });
 
   test("retryUnansweredTurn re-streams the pending turn without appending", async () => {
     const { machine, controller } = rig();
     await machine.retryUnansweredTurn();
     expect(controller.calls[0]).toEqual(["pendingUserTurn"]);
-    expect(controller.calls[1]).toEqual(["streamResponse", "unanswered"]);
+    expect(controller.calls[1]).toEqual(["streamResponse"]);
     expect(controller.calls.some((c) => c[0] === "appendMessage")).toBe(false);
   });
 

@@ -210,6 +210,49 @@ describe("the measured per-request overhead", () => {
     expect(measured.inputTokens).toBeLessThan(clean.inputTokens);
     expect(measured.inputTokens + measured.outputTokens + measured.overheadTokens).toBeLessThanOrEqual(4096);
   });
+
+  test("the overflow report names the preamble instead of blaming the preset", async () => {
+    // The report exists to tell the reader *which* component to shrink. The
+    // preamble is input the app never assembled, so it is absent from the
+    // breakdown the report used to rank — and when the preamble is what pushed
+    // the request over, the largest visible component is the wrong answer.
+    const settings = { apiEndpoint: EP, model: MODEL, maxContextTokens: 4096, maxTokens: 256 };
+    const session = { messages: [{ role: "assistant", content: "greeting" }, { role: "user", content: "I open the door." }], ledger: "", consumed: 1 };
+    const cardWith = (words: number) => ({ id: "c", data: { name: "Elena", description: "word ".repeat(words) } });
+    const original = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response('data: {"choices":[{"delta":{"content":"ok"}}]}\n\ndata: [DONE]\n\n', {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      })) as unknown as typeof fetch;
+    const runTurn = async (card: unknown) => {
+      const notices: string[] = [];
+      await BrowserChatEngine.streamTurn({
+        card,
+        session: { ...session, messages: session.messages.map((m) => ({ ...m })) },
+        settings,
+        persona: null,
+        onChunk: () => {},
+        onNotice: (m: string) => notices.push(m),
+      });
+      return notices.find((n) => n.includes("exceed the configured prompt budget")) || "";
+    };
+    try {
+      // A preset large enough to overflow on its own, with nothing measured.
+      const fromPreset = await runTurn(cardWith(4800));
+      expect(fromPreset).toMatch(/largest component is the static preset/);
+      // Negative control: with no preamble measured there is none to name.
+      expect(fromPreset).not.toContain("provider preamble");
+
+      notePromptOverhead(EP, MODEL, 3500, 500); // 3000 tokens the app cannot see
+      const fromPreamble = await runTurn(cardWith(1600));
+      expect(fromPreamble).toContain("provider preamble");
+      // And it is ranked, so the advice points at the real cause.
+      expect(fromPreamble).toMatch(/largest component is the provider preamble/);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
 });
 
 // ───────────────────────── persistence ─────────────────────────

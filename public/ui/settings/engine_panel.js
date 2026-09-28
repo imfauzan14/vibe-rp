@@ -10,6 +10,10 @@
 //       fetchModels({endpoint, key}) -> Promise<string[]> of model ids
 //       saveSession(rawText)   -> handle the pasted session JSON
 //       host                   -> a toast host from createToastHost (optional)
+//   - "Forget learned model limits" clears the per-endpoint record the engine
+//     builds from what a provider tells it. That record is a set of
+//     measurements, and a measurement can be wrong, so the reader needs a way
+//     to drop it without clearing storage or changing endpoint.
 //   - Returns `{ refresh, destroy }`. `refresh` reloads the fields from
 //     `getSettings`; `destroy` removes every listener it added.
 //   - Async results are announced through `#popup-engine-status`, which the
@@ -19,6 +23,7 @@
 //   mountEnginePanel(root, options) -> { refresh, destroy }
 
 import { qs } from "../dom.js";
+import { clearModelCapabilities } from "../../browser_engine.js";
 
 const MODEL_PLACEHOLDER = "Select a model after fetching models";
 const SAME_AS_MAIN = "Same as main model";
@@ -60,6 +65,7 @@ export function mountEnginePanel(root, options = {}) {
   const deliberationSelect = qs(root, "#popup-choice-deliberation");
   const fetchBtn = qs(root, "#popup-fetch-models-btn");
   const saveBtn = qs(root, "#popup-save-engine-btn");
+  const forgetLimitsBtn = qs(root, "#popup-forget-limits-btn");
   const sessionWrap = qs(root, "#popup-import-session-wrap");
   const sessionInput = qs(root, "#popup-import-session-input");
   const saveSessionBtn = qs(root, "#popup-save-import-session-btn");
@@ -135,6 +141,17 @@ export function mountEnginePanel(root, options = {}) {
       choiceDeliberation: deliberationSelect?.value || "auto",
     });
     announce("Engine settings saved.");
+  });
+
+  // Every fact the app learns about an endpoint is a measurement, and a
+  // measurement can be wrong: a gateway that answers for several models, a
+  // window named in an error that was really about the prompt, a preamble
+  // sampled from a response that was not a plain completion. Without a way to
+  // drop them, one bad observation would quietly shrink every later request
+  // forever, so the record is clearable from where it is created.
+  on(forgetLimitsBtn, "click", () => {
+    clearModelCapabilities();
+    announce("Learned model limits cleared. The next turn measures them again.");
   });
 
   on(saveSessionBtn, "click", async () => {

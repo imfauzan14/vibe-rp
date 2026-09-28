@@ -129,6 +129,25 @@ export function createMessageFeed({
     return `${signatureOf(msg)}:${opts.showRetry ? "r" : ""}${opts.showReroll ? "R" : ""}${opts.showDelete ? "d" : ""}${opts.showFork ? "f" : ""}`;
   }
 
+  /**
+   * Whether Reroll belongs on this message.
+   *
+   * Reroll re-runs a turn the player took, so it needs one: the newest message
+   * must be the character's reply and the message before it must be the
+   * player's. In a fresh chat the newest turn is the card's authored opening,
+   * which answers nothing — offering Reroll there would trade the opening for a
+   * request that carries no user turn at all. This mirrors the controller's own
+   * predicate, so the control is never shown for a reroll that would be a
+   * no-op.
+   */
+  function canReroll(messages, msg) {
+    if (!msg || msg.role === "user") return false;
+    const list = messages || [];
+    const newest = list[list.length - 1];
+    if (!newest || newest.id !== msg.id) return false;
+    return list[list.length - 2]?.role === "user";
+  }
+
   function reconcile(messages) {
     const total = messages.length;
     const start = Math.max(0, total - windowSize);
@@ -148,10 +167,9 @@ export function createMessageFeed({
     // rebuilt when its signature moves.
     const ordered = visible.map((msg, i) => {
       const id = String(msg.id);
-      const isLastAssistant = msg.role !== "user" && start + i === total - 1;
       const opts = {
         showDelete: total > 1,
-        showReroll: isLastAssistant,
+        showReroll: canReroll(messages, msg),
         showFork: total > 1,
         // The newest turn is the player's and nothing has answered it: its
         // generation failed or was interrupted. This is the durable recovery
@@ -339,8 +357,11 @@ export function createMessageFeed({
   function updateMessage(msg) {
     const id = String(msg.id);
     const existing = nodes.get(id);
-    const isLastAssistant = lastMessages.length && lastMessages[lastMessages.length - 1].id === msg.id && msg.role !== "user";
-    const opts = { showDelete: lastMessages.length > 1, showReroll: isLastAssistant, showFork: lastMessages.length > 1 };
+    const opts = {
+      showDelete: lastMessages.length > 1,
+      showReroll: canReroll(lastMessages, msg),
+      showFork: lastMessages.length > 1,
+    };
     const fresh = buildMessage(msg, opts);
     if (existing) {
       existing.replaceWith(fresh);

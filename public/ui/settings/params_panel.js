@@ -5,10 +5,17 @@
 //     is scoped to `root`. Options:
 //       getParams()        -> the settings object holding the numeric values
 //       saveParams(patch)  -> persist a partial settings object
-//       host               -> optional toast host
 //   - Each slider is paired with its readout through `data-*` attributes in
 //     the markup, so adding a parameter is a markup change plus one row in the
 //     spec table below, not a new listener block.
+//   - A slider commits on `change`, i.e. when the value settles, and the
+//     readout follows the drag on `input`. Both numbers here decide what the
+//     very next request can carry — the reply ceiling is a reservation taken
+//     out of the window before history is sized, and the context budget is the
+//     window itself — so a control that only took effect after a separate
+//     confirmation would describe a request the app is not building. The
+//     markup default is the only default: `refresh` writes a value only when
+//     settings actually hold one, so a default cannot drift from its spec.
 //   - Returns `{ refresh, destroy }`.
 //
 // Exports
@@ -19,13 +26,13 @@ import { qs } from "../dom.js";
 
 // sliderId -> { readoutId, key, format }
 export const PARAM_SPECS = [
-  { slider: "popup-slider-temp", readout: "popup-val-temp", key: "temperature", fallback: 0.95, decimals: 2 },
-  { slider: "popup-slider-topp", readout: "popup-val-topp", key: "topP", fallback: 1, decimals: 2 },
-  { slider: "popup-slider-minp", readout: "popup-val-minp", key: "minP", fallback: 0, decimals: 2 },
-  { slider: "popup-slider-tokens", readout: "popup-val-tokens", key: "maxTokens", fallback: 1200, decimals: 0 },
-  { slider: "popup-slider-freq", readout: "popup-val-freq", key: "frequencyPenalty", fallback: 0, decimals: 2 },
-  { slider: "popup-slider-pres", readout: "popup-val-pres", key: "presencePenalty", fallback: 0, decimals: 2 },
-  { slider: "popup-slider-context", readout: "popup-val-context", key: "maxContextTokens", fallback: 65536, decimals: 0 },
+  { slider: "popup-slider-temp", readout: "popup-val-temp", key: "temperature", decimals: 2 },
+  { slider: "popup-slider-topp", readout: "popup-val-topp", key: "topP", decimals: 2 },
+  { slider: "popup-slider-minp", readout: "popup-val-minp", key: "minP", decimals: 2 },
+  { slider: "popup-slider-tokens", readout: "popup-val-tokens", key: "maxTokens", decimals: 0 },
+  { slider: "popup-slider-freq", readout: "popup-val-freq", key: "frequencyPenalty", decimals: 2 },
+  { slider: "popup-slider-pres", readout: "popup-val-pres", key: "presencePenalty", decimals: 2 },
+  { slider: "popup-slider-context", readout: "popup-val-context", key: "maxContextTokens", decimals: 0 },
 ];
 
 function formatValue(value, decimals) {
@@ -34,7 +41,7 @@ function formatValue(value, decimals) {
   return decimals > 0 ? number.toFixed(decimals) : String(Math.round(number));
 }
 
-export function mountParamsPanel(root, { getParams, saveParams, host } = {}) {
+export function mountParamsPanel(root, { getParams, saveParams } = {}) {
   if (!root) return { refresh: () => {}, destroy: () => {} };
 
   const rows = PARAM_SPECS.map((spec) => ({
@@ -49,35 +56,33 @@ export function mountParamsPanel(root, { getParams, saveParams, host } = {}) {
     if (row.readoutEl) row.readoutEl.textContent = formatValue(row.sliderEl.value, row.decimals);
   }
 
+  function read(row) {
+    return row.decimals > 0 ? parseFloat(row.sliderEl.value) : parseInt(row.sliderEl.value, 10);
+  }
+
   for (const row of rows) {
-    const handler = () => paint(row);
-    row.sliderEl.addEventListener("input", handler);
-    cleanups.push(() => row.sliderEl.removeEventListener("input", handler));
+    const onInput = () => paint(row);
+    const onChange = () => {
+      paint(row);
+      saveParams?.({ [row.key]: read(row) });
+    };
+    row.sliderEl.addEventListener("input", onInput);
+    row.sliderEl.addEventListener("change", onChange);
+    cleanups.push(() => {
+      row.sliderEl.removeEventListener("input", onInput);
+      row.sliderEl.removeEventListener("change", onChange);
+    });
   }
 
   function refresh() {
     const settings = getParams?.() || {};
     for (const row of rows) {
-      const value = settings[row.key] ?? row.fallback;
-      row.sliderEl.value = value;
+      const value = settings[row.key];
+      // Leave the markup default in place when settings hold nothing for this
+      // key, rather than carrying a second copy of the default in the spec.
+      if (value !== undefined && value !== null) row.sliderEl.value = value;
       paint(row);
     }
-  }
-
-  const saveBtn = qs(root, "#popup-save-params-btn");
-  const status = qs(root, "#popup-params-status");
-  const onSave = () => {
-    const patch = {};
-    for (const row of rows) {
-      patch[row.key] = row.decimals > 0 ? parseFloat(row.sliderEl.value) : parseInt(row.sliderEl.value, 10);
-    }
-    saveParams?.(patch);
-    if (status) status.textContent = "Generation parameters saved.";
-    host?.toast?.("Generation parameters saved.", { tone: "success" });
-  };
-  if (saveBtn) {
-    saveBtn.addEventListener("click", onSave);
-    cleanups.push(() => saveBtn.removeEventListener("click", onSave));
   }
 
   return {

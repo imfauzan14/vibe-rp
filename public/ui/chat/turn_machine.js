@@ -114,7 +114,6 @@ export function createTurnMachine({
 
     try {
       const assistantMsg = await controller.streamResponse(
-        promptHint,
         (chunk) => {
           if (typeof chunk !== "string" || !chunk) return;
           partial.content += chunk;
@@ -183,11 +182,19 @@ export function createTurnMachine({
     await streamTurn(value);
   }
 
+  /**
+   * Re-runs the player's last turn against a fresh reply. `reroll()` returns
+   * null when there is no such turn — the newest message is the card's opening
+   * greeting, or a reply that no turn asked for — and the transcript is then
+   * left exactly as it was rather than losing the opening to a request with no
+   * user turn in it.
+   */
   async function rerollLastTurn() {
     if (composer.busy) return;
     const lastUserPrompt = controller.reroll();
+    if (lastUserPrompt === null) return;
     onSettled();
-    await streamTurn(lastUserPrompt || "[Reroll the scene]");
+    await streamTurn(lastUserPrompt);
   }
 
   /**

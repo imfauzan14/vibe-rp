@@ -120,18 +120,31 @@
         });
         if (!ok) return;
         const index = controller.activeSession.messages.findIndex((m) => m.id === msgId);
+        // Deleting a message the continuity ledger covers clears the ledger —
+        // it summarized a turn that no longer exists. Snapshotting the derived
+        // state next to the message is what makes the undo exact: restoring the
+        // text without the coverage index would leave the next fold
+        // summarizing a message the ledger already holds.
+        const derived = controller.captureLedgerSnapshot();
+        const hadLedger = Boolean(controller.activeSession.ledger);
         controller.deleteMessage(msgId);
+        const cleared = hadLedger && !controller.activeSession.ledger;
         await persistOrReport();
         renderFeed();
         renderChoices();
+        updateContextStats();
         runWithUndo({
           notifier,
-          message: "Message deleted.",
+          message: cleared
+            ? "Message deleted. The continuity summary covered it, so it was cleared and will be rebuilt."
+            : "Message deleted.",
           undo: async () => {
             controller.activeSession.messages.splice(index, 0, msg);
+            controller.restoreLedgerSnapshot(derived);
             await persistOrReport();
             renderFeed();
             renderChoices();
+            updateContextStats();
           },
         });
         return;
@@ -250,12 +263,20 @@
       const save = async () => {
         const val = textarea.value.trim();
         if (!val) { close(); return; }
+        const hadLedger = Boolean(controller.activeSession?.ledger);
         const revision = controller.editMessage(msg.id, val);
+        const cleared = hadLedger && !controller.activeSession?.ledger;
         await persistOrReport();
         close();
         if (revision) feed.updateMessage(revision);
         renderChoices();
-        showToast("Saved as a new draft. The earlier text is kept.", "success");
+        updateContextStats();
+        showToast(
+          cleared
+            ? "Saved as a new draft. The earlier text is kept. The continuity summary covered this message, so it was cleared and will be rebuilt."
+            : "Saved as a new draft. The earlier text is kept.",
+          "success"
+        );
       };
 
       editor.querySelector("[data-cancel]").addEventListener("click", close);

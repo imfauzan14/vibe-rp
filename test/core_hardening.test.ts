@@ -278,7 +278,7 @@ describe("Defect 2 - a failed turn leaves no placeholder", () => {
     });
     const { ctl, db } = await makeController({ engine });
     const snapshot = JSON.stringify(ctl.activeSession.messages);
-    await expect(ctl.streamResponse("boom")).rejects.toThrow("HTTP 500");
+    await expect(ctl.streamResponse()).rejects.toThrow("HTTP 500");
     // The placeholder assistant message is gone: byte-identical transcript.
     expect(JSON.stringify(ctl.activeSession.messages)).toBe(snapshot);
     // No persisted snapshot ever contains the empty placeholder.
