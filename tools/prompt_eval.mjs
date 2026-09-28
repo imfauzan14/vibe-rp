@@ -183,12 +183,17 @@ const CONFLICT_PAIRS = [
     b: /Write into the scene's momentum/ },
   { id: "handoff-duplicated", kind: "redundancy",
     a: /on the beat — not on a question to the reader/, b: /handing the scene back with a question/ },
-  // The authority rule has one home: the contract. The precedence section used
-  // to restate it ("the User Persona and System Directives are the active
+  // The authority rule has one home: the contract. The engine's fixed sections
+  // used to restate it ("the User Persona and System Directives are the active
   // authority..."), so both sides of this pair could appear in one request.
-  // It must now appear once, in the contract, and never in the section.
+  // The restatement was removed entirely rather than translated, so the rule now
+  // appears once, in the contract, and never in an engine-authored section.
+  //
+  // The pair matches the *rule*, not one section's old heading: the previous
+  // pattern keyed on "[Operational Precedence" and went inert the moment that
+  // section was renamed. Naming a heading in a gate is how a gate stops working.
   { id: "authority-stated-twice", kind: "redundancy",
-    a: /are the active authority/, b: /\[Operational Precedence/ },
+    a: /are the active authority/, b: /govern language, register, and medium/ },
   // NOTE: an earlier version of this list paired the contract's "don't restate
   // the player's own input" with the guidance's "don't rewind the story". Those
   // are different failure modes — restating the player's words vs rewinding the

@@ -56,10 +56,20 @@ withhold Delete, which the store would simply re-seed.
 
 The contract is also the single home for the authority rule — which layer
 governs language, register and medium, and which supplies identity. It is
-stated there and nowhere else; the `operationalPrecedence` section carries only
-the consequence the contract cannot state, because it depends on what language
-a particular card was written in. The contract does not name the reader: their
-identity belongs to the persona slot, so the two can never disagree.
+stated there and nowhere else, in both contracts. The engine does not restate
+it and does not inspect the contract's language; the `cardReading` section
+carries only the one card fact the contract cannot state (a preset's dialogue
+examples demonstrate personality, not the language of the scene or its canon).
+The contract does not name the reader: their identity belongs to the persona
+slot, so the two can never disagree.
+
+Earlier this was a section called `operationalPrecedence`, which restated the
+authority rule *and* had to track the contract's language — a hardcoded
+Indonesian function-word list in core engine code. That is one user's language
+running in an app other people use, and it would not scale to a third contract.
+The rule was already stated by both contracts, so the section was deleted
+rather than translated. The engine is now language-neutral: the only language in
+a payload is the language the user chose by selecting a contract.
 
 The Indonesian contract states its rules **in Indonesian**, and that is the
 mechanism, not a translation convenience: output language tracks the language of

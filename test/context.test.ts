@@ -524,7 +524,7 @@ describe("Context planners - history hygiene and lore selection", () => {
     expect(planMultiWord.postHistory).toContain("Archivist entry.");
   });
 
-  test("operationalPrecedence enforces epistemic knowledge boundaries and anti-omniscience for user personas", () => {
+  test("the engine enforces epistemic knowledge boundaries and anti-omniscience for user personas", () => {
     const card = {
       data: {
         name: "Elena",
@@ -533,7 +533,7 @@ describe("Context planners - history hygiene and lore selection", () => {
       },
     };
     const persona = {
-      name: "Fauzan",
+      name: "Rin",
       description: "An engineer from a distant high-tech land with secret cybernetic implants.",
     };
     const plan = BrowserChatEngine.planRequest({
@@ -543,8 +543,8 @@ describe("Context planners - history hygiene and lore selection", () => {
       settings: {},
     });
     const sys = plan.systemPrompt;
-    expect(sys).toContain("[User Persona: Fauzan]");
-    expect(sys).toContain("Operational Precedence:");
+    expect(sys).toContain("[User Persona: Rin]");
+    expect(sys).toContain("Card Reading:");
     expect(sys).toContain("Epistemic Boundary (Anti-Omniscience)");
     expect(sys).toContain("must NOT know or call them by their persona name");
   });
@@ -553,79 +553,76 @@ describe("Context planners - history hygiene and lore selection", () => {
   // assertion about it in this suite is a `toContain` presence check, which
   // means none of them would notice if the section said the wrong thing or was
   // written in the wrong language. These two assert its content.
-  test("operationalPrecedence names the User Persona, not only the Character Preset", () => {
+  test("cardReading states the one card rule the contract does not", () => {
     const card = { data: { name: "Elena", description: "An alchemist.", scenario: "A storm." } };
-    const persona = { name: "Fauzan", description: "An engineer from a distant land." };
+    const persona = { name: "Rin", description: "An engineer from a distant land." };
     const plan = BrowserChatEngine.planRequest({
       card,
       session: { messages: [{ role: "user", content: "I knock." }] },
       persona,
       settings: {},
     });
-    const precedenceLine = plan.systemPrompt
+    const line = plan.systemPrompt
       .split("\n")
-      .find((l: string) => l.includes("Operational Precedence:"));
-    // The contract grants language authority to the reader — User Persona and
-    // System Directives. A persona written in another language is the clearest
-    // signal of what the reader's language is, so this section must name it.
-    expect(precedenceLine).toContain("Character Preset");
-    expect(precedenceLine).toContain("User Persona");
+      .find((l: string) => l.includes("Card Reading:"));
+    // Dialogue examples demonstrate personality, not the scene's language or
+    // canon. This is the only claim in the section the contract does not make.
+    expect(line).toContain("personality");
   });
 
-  test("operationalPrecedence follows the active contract's language", () => {
+  // The engine must not name any language. It used to carry a hardcoded
+  // Indonesian function-word list so this section could track the contract's
+  // language; that was one national language baked into core engine code, and it
+  // could not scale to a third contract. The section is now language-neutral and
+  // states only what the contract does not, and the language mechanism lives in
+  // the contract alone — which is where the user chooses it.
+  test("the system prompt builder names no language of its own", () => {
     const card = { data: { name: "Elena", description: "An alchemist.", scenario: "A storm." } };
-    const persona = { name: "Fauzan", description: "An engineer from a distant land." };
+    const persona = { name: "Rin", description: "An engineer from a distant land." };
     const session = { messages: [{ role: "user", content: "I knock." }] };
 
-    const idPlan = BrowserChatEngine.planRequest({
-      card,
-      session,
-      persona,
-      settings: { agentsContract: DEFAULT_AGENTS_CONTRACT_ID },
-    });
-    const enPlan = BrowserChatEngine.planRequest({
-      card,
-      session,
-      persona,
-      settings: { agentsContract: DEFAULT_AGENTS_CONTRACT },
-    });
-
-    // Indonesian contract -> the required precedence section must be Indonesian
-    // too. An English block here would sit permanently under the Indonesian
-    // contract, and output language tracks the instruction text's language.
-    expect(idPlan.systemPrompt).toContain("Prioritas Operasional");
-    expect(idPlan.systemPrompt).not.toContain("Operational Precedence:");
-
-    // English contract -> unchanged English text.
-    expect(enPlan.systemPrompt).toContain("Operational Precedence:");
-    expect(enPlan.systemPrompt).not.toContain("Prioritas Operasional");
+    for (const agentsContract of [DEFAULT_AGENTS_CONTRACT, DEFAULT_AGENTS_CONTRACT_ID]) {
+      const sections = buildSystemSections(card, persona, { agentsContract });
+      // Every fixed section the engine authors, excluding the user's contract.
+      const engineAuthored = sections
+        .filter((s) => s.id !== "contract")
+        .map((s) => s.text)
+        .join("\n");
+      // No Indonesian anywhere in engine-authored text, under either contract.
+      expect(engineAuthored).not.toMatch(/\b(dan|yang|dengan|untuk|tidak|adalah)\b/);
+      expect(engineAuthored).not.toContain("Prioritas Operasional");
+      // And the section id is no longer named after a language concern.
+      expect(sections.map((s) => s.id)).not.toContain("operationalPrecedence");
+      expect(sections.map((s) => s.id)).toContain("cardReading");
+    }
   });
 
-  // The detection keys off Indonesian function words, not the built-in's
-  // heading, so it keeps working for a renamed preset or a user-authored
-  // Indonesian contract. If it silently regressed to an English block here, the
-  // whole point of the Indonesian contract would leak at the highest priority.
-  test("operationalPrecedence detects Indonesian by function words, not by the preset's title", () => {
+  // The engine must not restate the contract's authority rule. The engine used
+  // to carry an `operationalPrecedence` section that said "the User Persona and
+  // System Directives govern language, register, and medium; the Character
+  // Preset is the active authority for identity" — which is a second copy of a
+  // rule both shipped contracts already state. Two copies of one rule in one
+  // request means the model reconciles two wordings.
+  //
+  // Note how the contract is excluded: by section id, not by string match. The
+  // contract is macro-substituted before it is embedded ({{user}} -> the
+  // persona name), so `prompt.replace(DEFAULT_AGENTS_CONTRACT, "")` strips
+  // nothing and the assertion would fire on the contract's own text.
+  test("the engine does not restate the contract's authority rule", () => {
     const card = { data: { name: "Elena", description: "An alchemist.", scenario: "A storm." } };
+    const persona = { name: "Rin", description: "An engineer from a distant land." };
     const session = { messages: [{ role: "user", content: "I knock." }] };
 
-    // A user-authored Indonesian contract with none of the built-in's wording.
-    const customId = BrowserChatEngine.planRequest({
-      card,
-      session,
-      settings: { agentsContract: "Kamu menulis cerita bersama pembaca. Jaga kesinambungan dan suasana." },
-    });
-    expect(customId.systemPrompt).toContain("Prioritas Operasional");
-
-    // An English contract that happens to contain an Indonesian-looking word
-    // must not flip the section to Indonesian.
-    const enWithLoanword = BrowserChatEngine.planRequest({
-      card,
-      session,
-      settings: { agentsContract: DEFAULT_AGENTS_CONTRACT + "\nA note about warung food." },
-    });
-    expect(enWithLoanword.systemPrompt).toContain("Operational Precedence:");
-    expect(enWithLoanword.systemPrompt).not.toContain("Prioritas Operasional");
+    for (const agentsContract of [DEFAULT_AGENTS_CONTRACT, DEFAULT_AGENTS_CONTRACT_ID]) {
+      const sections = buildSystemSections(card, persona, { agentsContract });
+      const engineAuthored = sections
+        .filter((s) => s.id !== "contract")
+        .map((s) => s.text)
+        .join("\n");
+      expect(engineAuthored).not.toContain("govern language");
+      expect(engineAuthored).not.toContain("active authority");
+      expect(engineAuthored).not.toContain("supplies identity");
+    }
   });
 });
 

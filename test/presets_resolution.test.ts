@@ -132,7 +132,7 @@ describe("Empty & Simple System Prompts, Personas, and Cards Contract", () => {
     expect(prompt).toContain("### CHARACTER IN SCENE: Aria");
     expect(prompt).toContain("[Description: A wandering knight.]");
     expect(prompt).not.toContain("[User Persona");
-    expect(prompt).not.toContain("Operational Precedence:");
+    expect(prompt).not.toContain("Card Reading:");
     expect(prompt).not.toContain("Epistemic Boundary");
   });
 
@@ -141,7 +141,7 @@ describe("Empty & Simple System Prompts, Personas, and Cards Contract", () => {
     const prompt = BrowserChatEngine.formatSystemPrompt(card, { name: "Rowan" }, { agentsContract: "" });
     expect(prompt).toContain("[User Persona: Rowan]");
     expect(prompt).not.toMatch(/\[User Persona: Rowan\]\n(?!\n)/); // No single trailing newline before next block
-    expect(prompt).toContain("Operational Precedence:");
+    expect(prompt).toContain("Card Reading:");
     expect(prompt).toContain("Epistemic Boundary");
   });
 
@@ -149,14 +149,14 @@ describe("Empty & Simple System Prompts, Personas, and Cards Contract", () => {
     const card = { data: { name: "Aria" } };
     const prompt = BrowserChatEngine.formatSystemPrompt(card, { description: "A tired cartographer." }, { agentsContract: "" });
     expect(prompt).toContain("[User Persona: User]\nA tired cartographer.");
-    expect(prompt).toContain("Operational Precedence:");
+    expect(prompt).toContain("Card Reading:");
   });
 
   test("formatSystemPrompt with whitespace persona omits persona section completely", () => {
     const card = { data: { name: "Aria" } };
     const prompt = BrowserChatEngine.formatSystemPrompt(card, { name: "   ", description: "" }, { agentsContract: "" });
     expect(prompt).not.toContain("[User Persona");
-    expect(prompt).not.toContain("Operational Precedence");
+    expect(prompt).not.toContain("Card Reading");
   });
 
   test("formatSystemPrompt with minimal contract and null persona includes contract and operational boundaries", () => {
@@ -165,7 +165,7 @@ describe("Empty & Simple System Prompts, Personas, and Cards Contract", () => {
     expect(prompt).toContain("Speak in short sentences.");
     expect(prompt).toContain("### CHARACTER IN SCENE: Aria");
     expect(prompt).not.toContain("[User Persona");
-    expect(prompt).toContain("Operational Precedence:");
+    expect(prompt).toContain("Card Reading:");
   });
 
   test("formatSystemPrompt with null card and null persona falls back to default character", () => {
@@ -202,7 +202,7 @@ describe("Empty & Simple System Prompts, Personas, and Cards Contract", () => {
       agentsContract: "",
     });
     expect(plan.systemPrompt).not.toContain("[User Persona");
-    expect(plan.systemPrompt).not.toContain("Operational Precedence");
+    expect(plan.systemPrompt).not.toContain("Card Reading");
     expect(plan.breakdown.persona).toBe(0);
     expect(plan.payload[0].role).toBe("system");
     expect(plan.payload[0].content).toBe("### CHARACTER IN SCENE: Elena");

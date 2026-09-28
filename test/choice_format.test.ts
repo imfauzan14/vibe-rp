@@ -520,7 +520,7 @@ describe("Universal & Adaptive Choice Mode Prompt Contract", () => {
     // would re-create the duplication this separation removed.
     const promptText = choicePrompt(4, { charName: "Vance", playerName: "Rowan" });
     expect(promptText).toContain("Provide 4 choices");
-    expect(promptText).not.toContain("Operational Precedence");
+    expect(promptText).not.toContain("Card Reading");
     expect(promptText).not.toContain("Adaptive Guidance");
   });
 
