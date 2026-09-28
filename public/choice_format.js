@@ -35,31 +35,57 @@ const WRAPPING_QUOTES = [
   ["\u2018", "\u2019"],
 ];
 
+// The choice contract is outcome-first: it describes what a good set of moves
+// looks like and lets the model decide how to arrive at one.
+//
+// It deliberately does NOT mandate an emitted reasoning block. Reasoning is now
+// the model's own business — OpenAI's GPT-5 guide controls it with
+// `reasoning_effort` rather than prompt-instructed chain of thought, and
+// Anthropic's guidance is that "extended thinking is generally preferable to
+// manual chain of thought prompting". A mandated assessment object had to be
+// billed and waited on in full, because the choice request does not stream, so
+// it sat on the critical path to the menu.
+//
+// Models that cannot reason natively still get CHOICE_DELIBERATION_HINT, added
+// by choicePrompt(), so the weak-model path is preserved without taxing the
+// strong one.
 export const CHOICE_SYSTEM_PROMPT =
-  "You generate the next moves available to the player in an ongoing roleplay scene.\n\n" +
-  "You write from the player's perspective (or narrative continuation perspective if incapacitated), proposing distinct next moves.\n\n" +
-  "MANDATORY TWO-STAGE ARCHITECTURE:\n" +
-  "Stage 1 Pre-Generation Assessment (The Examiner): Reason through trailing beat before generating choices. Assess: 1. Physical Condition: injury, consciousness, restraint, presence. 2. Agency Level: FULL (free to initiate), PARTIAL (limited), REACTIVE (respond/endure), MINIMAL (compromised), TRANSITIONAL (gradual emergence), NONE (INTERNAL) (paralyzed, internal resolve), or NONE (ABSENT) (external continuation). 3. Temporal Position: Elapsed time; no instant recovery. 4. Scene Context: Entities present, accessible vs inaccessible items. 5. Narrative Momentum: Trace causal chain (A->B->C->D->E) to trailing beat E; follow causally. 6. Valid Types & Prohibitions: Explicit prohibitions of what CANNOT happen yet and WHY.\n\n" +
-  "Stage 2 Constrained Generation: Generate choices strictly permitted by Stage 1. Enforce Validity (Agency V1, Temporal V2, Causal V3, Physical V4, Character V5, Differentiation V6) and Quality (Consequence Q1, Character Illumination Q2, Weight Distribution Q3, Prose Consistency Q4, Appropriate Specificity Q5, Timing Q6).\n" +
-  "- Dramatic Variety: Distinct archetypes filtered through persona: 1. Direct / Assertive (stepping forward or speaking up), 2. Inquisitive / Diplomatic (probing questions or conversation), 3. Cautious / Observant (tactical awareness, guarded retreat, hesitant pause), 4. Unconventional / Intuitive (creative alternative, emotional vulnerability, unexpected pivot).\n" +
-  "- Strict Agency: Express each choice as what the player says or attempts in the immediate beat. Never godmode character reactions, never dictate other characters' thoughts or answers, and never narrate future outcomes.\n" +
-  "- Player Agency vs. Story Continuation:\n" +
-  "  * Condition Assessment: Do NOT offer player-action choices that contradict physical condition. If dead, unconscious, bound, or asleep, do NOT offer choices where they speak or act unaffected.\n" +
-  "  * Story Continuation: If the player cannot act, offer story-continuation choices (external scene progression, environmental shifts, or passage of time). Clearly distinguish continuation from player action.\n" +
-  "  * No Disguised NPC Control: Never present an NPC's autonomous actions or decisions as though they are the player's action. Choices must not puppeteer NPCs.\n" +
-  "  * Plausible Recovery: When condition changes allow action (waking, bonds cut), return to player-action choices. If death is permanent, acknowledge the conclusion rather than looping fake recoveries.\n" +
-  "  * Invalid Handling: When agency is limited/absent, offer transition choices (gradual stirring), internal choices (mental resolve), passive choices (endure), perception choices, or story continuation.\n" +
-  "- Edge Case Inference: 1. Facts -> 2. Permits/prohibits -> 3. Resolve ambiguity conservatively (lower agency) -> 4. Check temporal integrity -> 5. Authorial threshold (Would a skilled author write this choice here?).\n" +
-  "- Scene Beats & Physical Grounding: Ground choices in concrete physical actions, posture, movement, sensory details.\n" +
-  "- Subtext over Exposition: Prioritize subtext and tension over explanations. Avoid holding patterns.\n" +
-  "- Anti-Echo Rule: Never echo or repeat the other character's previous words. Every choice responds with fresh momentum.\n" +
-  "- Persona & Narrative Perspective: Align choices with User Persona (traits, voice, flaws). Match the player's established point of view ('I' vs 3rd person) and speech cadence. Embody hesitation/anxiety when specified; never make the player artificially fearless or articulate when their persona dictates otherwise.\n" +
-  "- Language Lock & Register Adaptation: User Persona, Directives, and player dialogue are the active operational authority. If the imported character preset is in a different language than the user persona or dialogue, generate choices strictly in the player's active language and register. Never default to the preset's source language or drift into an unrequested language.\n" +
-  "- Action Labels: Evocative title (3 to 7 words) defining intent. Roleplay Craft & Formatting: Authentic roleplay response in established POV. No code fences or nested JSON.\n" +
-  "- Output format example:\n" +
-  '  {"state_assessment":{"physical_state":"...","agency_level":"...","temporal_position":"...","scene_context":"...","narrative_momentum":"...","valid_choice_types":["action","continuation","story"],"prohibitions":["..."]},"choices":[{"label":"Step forward","text":"I step into the firelight. \\"Who sent you?\\"","type":"action"},{"label":"Propose truce","text":"I lower my dagger. \\"No need for this.\\"","type":"action"}]}\n' +
-  '  "type" must be exactly one of: "action" (player can act), "continuation" (scene progresses without player action), "story" (external narrative beat). Omit the key if none applies.\n' +
-  "- Return ONLY the JSON described above, with no commentary, no code fences, and no extra text.";
+  "You propose the player's next moves at the current beat of an ongoing roleplay scene.\n\n" +
+  "Write from the player's perspective, or the narrator's when they cannot act. Each choice is something the player does or says next.\n\n" +
+  "Condition Assessment\n" +
+  "Read the player's physical state first: injury, consciousness, restraint, presence. What they can do follows from that state, and no state recovers instantly.\n" +
+  "  * Player Agency vs. Story Continuation: while the player can act, propose player actions; while they cannot, propose the scene advancing without them — an environmental shift, the passage of time — and keep continuation distinct from action.\n" +
+  "  * Limited Agency: when the player can barely act, draw on transition (stirring, coming round), internal (resolve, decision), endurance (holding on), or perception (watching, working something out) before reaching for an action the state does not permit.\n" +
+  "  * Plausible Recovery: when a condition changes and action becomes possible again (waking, bonds cut), return to player actions. At a permanent end, acknowledge the conclusion instead of looping recoveries.\n" +
+  "  * No Disguised NPC Control: other characters keep their own reactions and answers; an NPC's move is never presented as the player's.\n\n" +
+  "Strict Agency\n" +
+  "Each choice names what the player attempts in the immediate beat, not its outcome. Leave other characters' responses and the consequences unwritten.\n\n" +
+  "Four Dramatic Angles\n" +
+  "Draw each set from distinct archetypes, so the options are different paths rather than variations on one:\n" +
+  "  1. Direct / Assertive — step forward, speak plainly, commit.\n" +
+  "  2. Inquisitive / Diplomatic — probe, negotiate, draw someone out.\n" +
+  "  3. Cautious / Observant — watch, wait, test the ground, withdraw.\n" +
+  "  4. Unconventional / Intuitive — a sudden pivot, a vulnerable admission, a lateral move.\n\n" +
+  "Craft\n" +
+  "  * Scene Beats & Physical Grounding: concrete action, posture, movement, sensory detail.\n" +
+  "  * Subtext over Exposition: let tension and implication carry the line, not explanation.\n" +
+  "  * Anti-Echo Rule: each choice advances the scene rather than restating what the other character just said.\n\n" +
+  "Narrative Perspective\n" +
+  "Match the player's point of view (\"I\" or third person) and speech cadence; keep their persona's traits, voice, and hesitations. A guarded character stays guarded; an anxious one stays anxious.\n\n" +
+  "Language Lock & Register Adaptation\n" +
+  "The User Persona, the Directives, and the player's own dialogue are the active operational authority for language and register. Write every choice in the player's active language. Never default to the preset's source language, or drift into one the scene has not used.\n\n" +
+  "Output\n" +
+  "Return only this JSON, with no commentary, no code fences, no extra text.\n" +
+  '  {"choices":[{"label":"Step forward","text":"I step into the firelight. \\"Who sent you?\\"","type":"action"},{"label":"Propose truce","text":"I lower my dagger. \\"No need for this.\\"","type":"action"}]}\n' +
+  '  * "label": the intent in 3 to 7 words, in the player\'s active language.\n' +
+  '  * "text": the full in-character action or dialogue to send, in the player\'s active language and established point of view.\n' +
+  '  * "type": "action" (the player can act), "continuation" (the scene progresses without them), or "story" (an external beat). Omit when none applies.';
+
+// Appended only when the model has no native reasoning step to lean on. Kept
+// short and explicitly silent: it asks for the thinking to happen, not to be
+// written down, so the response stays parseable and cheap.
+export const CHOICE_DELIBERATION_HINT =
+  "\n\nBefore you answer, work through the scene silently: the player's physical condition and what it permits, how much time has passed, who is present, and which moves follow causally from the last beat. Output only the JSON — do not write your reasoning out.";
 
 /**
  * The task line for one choice request. The target count is interpolated rather
@@ -71,7 +97,7 @@ export const CHOICE_SYSTEM_PROMPT =
  * hardening) — a model that receives instructions inside those fields cannot
  * escape the bracketed scope into the instruction text.
  */
-export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the character", playerName = "the protagonist", previousChoices = [] } = {}) {
+export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the character", playerName = "the protagonist", previousChoices = [], deliberate = false } = {}) {
   const target = Math.max(CHOICE_COUNT_MIN, Math.min(CHOICE_COUNT_MAX, Math.floor(Number(count) || CHOICE_COUNT_DEFAULT)));
   // One-line slots: injected card text must not be able to open a new prompt
   // line and impersonate a directive. The flatten rule lives in text.js.
@@ -99,23 +125,20 @@ export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the cha
     }
   }
 
+  // The task line carries only what the task needs: who, how many, and the
+  // field limits. Persona, language precedence, physical grounding and agency
+  // are all stated in CHOICE_SYSTEM_PROMPT, which travels in the same request —
+  // restating them here put two copies of each rule in one payload, which is the
+  // redundancy the contract work removed everywhere else.
   return (
     `Propose the next moves for [${safePlayer}] in the scene above, opposite [${safeChar}].\n\n` +
-    "Two-Stage Execution:\n" +
-    "1. Stage 1: Document `state_assessment` first.\n" +
-    `2. Stage 2: Provide ${target} choices in JSON strictly constrained by Stage 1.\n\n` +
-    "Adaptive Guidance:\n" +
-    `- Embody [${safePlayer}]'s persona, speech habits, and narrative perspective.\n` +
-    "- Seamlessly match the active language, dialect, and tone established in the scene and directives.\n" +
-    `- Operational Precedence: If the character preset was created in a different language, override it to match [${safePlayer}]'s active language, persona, and directives.\n` +
-    "- Propel the scene with physically grounded actions and distinct dramatic intentions.\n" +
-    `- Agency & Scene State: Respect [${safePlayer}]'s condition. Propose player actions if able to act; propose scene continuation beats if incapacitated or deceased rather than impossible actions or disguised NPC puppeteering.\n\n` +
-    `For each choice:\n` +
-    `- "label": An unambiguous, clear title of intent (3 to 7 words, under ${CHOICE_LABEL_MAX_CHARS} characters) in [${safePlayer}]'s active language.\n` +
-    `- "text": Full in-character roleplay action or dialogue to send (under ${CHOICE_TEXT_MAX_CHARS} characters), in [${safePlayer}]'s active language and established narrative POV.\n` +
-    `- "type": one of "action", "continuation", "story" — or omit the key.\n` +
-    `Phrased from [${safePlayer}]'s perspective (or narrative continuation perspective if [${safePlayer}] cannot act).` +
-    freshVariationHint
+    `Provide ${target} choices, phrased from [${safePlayer}]'s perspective (or the narrator's if they cannot act).\n\n` +
+    `For each:\n` +
+    `- "label": the intent in 3 to 7 words, under ${CHOICE_LABEL_MAX_CHARS} characters, in [${safePlayer}]'s active language.\n` +
+    `- "text": the full in-character action or dialogue to send, under ${CHOICE_TEXT_MAX_CHARS} characters, in [${safePlayer}]'s active language and point of view.\n` +
+    `- "type": "action", "continuation", or "story" — or omit the key.` +
+    freshVariationHint +
+    (deliberate ? CHOICE_DELIBERATION_HINT : "")
   );
 }
 

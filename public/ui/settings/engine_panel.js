@@ -55,6 +55,8 @@ export function mountEnginePanel(root, options = {}) {
   const apiKey = qs(root, "#popup-api-key");
   const modelSelect = qs(root, "#popup-model-select");
   const choiceSelect = qs(root, "#popup-choice-model-select");
+  const reasoningSelect = qs(root, "#popup-reasoning-effort");
+  const deliberationSelect = qs(root, "#popup-choice-deliberation");
   const fetchBtn = qs(root, "#popup-fetch-models-btn");
   const saveBtn = qs(root, "#popup-save-engine-btn");
   const sessionWrap = qs(root, "#popup-import-session-wrap");
@@ -83,6 +85,8 @@ export function mountEnginePanel(root, options = {}) {
     fillModels(choiceSelect, settings.availableModels || [], settings.choiceModel || "", {
       placeholder: SAME_AS_MAIN,
     });
+    if (reasoningSelect) reasoningSelect.value = settings.reasoningEffort || "";
+    if (deliberationSelect) deliberationSelect.value = settings.choiceDeliberation || "auto";
   }
 
   on(fetchBtn, "click", async () => {
@@ -119,6 +123,8 @@ export function mountEnginePanel(root, options = {}) {
       apiKey: apiKey?.value.trim() ?? "",
       model: modelSelect?.value ?? "",
       choiceModel: choiceSelect?.value ?? "",
+      reasoningEffort: reasoningSelect?.value ?? "",
+      choiceDeliberation: deliberationSelect?.value || "auto",
     });
     announce("Engine settings saved.");
   });

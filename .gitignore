@@ -17,3 +17,7 @@ dist/
 screenshot/
 
 PERSONA_SYSTEM_PROMPT.md
+
+# Agent workspace: memory notes, audit scratch, third-party research PDFs.
+# Project-related data, never published source.
+.workbuddy-ai/

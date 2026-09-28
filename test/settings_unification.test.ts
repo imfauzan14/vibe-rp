@@ -77,6 +77,21 @@ describe("Unified settings surface", () => {
     expect(panel).toContain("choiceModel");
   });
 
+  test("reasoning effort and choice deliberation are reachable from the settings surface", () => {
+    const modal = read("ui/settings/settings_modal.js");
+    const panel = read("ui/settings/engine_panel.js");
+    // Both controls exist in the markup and are read and written by the panel.
+    expect(modal).toContain("popup-reasoning-effort");
+    expect(modal).toContain("popup-choice-deliberation");
+    expect(panel).toContain("popup-reasoning-effort");
+    expect(panel).toContain("popup-choice-deliberation");
+    // reasoningEffort was previously a settings field with no control at all:
+    // the engine sent it, but nothing in the UI could set it. The choice
+    // deliberation gate reads it, so it has to be reachable.
+    expect(panel).toContain("reasoningEffort");
+    expect(panel).toContain("choiceDeliberation");
+  });
+
   test("the session-import block is gated on a saveSession handler", () => {
     const modal = read("ui/settings/settings_modal.js");
     // The block is only spread in when options.saveSession is provided.
@@ -200,6 +215,8 @@ describe("Unified settings surface", () => {
         "#popup-api-key": makeNode("popup-api-key", "input"),
         "#popup-model-select": makeNode("popup-model-select", "select"),
         "#popup-choice-model-select": makeNode("popup-choice-model-select", "select"),
+        "#popup-reasoning-effort": makeNode("popup-reasoning-effort", "select"),
+        "#popup-choice-deliberation": makeNode("popup-choice-deliberation", "select"),
         "#popup-fetch-models-btn": makeNode("popup-fetch-models-btn", "button"),
         "#popup-save-engine-btn": makeNode("popup-save-engine-btn", "button"),
         "#popup-engine-status": makeNode("popup-engine-status", "p"),
@@ -227,10 +244,14 @@ describe("Unified settings surface", () => {
       // Save settings
       nodes["#popup-model-select"].value = "primary-story-model";
       nodes["#popup-choice-model-select"].value = "choice-menu-model";
+      nodes["#popup-reasoning-effort"].value = "high";
+      nodes["#popup-choice-deliberation"].value = "never";
       nodes["#popup-save-engine-btn"].dispatchEvent("click");
 
       expect(saved?.model).toBe("primary-story-model");
       expect(saved?.choiceModel).toBe("choice-menu-model");
+      expect(saved?.reasoningEffort).toBe("high");
+      expect(saved?.choiceDeliberation).toBe("never");
     } finally {
       if (origDoc === undefined) {
         delete globalHost.document;

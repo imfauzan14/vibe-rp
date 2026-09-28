@@ -5,7 +5,8 @@
   "scripts": {
     "start": "bun serve.js",
     "build": "echo 'Static build ready'",
-    "test": "bun test test/"
+    "test": "bun test test/",
+    "eval": "bun run tools/prompt_eval.mjs"
   },
   "devDependencies": {
     "@types/bun": "latest",

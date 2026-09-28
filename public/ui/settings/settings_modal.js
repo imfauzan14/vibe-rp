@@ -109,6 +109,25 @@ export function openSettingsModal(options = {}) {
       el("select", { id: "popup-choice-model-select", class: "rp-select" }),
       el("p", { class: "rp-help", text: "Dedicated model for generating Choice Mode options. Defaults to main model." }),
     ]),
+    el("div", { class: "rp-field" }, [
+      el("label", { class: "rp-label", for: "popup-reasoning-effort", text: "Reasoning effort" }),
+      el("select", { id: "popup-reasoning-effort", class: "rp-select" }, [
+        el("option", { value: "", text: "Provider default" }),
+        el("option", { value: "low", text: "Low" }),
+        el("option", { value: "medium", text: "Medium" }),
+        el("option", { value: "high", text: "High" }),
+      ]),
+      el("p", { class: "rp-help", text: "Sent as reasoning_effort to models that support it, and dropped automatically when a provider rejects it. Leave on the provider default for non-reasoning models." }),
+    ]),
+    el("div", { class: "rp-field" }, [
+      el("label", { class: "rp-label", for: "popup-choice-deliberation", text: "Choice deliberation" }),
+      el("select", { id: "popup-choice-deliberation", class: "rp-select" }, [
+        el("option", { value: "auto", text: "Auto — skip when a reasoning effort is set" }),
+        el("option", { value: "always", text: "Always — ask the choice model to think first" }),
+        el("option", { value: "never", text: "Never — leanest choice request" }),
+      ]),
+      el("p", { class: "rp-help", text: "A reasoning model works the scene out on its own, so the ask is skipped for it. Use Always for a small local model that benefits from being told to think." }),
+    ]),
     // The session-import control is a library-only concern (it unlocks full
     // card definitions during import). Only render it when the caller supplies
     // a `saveSession` handler, so the chat surface does not carry a hidden

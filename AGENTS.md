@@ -111,6 +111,7 @@ run concurrently.
 - **`public/ui/`**: UI modules. The only place DOM work belongs
 - **`public/design/`**: Design system. `tokens.css` owns every colour value
 - **`test/`**: Bun test suite (`*.test.ts`)
+- **`tools/`**: Development tools that are not part of the served app. `prompt_eval.mjs` measures the assembled prompts and scores generated output.
 - **`CONTEXT.md`**: the domain model — core concepts and the modules/seams that own them. Read this before an architecture change.
 - **`docs/adr/`**: Architecture Decision Records. Read before proposing a refactor that touches a recorded seam.
 - **`serve.js`**: Dev server, SPA routing, security headers
@@ -122,6 +123,7 @@ run concurrently.
 bun install      # install dependencies
 bun start        # dev server on port 3000
 bun test test/   # run the suite
+bun run eval     # measure the prompts (structural; add --live for generation scoring)
 bun run build    # no-op, static deployment
 ```
 
@@ -166,6 +168,42 @@ These rules exist because each one has already drifted and produced a defect:
 - Themes swap by the `data-theme` attribute on `<html>`. `marginalia` (dark) is the absence of the attribute; `paper` sets `data-theme="paper"`. Never hard-code a colour that only works in one theme.
 - New styling goes in `public/design/components.css` (shared) or the page's own stylesheet (`ui/library.css`, `ui/chat/chat.css`).
 - The legacy `public/editorial.css` was deleted; do not re-add a monolithic page stylesheet.
+
+### Prompt changes are measured, not asserted
+
+A prompt is behaviour, and behaviour needs a measurement. `bun run eval` assembles
+every prompt the app can send and reports instruction cost, prohibition density,
+which degradable sections survive, and instruction pairs that co-occur in one
+request. Add `--live` to score real generations against the configured endpoint.
+
+Rules that follow from this:
+
+- **State an instruction positively.** Tell the model what to write, not only what
+  to avoid. Prohibitions are a minority of any prompt, and an absolutist heading
+  ("Non-Negotiable", "MUST") is scaffolding modern models no longer need.
+- **One home per rule applies to prose too.** A rule stated twice in one payload
+  makes the model reconcile two versions of it. Extract shared rules
+  (`LEDGER_SHARED_RULES`) rather than retyping them.
+- **A rule the model must not contradict itself on is stated once.** Where two
+  sections touch the same subject, one owns it and the other refers to it.
+- **Update `tools/prompt_eval.mjs` in the same change as any rewording.** Its
+  patterns match literal prompt text; when a prompt is reworded and the patterns
+  are not, the gate silently stops checking anything.
+- **Do not mandate an emitted reasoning block.** Reasoning is steered by
+  `reasoning_effort`, not by prompt-instructed chain of thought. Where a weaker
+  model needs the ask, gate it (`shouldDeliberate`) instead of taxing every model.
+- **Write the prompt tightly, and never twice.** A rule stated in the system
+  prompt and again in the task line is two copies of one rule in one request. The
+  choice task line carries only what the task needs — who, how many, the field
+  limits — because the contract travels in the same payload.
+- **Prefer the short construction.** "State the true thing once" beats "State the
+  true thing once, directly"; "Cut wording, repetition, and atmosphere" beats
+  "...and atmospheric commentary". Across all authored prompts this is worth
+  ~17%, and it costs nothing behaviourally — measured live at 0 agency violations
+  and 0 handoff questions across 11 scenarios after the pass.
+- **Do not pin a prompt's exact wording in a test unless the wording is the
+  contract.** Prefer asserting the requirement. A test that counted the player's
+  name seven times in the task line turned a legitimate rewording into a failure.
 
 ## Code Conventions & Common Patterns
 

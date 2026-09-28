@@ -97,26 +97,30 @@ export function countWords(text) {
  * more tension", but it can stop opening a beat with "not because X, but
  * because Y" — and the fix is checkable on read-through.
  */
+// Each note leads with the behaviour to write and follows with the diagnosis,
+// so the correction names what to do rather than only what to stop. The
+// detectors themselves are unchanged: what they count is a measured question,
+// and tools/prompt_eval.mjs is where that measurement happens.
 export const PROSE_TICS = [
   {
     id: "contrast",
     priority: 70,
     threshold: 2,
-    note: 'Cut the "not X, but Y" contrast construction; the last replies lean on it. Say the true thing once, directly.',
+    note: 'State the true thing once. The last replies leaned on the "not X, but Y" contrast.',
     count: (text) => countMatches(text, /\bnot\s+(?:just\s+|only\s+|merely\s+|because\s+)?[^.!?\n]{2,60}?[,\u2014\u2013-]\s*(?:but|it'?s|they'?re|he'?s|she'?s|that'?s)\b/gi),
   },
   {
     id: "emotionMix",
     priority: 66,
     threshold: 1,
-    note: 'No emotional cocktails ("a mix of dread and relief"). Name the one feeling and let the body carry it.',
+    note: 'Name the one feeling; let the body carry it. The last replies reached for an emotional cocktail ("a mix of dread and relief").',
     count: (text) => countMatches(text, /\b(?:a|the)\s+(?:mix|mixture|blend|combination|flood|wave)\s+of\s+\w+(\s+\w+)?\s+and\s+\w+/gi),
   },
   {
     id: "askedThePlayer",
     priority: 68,
     threshold: 3,
-    note: "The last replies each ended by handing the scene back. Land on a line, an action, or a silence instead of a question to the player.",
+    note: "Land on a line, an action, or a silence. The last replies each ended by handing the scene back.",
     count: (_text, replies) => replies.filter((r) => /\?\s*$/.test(r.trim())).length,
   },
   {
@@ -127,7 +131,7 @@ export const PROSE_TICS = [
     // player is still writing paragraphs is a decay: the scene stops building.
     // Growth from the session's own earlier replies counts as decay too, which
     // catches a session that opened long and tapered off.
-    note: "Calibrate response depth to match the scene's dramatic momentum. Expand into physical presence, dialogue nuance, and immediate consequence rather than collapsing into brief exchanges.",
+    note: "Write into the momentum: physical presence, dialogue nuance, the immediate consequence of what just happened. The last replies are closing into brief exchanges.",
     count: (_text, replies, context = {}) => {
       const short = replies.filter((r) => countWords(r) < 70);
       if (short.length < 3) return 0;
@@ -140,35 +144,35 @@ export const PROSE_TICS = [
     id: "triads",
     priority: 52,
     threshold: 2,
-    note: "Vary syntactic structure. Favor one striking, concrete detail over predictable three-item series.",
+    note: "Reach for one striking, concrete detail. The last replies leaned on three-item series.",
     count: (text) => countMatches(text, /\b[\w'-]+,\s+[\w'-]+,\s+and\s+[\w'-]+/gi),
   },
   {
     id: "simileTic",
     priority: 44,
     threshold: 4,
-    note: 'Drop the "the way ..." similes. Trust the image already on the page.',
+    note: 'Trust the image on the page. The last replies kept reaching for "the way ..." similes.',
     count: (text) => countMatches(text, /\bthe way\b/gi),
   },
   {
     id: "negatedAction",
     priority: 48,
     threshold: 5,
-    note: 'Too many "did not / would not" negations. Show the action that did happen.',
+    note: 'Show the action that did happen. The last replies leaned on "did not / would not" negations.',
     count: (text) => countMatches(text, /\b(?:did not|didn'?t|does not|doesn'?t|had not|hadn'?t|would not|wouldn'?t|will not|won'?t)\b/gi),
   },
   {
     id: "explainedTheBeat",
     priority: 56,
     threshold: 3,
-    note: "The narration is explaining what the scene already showed. Let the gesture, the silence, and the consequence land uninterpreted.",
+    note: "Let the gesture, the silence, and the consequence land uninterpreted. The narration is explaining what the scene already showed.",
     count: (text) => countMatches(text, /\b(?:seemed to|felt a (?:pulse|twinge|chill|surge|wave)|sensed (?:a|the)|was (?:afraid|terrified|furious|relieved|overwhelmed)|a flicker of|something in (?:his|her|their) (?:eyes|voice|chest))\b/gi),
   },
   {
     id: "uniformBlocks",
     priority: 42,
     threshold: 1,
-    note: "Vary paragraph lengths to match dramatic pacing: sharp single lines for pivotal beats and expansive passages for atmospheric immersion.",
+    note: "Vary paragraph lengths: sharp lines for pivotal beats, expansive passages for immersion. The last replies ran at one uniform length.",
     count: (_text, replies) => {
       for (const reply of replies.slice(0, 3)) {
         const lengths = reply.split(/\n{2,}/).map((p) => countWords(p)).filter((n) => n > 0);
@@ -386,17 +390,22 @@ export function buildSceneGuidance(signals, { maxTokens = GUIDANCE_MAX_TOKENS, i
     add(
       "canon",
       92,
-      "- The ledger and transcript above are settled canon: they already happened. Continue from the last line of the transcript, and never rewind, restart, or re-narrate an earlier beat."
+      "- The ledger and transcript above are settled canon: they already happened. Continue from the last line, and never rewind or re-narrate an earlier beat."
     );
   }
 
   // Turn scope as a lane rather than a prohibition: the model is told what to
   // write, not only what to avoid, which is the difference between scope
   // control and hoping.
+  //
+  // The turn-boundary half of this rule now lives in the craft contract, so
+  // repeating it here put two versions of one instruction in every request.
+  // What stays is what only this block can say: the character's name, and the
+  // observable-cue boundary the contract states in the abstract.
   add(
     "scope",
     96,
-    `- Turn scope: Write ${who} and immediate environmental consequence. Perceive ${player} strictly through observable physical cues, and stop cleanly where ${player} must act or speak.`
+    `- Turn scope: write ${who} and the immediate environmental consequence. Perceive ${player} only through observable cues.`
   );
 
   // Prose corrections, least urgent first. They are the measured
@@ -408,7 +417,7 @@ export function buildSceneGuidance(signals, { maxTokens = GUIDANCE_MAX_TOKENS, i
       id: "silentCast",
       priority: 30,
       keep: 30,
-      note: `- ${s.absentCast.join(", ")} ${s.absentCast.length === 1 ? "is" : "are"} present but silent. Give the scene their reaction, or let them leave the room.`,
+      note: `- ${s.absentCast.join(", ")} ${s.absentCast.length === 1 ? "is" : "are"} present but silent. Give them a reaction, or let them leave.`,
     });
   }
   // The lexicon is a cluster, never a word: a correction that recited the
@@ -418,7 +427,7 @@ export function buildSceneGuidance(signals, { maxTokens = GUIDANCE_MAX_TOKENS, i
       id: "slopLexicon",
       priority: 62,
       keep: 62,
-      note: "- Stock phrasing is clustering in the recent replies. Reach past it: the specific object, the specific gesture, the word this character would actually use.",
+      note: "- Stock phrasing is clustering. Reach past it: the specific object, the gesture, the word this character would actually use.",
     });
   }
   corrections.sort((a, b) => a.priority - b.priority);
@@ -429,8 +438,15 @@ export function buildSceneGuidance(signals, { maxTokens = GUIDANCE_MAX_TOKENS, i
   // The drift anchors sit closest to the head: re-injection is the measured
   // generic-reminder tier (35-38%), the lock keeps the narrative register from
   // sliding, and the lane statement is the last thing the model reads.
+  //
+  // This anchor used to end "Never soften into bland compliance", which is the
+  // emotional-rigidity trap: it pins the character to their opening state for
+  // the whole story, so a guarded person stays guarded through an ordeal that
+  // should have marked them. The anchor now separates the core, which holds,
+  // from the state, which is allowed to have moved — the same distinction the
+  // ledger's Cast entries carry.
   const dueForReinject = s.assistantTurns > 0 && s.assistantTurns % REINJECT_EVERY_TURNS === 0;
-  if (identity && (dueForReinject || s.folded)) add("reinject", 83, `- Persona anchor: Ground ${who}'s responses in their core psychological drivers, distinctive vocabulary, and established friction (${identity}). Never soften into bland compliance.`);
+  if (identity && (dueForReinject || s.folded)) add("reinject", 83, `- Persona anchor: ${who}'s core is unchanged — ${identity}. Their state has moved; let what happened show in how they carry themselves, without substituting a different person.`);
 
   const { pov, tense } = s.narration || {};
   if ((pov || tense) && s.assistantTurns >= 2) {
@@ -441,7 +457,7 @@ export function buildSceneGuidance(signals, { maxTokens = GUIDANCE_MAX_TOKENS, i
     add(
       "lock",
       85,
-      `- Narrative lock: the scene has been running in ${bits.join(", ")}. Keep it, and keep the same separation between narration and speech.`
+      `- Narrative lock: the scene runs in ${bits.join(", ")}. Keep it, and keep the same separation between narration and speech.`
     );
   }
 
@@ -449,7 +465,7 @@ export function buildSceneGuidance(signals, { maxTokens = GUIDANCE_MAX_TOKENS, i
     add(
       "puppet",
       100,
-      `- Hard agency boundary: An earlier turn spoke for ${player}. Never write dialogue, thoughts, sensations, or actions for ${player}; end cleanly where their turn begins.`
+      `- Hard agency boundary: an earlier turn spoke for ${player}. Never write their dialogue, thoughts, sensations, or actions; end where their turn begins.`
     );
   }
 

@@ -1172,3 +1172,35 @@ describe("Fixes 4 & 5 - fold prompt hardening and no cache-write", () => {
     expect(summaryBody.prompt_cache_key).toBeUndefined();
   });
 });
+
+// Development survives a fold, or the character resets every time history is
+// compressed. The ledger's Cast entry has to carry a character's *state* apart
+// from their identity, and record what caused the change — verified live: the
+// new prompt produced "Disposition: determined not to finish the route alone;
+// acknowledged Rowan would have returned for her too", where the old prompt
+// recorded only possessions, actions and knowledge.
+describe("the ledger carries character development, not just facts", () => {
+  test("both fold prompts separate a character's state from their identity", () => {
+    for (const prompt of [SUMMARY_PROMPT, SUMMARY_UPDATE_PROMPT]) {
+      expect(prompt).toContain("core identity");
+      expect(prompt).toMatch(/state (moves|it is passing through)|state forward/);
+    }
+  });
+
+  test("the initial fold asks for disposition and the event that changed it", () => {
+    expect(SUMMARY_PROMPT).toContain("disposition toward the user");
+    expect(SUMMARY_PROMPT).toContain("how they have changed");
+    expect(SUMMARY_PROMPT).toContain("the event that caused it");
+  });
+
+  test("the merge fold carries that state forward rather than re-deriving it", () => {
+    expect(SUMMARY_UPDATE_PROMPT).toContain("Carry each Cast entry's state forward");
+    expect(SUMMARY_UPDATE_PROMPT).toContain("together with the event that caused it");
+  });
+
+  test("the World section records alteration, not the opening description", () => {
+    expect(SUMMARY_PROMPT).toMatch(/not as they began/);
+    expect(SUMMARY_PROMPT).toMatch(/the alteration is the fact/);
+    expect(SUMMARY_UPDATE_PROMPT).toContain("recording alterations rather than restoring the opening description");
+  });
+});
