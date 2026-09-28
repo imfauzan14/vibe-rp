@@ -3,7 +3,7 @@
 // Growth rule: new tests MUST import from here instead of redefining
 // words/SSE_OK/preset chunks/capture helpers. If a new fixture is needed,
 // add it here so the next file reuses it.
-import { estimateTokens } from "../public/browser_engine.js";
+import { estimateTokens, clearModelCapabilities } from "../public/browser_engine.js";
 
 /** N words of filler prose. Shared by 7+ files needing lockstep filler. */
 export const words = (n: number): string => "word ".repeat(n).trim();
@@ -95,6 +95,12 @@ export function captureGeneration(ledger = "ledger"): CapturedBodies {
 export function resetFetch(): void {
   // Reason: restores the network boundary to unmocked state between tests.
   globalThis.fetch = undefined as unknown as typeof fetch;
+  // The engine learns model capabilities *from* the network — a rejected
+  // parameter, a named context window, a billed-token overhead. Every test in
+  // these files points at the same fake endpoint, so a fact one test taught the
+  // engine would silently re-shape the next test's budget. Resetting the
+  // network resets what was learned across it.
+  clearModelCapabilities();
 }
 
 // ---------------------------------------------------------------------------

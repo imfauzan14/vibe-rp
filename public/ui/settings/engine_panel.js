@@ -55,6 +55,7 @@ export function mountEnginePanel(root, options = {}) {
   const apiKey = qs(root, "#popup-api-key");
   const modelSelect = qs(root, "#popup-model-select");
   const choiceSelect = qs(root, "#popup-choice-model-select");
+  const summarySelect = qs(root, "#popup-summary-model-select");
   const reasoningSelect = qs(root, "#popup-reasoning-effort");
   const deliberationSelect = qs(root, "#popup-choice-deliberation");
   const fetchBtn = qs(root, "#popup-fetch-models-btn");
@@ -85,6 +86,9 @@ export function mountEnginePanel(root, options = {}) {
     fillModels(choiceSelect, settings.availableModels || [], settings.choiceModel || "", {
       placeholder: SAME_AS_MAIN,
     });
+    fillModels(summarySelect, settings.availableModels || [], settings.summaryModel || "", {
+      placeholder: SAME_AS_MAIN,
+    });
     if (reasoningSelect) reasoningSelect.value = settings.reasoningEffort || "";
     if (deliberationSelect) deliberationSelect.value = settings.choiceDeliberation || "auto";
   }
@@ -107,6 +111,9 @@ export function mountEnginePanel(root, options = {}) {
       fillModels(choiceSelect, list, settings.choiceModel || "", {
         placeholder: SAME_AS_MAIN,
       });
+      fillModels(summarySelect, list, settings.summaryModel || "", {
+        placeholder: SAME_AS_MAIN,
+      });
       announce(`Fetched ${list.length} ${list.length === 1 ? "model" : "models"}.`);
     } catch (error) {
       announce(`Could not fetch models: ${error.message}`, "danger");
@@ -123,6 +130,7 @@ export function mountEnginePanel(root, options = {}) {
       apiKey: apiKey?.value.trim() ?? "",
       model: modelSelect?.value ?? "",
       choiceModel: choiceSelect?.value ?? "",
+      summaryModel: summarySelect?.value ?? "",
       reasoningEffort: reasoningSelect?.value ?? "",
       choiceDeliberation: deliberationSelect?.value || "auto",
     });

@@ -451,6 +451,33 @@
       const excluded = request.excludedSections
         .map((id) => (id === "examples" ? "dialogue examples" : id === "constantLore" ? "constant world lore" : id))
         .join(", ");
+      // What the provider actually billed last turn, when it reported. The
+      // estimate above describes the request the app assembled; these rows
+      // describe the one the provider received, which is the number the reader
+      // is paying for. A hidden preamble and an ignored output ceiling are both
+      // invisible in every other figure on this panel.
+      const usage = sess && sess.lastUsageReport;
+      const percent = (n) => `${Math.round(n * 100)}%`;
+      const measured = [];
+      if (usage && usage.reported) {
+        if (usage.overhead) {
+          measured.push(row("Measured overhead", `+${formatK(usage.overhead)} tokens per request (provider preamble)`));
+        }
+        if (usage.billedInput !== null && usage.billedInput !== undefined) {
+          measured.push(row("Billed input", `${formatK(usage.billedInput)} tokens (last turn)`));
+        }
+        if (usage.cachedTokens !== null && usage.cachedTokens !== undefined && usage.cachedTokens > 0) {
+          measured.push(row("Prompt cache", `${percent(usage.cacheHitRate ?? 0)} of input served from cache`));
+        }
+        if (usage.reasoningTokens) {
+          measured.push(row("Reasoning share", `${percent(usage.reasoningShare ?? 0)} of generated tokens are internal`));
+        }
+        if (usage.ceilingIgnored) {
+          measured.push(row("Output ceiling", "the provider ignored the requested maximum"));
+        }
+      } else if (request.overheadTokens) {
+        measured.push(row("Measured overhead", `+${formatK(request.overheadTokens)} tokens per request (provider preamble)`));
+      }
       contextLedger.innerHTML = `
         ${row("Effective context", `${formatK(window)} tokens`)}
         ${row("Required static", `${formatK(b.requiredStatic)} tokens`)}
@@ -466,6 +493,7 @@
         ${row("Used", `${formatK(used)} of ${formatK(window)} tokens`)}
         ${row("Remaining", `${formatK(b.remaining)} tokens`)}
         ${row("Excluded / degraded", excluded || "none")}
+        ${measured.join("")}
         ${request.impossible ? row("Status", "request exceeds the window: raise the context window or shrink the preset") : ""}`;
     }
 
@@ -824,6 +852,16 @@
       // `setMode` restores any valid pending set without a request.
       const storedMode = controller.settings?.choiceMode === "choice" ? "choice" : "normal";
       setMode(storedMode, { persist: false });
+
+      // First run. The app ships with no endpoint and no model, because both are
+      // the reader's to supply — everything else is already configured. That
+      // leaves exactly one thing between a new reader and a working turn, and
+      // the turn itself would only fail after they had written something. Saying
+      // so up front, with the fix one tap away, is the difference between a dead
+      // end and a first step.
+      if (!controller.settings?.apiEndpoint || !controller.settings?.model) {
+        showToast("No model configured yet. Open Settings to add an endpoint and choose a model.", "info");
+      }
 
       if (window.visualViewport) {
         let scheduled = false;

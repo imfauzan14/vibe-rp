@@ -9,6 +9,7 @@ describe("BrowserChatEngine public interface", () => {
     "planContext",
     "planRequest",
     "describeRequest",
+    "describeUsage",
     "planChoiceRequest",
     "generateChoices",
     "assembleMessages",

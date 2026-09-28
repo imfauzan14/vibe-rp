@@ -31,7 +31,7 @@ import {
   SUMMARY_PROMPT, SUMMARY_UPDATE_PROMPT, SUMMARY_SYSTEM_PROMPT, LEDGER_COMPRESS_PROMPT,
 } from "../public/browser_engine.js";
 import { DEFAULT_SETTINGS, DEFAULT_AGENTS_CONTRACT, DEFAULT_AGENTS_CONTRACT_ID } from "../public/local_db.js";
-import { CHOICE_SYSTEM_PROMPT, choicePrompt } from "../public/choice_format.js";
+import { CHOICE_SYSTEM_PROMPT, CHOICE_DELIBERATION_HINT, choicePrompt } from "../public/choice_format.js";
 import { PROSE_TICS, SLOP_LEXICON, detectNarration } from "../public/prompt_adaptive.js";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -260,6 +260,27 @@ const BILINGUAL_PARITY = [
   { id: "prefer-specific", en: /Prefer the specific/i, id_re: /Pilih yang spesifik/i },
 ];
 
+// Every authored prompt, held to the framing convention. Listed explicitly so a
+// new prompt has to be added here deliberately rather than being silently
+// exempt — the failure mode this guards against is a prompt written in
+// prohibitions while the convention says otherwise.
+//
+// The detectors are English word lists, so the Indonesian contract reads as
+// zero here whatever it says. That is a known blind spot, not a pass: the
+// Indonesian contract's prohibitions are a documented, deliberate divergence
+// (in Indonesian the prohibition is the natural normative form), and this gate
+// does not claim to measure them.
+const FRAMING_TARGETS = [
+  { id: "agentsContract", text: DEFAULT_AGENTS_CONTRACT },
+  { id: "agentsContractId", text: DEFAULT_AGENTS_CONTRACT_ID },
+  { id: "choiceSystem", text: CHOICE_SYSTEM_PROMPT },
+  { id: "choiceDeliberationHint", text: CHOICE_DELIBERATION_HINT },
+  { id: "summary", text: SUMMARY_PROMPT },
+  { id: "summaryUpdate", text: SUMMARY_UPDATE_PROMPT },
+  { id: "summarySystem", text: SUMMARY_SYSTEM_PROMPT },
+  { id: "ledgerCompress", text: LEDGER_COMPRESS_PROMPT },
+];
+
 function checkBilingualParity() {
   const missing = [];
   for (const row of BILINGUAL_PARITY) {
@@ -325,6 +346,15 @@ function structural() {
     .map((c) => ({ id: c.id, count: (DEFAULT_AGENTS_CONTRACT.match(c.re) || []).length, expect: c.expect }))
     .filter((c) => c.count !== c.expect);
   const parityGaps = checkBilingualParity();
+  // "State instructions positively" is a convention, and a convention nobody
+  // asserts is a habit. The craft contract already carries zero negative and
+  // zero absolutist markers; every other authored prompt is held to the same
+  // standard here. `NEGATIVE_RE`/`ABSOLUTIST_RE` are regex proxies, not a
+  // judgement about prose — but a prompt that trips them is a prompt whose
+  // framing has drifted, and that is worth failing on.
+  const framingGaps = FRAMING_TARGETS
+    .map(({ id, text }) => ({ id, ...instructionDensity(text) }))
+    .filter((d) => d.negativeMarkers > 0 || d.absolutistMarkers > 0);
 
   const prompts = {
     agentsContract: instructionDensity(DEFAULT_AGENTS_CONTRACT),
@@ -349,7 +379,7 @@ function structural() {
     compactionTotal: estimateTokens(SUMMARY_SYSTEM_PROMPT) + estimateTokens(SUMMARY_PROMPT) + estimateTokens(SUMMARY_UPDATE_PROMPT) + estimateTokens(LEDGER_COMPRESS_PROMPT),
   };
 
-  return { rows, prompts, tokenCosts, contractChecks, parityGaps, parityTotal: BILINGUAL_PARITY.length };
+  return { rows, prompts, tokenCosts, contractChecks, parityGaps, framingGaps, framingTotal: FRAMING_TARGETS.length, parityTotal: BILINGUAL_PARITY.length };
 }
 
 // One generation against the real engine.
@@ -619,6 +649,15 @@ function printStructural(r) {
   } else {
     for (const g of r.parityGaps) {
       console.log(`    ${g.rule}: EN=${g.inEn} ID=${g.inId}`);
+    }
+  }
+
+  console.log("\n  instruction framing (authored prompts state what to do):");
+  if (!(r.framingGaps || []).length) {
+    console.log(`    (none) — all ${r.framingTotal} authored prompts carry zero negative and zero absolutist markers`);
+  } else {
+    for (const d of r.framingGaps) {
+      console.log(`    ${d.id.padEnd(22)} ${d.negativeMarkers} negative, ${d.absolutistMarkers} absolutist`);
     }
   }
 }

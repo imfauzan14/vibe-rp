@@ -304,7 +304,16 @@ describe("planChoiceRequest", () => {
     expect(BrowserChatEngine.planChoiceRequest(args).inputTokens).toBe(planChoiceRequest(args).inputTokens);
   });
 
-  test("carries agentsContract into the system prompt for choice generation", () => {
+  test("the craft contract is deliberately absent from the choice request", () => {
+    // It used to be carried here, clipped to 800 *characters* — a quarter of the
+    // contract, ending mid-sentence inside the "Medium" bullet. It was also
+    // redundant: CHOICE_SYSTEM_PROMPT states agency, narrative perspective and
+    // language authority in its own words, so three of the slice's rules were
+    // already in the same request while the rest of the contract reached the
+    // model not at all. A/B at n=5 per arm: both arms returned four valid,
+    // fully distinct choices every time; dropping the slice saved 209 tokens
+    // per call. The card's own directives still arrive, via the character
+    // context the scene line carries.
     const customContract = "Custom contract: write in a clipped, watchful register.";
     const req = planChoiceRequest({
       card,
@@ -314,7 +323,11 @@ describe("planChoiceRequest", () => {
       count: 4,
     });
     const systemMessage = req.payload.find((m) => m.role === "system");
-    expect(systemMessage?.content).toContain("Custom contract");
+    expect(systemMessage?.content).not.toContain("Custom contract");
+    expect(systemMessage?.content).not.toContain("System & Craft Directives");
+    // The rules the contract would have duplicated are still present, once.
+    expect(systemMessage?.content).toContain("Each choice names what the player attempts");
+    expect(systemMessage?.content).toContain("Language Lock");
   });
 
   test("carries previousChoices through to choicePrompt in task message", () => {
@@ -506,7 +519,7 @@ describe("Universal & Adaptive Choice Mode Prompt Contract", () => {
     expect(CHOICE_SYSTEM_PROMPT).toContain("Inquisitive / Diplomatic");
     expect(CHOICE_SYSTEM_PROMPT).toContain("Cautious / Observant");
     expect(CHOICE_SYSTEM_PROMPT).toContain("Unconventional / Intuitive");
-    expect(CHOICE_SYSTEM_PROMPT).toContain("Strict Agency");
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Each choice names what the player attempts in the immediate beat");
     // Scene craft: beats, subtext, anti-echo.
     expect(CHOICE_SYSTEM_PROMPT).toContain("Scene Beats & Physical Grounding");
     expect(CHOICE_SYSTEM_PROMPT).toContain("Subtext over Exposition");
@@ -514,7 +527,10 @@ describe("Universal & Adaptive Choice Mode Prompt Contract", () => {
     // Operational precedence for mismatched presets.
     expect(CHOICE_SYSTEM_PROMPT).toContain("Language Lock & Register Adaptation");
     expect(CHOICE_SYSTEM_PROMPT).toContain("active operational authority");
-    expect(CHOICE_SYSTEM_PROMPT).toContain("Never default to the preset's source language");
+    // The requirement, not the wording: the choice model follows the scene's
+    // active language rather than the preset's. Stated positively, like the
+    // rest of the prompt.
+    expect(CHOICE_SYSTEM_PROMPT).toContain("rather than the preset's source language");
     // The task line is deliberately lean. Language precedence lives in the
     // system prompt, which travels in the same request; asserting it here too
     // would re-create the duplication this separation removed.
@@ -596,7 +612,8 @@ describe("Universal & Adaptive Choice Mode Prompt Contract", () => {
     expect(sysMsg.content).toContain("User Persona (Rowan): Cynical private scout");
     expect(sysMsg.content).toContain("Character Context (Vance): Cold, watchful");
     expect(sysMsg.content).toContain("Scenario: In an old interrogation room under a buzzing lamp.");
-    expect(sysMsg.content).toContain("System & Craft Directives:\nDirectives: Use a clipped, watchful register");
+    // The craft contract is deliberately not carried here — see the test above.
+    expect(sysMsg.content).not.toContain("System & Craft Directives");
     expect(sysMsg.content).toContain("Language Lock & Register Adaptation");
 
     const userPromptMsg = req.payload[req.payload.length - 1];
@@ -637,8 +654,8 @@ describe("Universal & Adaptive Choice Mode Prompt Contract", () => {
     // The condition gate is stated as what the state permits, not as a ban:
     // outcome-first phrasing, same requirement.
     expect(CHOICE_SYSTEM_PROMPT).toContain("What they can do follows from that state");
-    expect(CHOICE_SYSTEM_PROMPT).toContain("no state recovers instantly");
-    expect(CHOICE_SYSTEM_PROMPT).toContain("No Disguised NPC Control");
+    expect(CHOICE_SYSTEM_PROMPT).toContain("every condition takes time to change");
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Distinct NPC Agency");
     expect(CHOICE_SYSTEM_PROMPT).toContain("Plausible Recovery");
 
     const p = choicePrompt(4, { charName: "Vance", playerName: "Rowan" });
@@ -646,7 +663,7 @@ describe("Universal & Adaptive Choice Mode Prompt Contract", () => {
     // line, which travels in the same request.
     expect(p).not.toContain("Agency & Scene State");
     expect(CHOICE_SYSTEM_PROMPT).toContain("Limited Agency");
-    expect(CHOICE_SYSTEM_PROMPT).toContain("No Disguised NPC Control");
+    expect(CHOICE_SYSTEM_PROMPT).toContain("Distinct NPC Agency");
   });
 
   test("parseChoices parses optional type field for continuation and story options", () => {
@@ -717,8 +734,9 @@ describe("choice deliberation is gated on the model, not always on", () => {
   test("the deliberation hint is added only when requested, and stays silent about the reasoning", () => {
     const p = choicePrompt(4, { charName: "Vance", playerName: "Rowan", deliberate: true });
     expect(p).toContain("work through the scene silently");
-    // It must ask for thinking, not for a written-out reasoning trace.
-    expect(p).toContain("do not write your reasoning out");
+    // It must ask for thinking, not for a written-out reasoning trace. Stated
+    // as what to keep rather than what to avoid, like the rest of the prompt.
+    expect(p).toContain("with the reasoning kept internal");
   });
 
   test("shouldDeliberate: auto skips a reasoning model, honours an explicit override", () => {

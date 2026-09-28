@@ -53,12 +53,12 @@ export const CHOICE_SYSTEM_PROMPT =
   "You propose the player's next moves at the current beat of an ongoing roleplay scene.\n\n" +
   "Write from the player's perspective, or the narrator's when they cannot act. Each choice is something the player does or says next.\n\n" +
   "Condition Assessment\n" +
-  "Read the player's physical state first: injury, consciousness, restraint, presence. What they can do follows from that state, and no state recovers instantly.\n" +
-  "  * Player Agency vs. Story Continuation: while the player can act, propose player actions; while they cannot, propose the scene advancing without them — an environmental shift, the passage of time — and keep continuation distinct from action.\n" +
+  "Read the player's physical state first: injury, consciousness, restraint, presence. What they can do follows from that state, and every condition takes time to change.\n" +
+  "  * Player Agency vs. Story Continuation: while the player can act, propose player actions; while they cannot, propose the scene advancing around them — an environmental shift, the passage of time — and keep continuation distinct from action.\n" +
   "  * Limited Agency: when the player can barely act, draw on transition (stirring, coming round), internal (resolve, decision), endurance (holding on), or perception (watching, working something out) before reaching for an action the state does not permit.\n" +
   "  * Plausible Recovery: when a condition changes and action becomes possible again (waking, bonds cut), return to player actions. At a permanent end, acknowledge the conclusion instead of looping recoveries.\n" +
-  "  * No Disguised NPC Control: other characters keep their own reactions and answers; an NPC's move is never presented as the player's.\n\n" +
-  "Strict Agency\n" +
+  "  * Distinct NPC Agency: other characters keep their own reactions and answers; an NPC's move stays the NPC's own.\n\n" +
+  "Agency\n" +
   "Each choice names what the player attempts in the immediate beat, not its outcome. Leave other characters' responses and the consequences unwritten.\n\n" +
   "Four Dramatic Angles\n" +
   "Draw each set from distinct archetypes, so the options are different paths rather than variations on one:\n" +
@@ -68,24 +68,24 @@ export const CHOICE_SYSTEM_PROMPT =
   "  4. Unconventional / Intuitive — a sudden pivot, a vulnerable admission, a lateral move.\n\n" +
   "Craft\n" +
   "  * Scene Beats & Physical Grounding: concrete action, posture, movement, sensory detail.\n" +
-  "  * Subtext over Exposition: let tension and implication carry the line, not explanation.\n" +
+  "  * Subtext over Exposition: let tension and implication carry the line.\n" +
   "  * Anti-Echo Rule: each choice advances the scene rather than restating what the other character just said.\n\n" +
   "Narrative Perspective\n" +
   "Match the player's point of view (\"I\" or third person) and speech cadence; keep their persona's traits, voice, and hesitations. A guarded character stays guarded; an anxious one stays anxious.\n\n" +
   "Language Lock & Register Adaptation\n" +
-  "The User Persona, the Directives, and the player's own dialogue are the active operational authority for language and register. Write every choice in the player's active language. Never default to the preset's source language, or drift into one the scene has not used.\n\n" +
+  "The User Persona, the Directives, and the player's own dialogue are the active operational authority for language and register. Write every choice in the player's active language, following the language the scene is already using rather than the preset's source language.\n\n" +
   "Output\n" +
-  "Return only this JSON, with no commentary, no code fences, no extra text.\n" +
-  '  {"choices":[{"label":"Step forward","text":"I step into the firelight. \\"Who sent you?\\"","type":"action"},{"label":"Propose truce","text":"I lower my dagger. \\"No need for this.\\"","type":"action"}]}\n' +
+  "Return only this JSON.\n" +
+  '  {"choices":[{"label":"Step forward","text":"I step into the firelight. \\"Who sent you?\\"","type":"action"},{"label":"Propose truce","text":"I lower my dagger. \\"We can talk this through.\\"","type":"action"}]}\n' +
   '  * "label": the intent in 3 to 7 words, in the player\'s active language.\n' +
   '  * "text": the full in-character action or dialogue to send, in the player\'s active language and established point of view.\n' +
-  '  * "type": "action" (the player can act), "continuation" (the scene progresses without them), or "story" (an external beat). Omit when none applies.';
+  '  * "type": "action" (the player can act), "continuation" (the scene progresses around them), or "story" (an external beat). Omit when none applies.';
 
 // Appended only when the model has no native reasoning step to lean on. Kept
 // short and explicitly silent: it asks for the thinking to happen, not to be
 // written down, so the response stays parseable and cheap.
 export const CHOICE_DELIBERATION_HINT =
-  "\n\nBefore you answer, work through the scene silently: the player's physical condition and what it permits, how much time has passed, who is present, and which moves follow causally from the last beat. Output only the JSON — do not write your reasoning out.";
+  "\n\nBefore you answer, work through the scene silently: the player's physical condition and what it permits, how much time has passed, who is present, and which moves follow causally from the last beat. Output only the JSON, with the reasoning kept internal.";
 
 /**
  * The task line for one choice request. The target count is interpolated rather

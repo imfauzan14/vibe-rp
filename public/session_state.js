@@ -42,6 +42,16 @@ export function noteUsage(session, usage) {
 }
 
 /**
+ * Stores the reconciliation of the app's estimate against the provider's bill:
+ * billed input, cached tokens, reasoning tokens, and whether the output ceiling
+ * was honoured. `lastUsage` is the raw provider document; this is the derived
+ * reading of it, and it is what the context inspector shows.
+ */
+export function noteUsageReport(session, report) {
+  session.lastUsageReport = report;
+}
+
+/**
  * Marks the ledger as lossy (cut off at the size ceiling). Unlike the two
  * latches below this is a plain marker, not a transition: the flag is never
  * cleared, so the caller keeps warning while the ledger stays at the ceiling.

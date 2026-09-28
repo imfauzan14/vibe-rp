@@ -110,6 +110,11 @@ export function openSettingsModal(options = {}) {
       el("p", { class: "rp-help", text: "Dedicated model for generating Choice Mode options. Defaults to main model." }),
     ]),
     el("div", { class: "rp-field" }, [
+      el("label", { class: "rp-label", for: "popup-summary-model-select", text: "Continuity summariser model" }),
+      el("select", { id: "popup-summary-model-select", class: "rp-select" }),
+      el("p", { class: "rp-help", text: "Writes the rolling continuity ledger when older history is folded away. It reads and merges rather than writing prose, so a cheaper model usually does it well. Defaults to main model." }),
+    ]),
+    el("div", { class: "rp-field" }, [
       el("label", { class: "rp-label", for: "popup-reasoning-effort", text: "Reasoning effort" }),
       el("select", { id: "popup-reasoning-effort", class: "rp-select" }, [
         el("option", { value: "", text: "Provider default" }),

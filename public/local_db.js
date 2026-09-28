@@ -125,13 +125,33 @@ export const DEFAULT_SETTINGS = {
   // `maxTokens` is a ceiling, honoured in full whenever the input leaves room
   // for it; the only thing that can shrink it is the need to leave a minimum
   // input floor. There is no fixed-percentage reservation.
-  maxContextTokens: 65536, // modern chat models are 128k-1M; 64k gives long RP sessions room before ledger folding while keeping prefix-cache footprint moderate
+  //
+  // This is a *guess* at the model's real window, and the app cannot do better
+  // than a guess: no OpenAI-compatible endpoint exposes its context size. It is
+  // deliberately generous, because a window that is too large keeps the verbatim
+  // transcript — which is strictly better continuity than a folded ledger — and
+  // costs nothing where the provider caches. The two failure modes are handled
+  // elsewhere rather than by shrinking this number:
+  //   - too large for the model in use: the provider rejects, the engine reads
+  //     the real window out of the error and re-fits, and the value it learned
+  //     is persisted, so the mistake happens once per model rather than per turn;
+  //   - a provider that adds a hidden preamble: measured per endpoint and
+  //     charged against the window, so the budget reflects what is really sent.
+  maxContextTokens: 65536,
   // Directives & Block 0 contract
   agentsContract: DEFAULT_AGENTS_CONTRACT,
 
   // Turn mode: "normal" (freeform author input) or "choice" (interactive choice menu)
   choiceMode: "normal",
   choiceModel: "",
+  // The model that performs folds ("" = same as the main model). A fold is
+  // extraction over tokens already paid for once — read the transcript, merge it
+  // into the ledger — and it writes none of the prose the reader sees. Measured
+  // on a real endpoint, one fold generates ~2,200 tokens, ~72% of them invisible
+  // reasoning, which makes it about as expensive as a full narrative turn while
+  // being a far simpler task. Pointing it at a cheap tier is the largest
+  // structural saving available, and empty keeps every existing setup unchanged.
+  summaryModel: "",
   // Choice deliberation: "auto" (default) asks the choice model to think the
   // scene through silently only when no reasoning effort is configured, so a
   // reasoning model is not taxed with a manual chain-of-thought instruction.
