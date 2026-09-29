@@ -1901,6 +1901,13 @@ export class BrowserChatEngine {
     const completionTokens = typeof usage?.completion_tokens === "number" ? usage.completion_tokens : null;
     const reasoningTokens = this.#reportedReasoningTokens(usage);
     const generated = (completionTokens || 0) + (reasoningTokens || 0);
+    // Unknown is not zero. A provider that reports only the token totals has not
+    // measured reasoning, and reporting 0 would assert a figure it never sent —
+    // the same reason `cacheHitRate` is null when no cached count arrives. A
+    // provider that sends `reasoning_tokens: 0` has measured a zero, and that is
+    // reported as 0.
+    const reasoningShare =
+      reasoningTokens === null || generated <= 0 ? null : reasoningTokens / generated;
     // A ceiling is "ignored" when the provider produced visibly more than it was
     // asked to. A 5% slack absorbs providers that count the ceiling differently
     // (some include reasoning, some do not) without missing a real overshoot.
@@ -1916,7 +1923,7 @@ export class BrowserChatEngine {
       cacheHitRate: billedInput && cachedTokens !== null ? cachedTokens / billedInput : null,
       completionTokens,
       reasoningTokens,
-      reasoningShare: generated > 0 ? (reasoningTokens || 0) / generated : null,
+      reasoningShare,
       outputCeiling,
       ceilingIgnored,
       reported: Boolean(usage),

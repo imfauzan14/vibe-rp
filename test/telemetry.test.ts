@@ -72,6 +72,39 @@ describe("describeUsage reconciles the estimate against the bill", () => {
     expect(r.ceilingIgnored).toBe(false);
   });
 
+  // The shape a gateway that reports only totals returns, measured on a real
+  // router: `usage` carries prompt_tokens, completion_tokens and total_tokens and
+  // nothing else — no cache field of any vendor's shape, no reasoning count. The
+  // app must claim nothing it was not told, and must still learn the one thing
+  // the totals do reveal, which is the per-request preamble.
+  test("a totals-only usage makes no cache or reasoning claim, but still prices the preamble", () => {
+    const r = BrowserChatEngine.describeUsage({
+      usage: { prompt_tokens: 6516, completion_tokens: 127, total_tokens: 6643 },
+      payload,
+    });
+    expect(r.reported).toBe(true);
+    expect(r.billedInput).toBe(6516);
+    // Unknown, not zero: no cached count arrived, so no hit rate is asserted.
+    expect(r.cachedTokens).toBeNull();
+    expect(r.cacheHitRate).toBeNull();
+    // And the same rule for reasoning: 0 would assert a figure never sent.
+    expect(r.reasoningTokens).toBeNull();
+    expect(r.reasoningShare).toBeNull();
+    // The delta the totals do reveal is the preamble, which is the whole point.
+    expect(r.overhead).toBe(6516 - r.estimatedInput);
+  });
+
+  test("an explicit zero reasoning count is a measurement, not an absence", () => {
+    // The distinction the rule above depends on: a provider that sends
+    // `reasoning_tokens: 0` has measured a zero, and that is reported as 0.
+    const r = BrowserChatEngine.describeUsage({
+      usage: { prompt_tokens: 100, completion_tokens: 40, completion_tokens_details: { reasoning_tokens: 0 } },
+      payload,
+    });
+    expect(r.reasoningTokens).toBe(0);
+    expect(r.reasoningShare).toBe(0);
+  });
+
   test("reads cached tokens from the OpenAI and Anthropic shapes alike", () => {
     const openai = BrowserChatEngine.describeUsage({
       usage: { prompt_tokens: 1000, prompt_tokens_details: { cached_tokens: 800 } },

@@ -491,7 +491,10 @@
           measured.push(row("Prompt cache", `${percent(usage.cacheHitRate ?? 0)} of input served from cache`));
         }
         if (usage.reasoningTokens) {
-          measured.push(row("Reasoning share", `${percent(usage.reasoningShare ?? 0)} of generated tokens are internal`));
+          // The row only renders when a reasoning count arrived, so the share is
+          // a number here — an unreported count is not a zero, and the engine
+          // reports it as null rather than 0.
+          measured.push(row("Reasoning share", `${percent(usage.reasoningShare)} of generated tokens are internal`));
         }
         if (usage.ceilingIgnored) {
           measured.push(row("Output ceiling", "the provider ignored the requested maximum"));
