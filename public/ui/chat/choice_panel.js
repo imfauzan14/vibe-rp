@@ -60,9 +60,12 @@ export function createChoicePanel({
     attrs: {
       "aria-expanded": "true",
       "aria-controls": "choice-body",
-      title: "Collapse choices to view story",
+      title: "Hide the choices to read the story",
     },
-    text: "Collapse",
+    // Names what it hides. "Collapse" described the layout rather than the
+    // choices, which mattered when this was also the only way back to the
+    // composer; it is still the clearer label either way.
+    text: "Hide choices",
   });
   header.append(headTitleWrap, collapseBtn);
 
@@ -131,8 +134,8 @@ export function createChoicePanel({
         collapseBtn.title = "Expand choices";
       }
     } else {
-      collapseBtn.textContent = "Collapse";
-      collapseBtn.title = "Collapse choices to view story";
+      collapseBtn.textContent = "Hide choices";
+      collapseBtn.title = "Hide the choices to read the story";
     }
   }
 

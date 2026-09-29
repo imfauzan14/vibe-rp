@@ -90,21 +90,23 @@ export function createTurnMachine({
 
   async function streamTurn(promptHint, { persistPending = true } = {}) {
     setBusy(true);
-    // Stickiness stays owned by the boot (its scrollFeed no-ops unless pinned
-    // to the bottom, and its renderFeed re-pins on every paint), so the follow
-    // below schedules the page's own scroll — never a shadowed copy.
+    // The reader's position at the moment the turn starts decides whether the
+    // reply is followed. Captured once, deliberately: a reader who scrolls up
+    // while the reply is arriving must not be dragged back down.
     const autoFollow = isNearBottom();
     let settledOk = false;
     const streamId = `msg_${clockNow() + 1}`;
-    const stream = feed.beginStream(streamId, { autoFollow });
-    scrollToStream(streamId);
+    const stream = feed.beginStream(streamId);
+    scrollToStream(streamId, { autoFollow });
     const partial = { id: streamId, role: "assistant", content: "", timestamp: clockNow() };
     const turn = { stream, msg: partial, stopped: false };
     activeStream = turn;
 
     let scrollScheduled = false;
     const follow = () => {
-      if (scrollScheduled) return;
+      // `autoFollow` is what makes this a follow rather than a jump: without it
+      // the scheduled scroll would fight a reader who has moved away.
+      if (!autoFollow || scrollScheduled) return;
       scrollScheduled = true;
       requestAnimationFrame(() => {
         scrollFeed();
@@ -160,6 +162,13 @@ export function createTurnMachine({
     } finally {
       activeStream = null;
       setBusy(false);
+      // The turn is over, but the reader is not told that: the status line is
+      // cleared to nothing, and the streaming prose element stops being a live
+      // region as it settles. Saying so here is the second half of that
+      // announcement — the first is the settled text itself.
+      if (settledOk && notifier && typeof notifier.setStatus === "function") {
+        notifier.setStatus("Reply ready.");
+      }
       onFinally();
       // In Choice Mode the panel owns focus after a turn; only the normal
       // composer is refocused, and only on a fine pointer.

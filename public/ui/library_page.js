@@ -248,10 +248,33 @@ importBtn?.addEventListener("click", () => openImport());
 settingsBtn?.addEventListener("click", () => openSettings());
 
 // Initialization
-async function seedRosterIfEmpty() {
+const SEEDED_FLAG = "vibe_rp_roster_seeded";
+
+/**
+ * Seeds the two sample characters on a FIRST run only.
+ *
+ * This used to run whenever the library happened to be empty, so deleting the
+ * samples and reloading brought them back: the reader could not keep an empty
+ * library, and the "The library is empty" state could never be reached. The flag
+ * is claimed on the first run whether or not anything was seeded, so an install
+ * that already has cards claims it too and the samples never return.
+ */
+async function seedRosterOnce() {
+  let claimed = false;
+  try {
+    claimed = localStorage.getItem(SEEDED_FLAG) === "1";
+  } catch (_) {
+    // Storage blocked. Fall through to the card check, which is the safe default.
+  }
+  if (claimed) return;
+  try {
+    localStorage.setItem(SEEDED_FLAG, "1");
+  } catch (_) {
+    /* private mode: seeded once per session rather than once per install */
+  }
   const cards = await LocalDb.getAllCards();
   if (cards.length > 0) return;
-  for (const card of DEMO_CARDS) await LocalDb.saveCard(card);
+  for (const card of DEMO_CARDS) await LocalDb.saveCard({ ...card, sample: true });
 }
 
 /** Reads `?openSettings=1&tab=...` and the legacy hash form, then clears it. */
@@ -269,7 +292,7 @@ function applyUrlParameters() {
   history.replaceState(null, "", window.location.pathname);
 }
 
-await seedRosterIfEmpty();
+await seedRosterOnce();
 await controller.refresh();
 applyUrlParameters();
 

@@ -90,6 +90,27 @@ function paintTags(group, card) {
   while (group.children.length > labels.length) group.lastElementChild.remove();
 }
 
+/**
+ * Marks a card the app seeded rather than one the reader imported.
+ *
+ * A fresh install ships two sample characters so the library is not an empty
+ * grid on first contact. Unmarked, they are indistinguishable from the reader's
+ * own imports, which is how a "sample" quietly becomes "something I apparently
+ * added".
+ */
+function paintSampleBadge(heading, card) {
+  if (!heading) return;
+  let badge = heading.querySelector(".rp-card__sample");
+  if (!card.sample) {
+    badge?.remove();
+    return;
+  }
+  if (!badge) {
+    badge = el("span", { class: "rp-badge rp-badge--annotation rp-card__sample", text: "Sample" });
+    heading.querySelector(".rp-card__byline")?.after(badge);
+  }
+}
+
 function paintAvatar(media, card) {
   const url = cardAvatarUrl(card);
   const current = media.firstElementChild;
@@ -195,6 +216,7 @@ export function renderCard(card, handlers = {}, existing = null) {
   link.setAttribute("aria-label", `Open ${title}`);
   link.querySelector(".rp-card__title").textContent = title;
   link.querySelector(".rp-card__byline").textContent = cardByline(card);
+  paintSampleBadge(link.querySelector(".rp-card__heading"), card);
   paintAvatar(link.querySelector(".rp-card__media"), card);
   paintTags(link.querySelector(".rp-card__tags"), card);
 

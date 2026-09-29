@@ -81,7 +81,12 @@ export function createComposer({
   }
 
   function setPersona({ name = "You", avatar = null } = {}) {
-    if (personaNameEl) personaNameEl.textContent = name;
+    if (personaNameEl) {
+      personaNameEl.textContent = name;
+      // The name is capped so a long one cannot push the controls out of the
+      // row; the full text stays available rather than being silently cut.
+      personaNameEl.title = name;
+    }
     if (personaAvatarEl) {
       if (avatar && (avatar.startsWith("data:") || avatar.startsWith("http"))) {
         const img = document.createElement("img");

@@ -15,9 +15,30 @@
 import { escapeHtml, escapeAttr } from "../../safe_html.js";
 import { stripThoughtBlocks as stripThoughts } from "../../text.js";
 import { avatarInnerHtml } from "../character_card.js";
+import { scrollIntoViewRespectingMotion } from "../dom.js";
 
 const MAX_RENDERED = 60;
 const RENDER_STEP = 40;
+
+/**
+ * How long the settled prose stays a live region after its announcement.
+ *
+ * It cannot be retired immediately: the deferred announcement is triggered by
+ * `aria-busy` clearing, and removing the role in the same task races it. It
+ * cannot stay forever either — search wraps matches in `<mark>` inside this same
+ * element, and a live region there would announce the message on every keystroke.
+ */
+const LIVE_REGION_RETIRE_MS = 2000;
+
+/** Retires the streaming live region once the announcement it exists for is made. */
+function retireLiveRegion(element) {
+  if (!element) return;
+  setTimeout(() => {
+    element.removeAttribute("role");
+    element.removeAttribute("aria-live");
+    element.removeAttribute("aria-busy");
+  }, LIVE_REGION_RETIRE_MS);
+}
 
 export function createMessageFeed({
   mount,
@@ -263,7 +284,7 @@ export function createMessageFeed({
 
   // --- streaming -----------------------------------------------------------
 
-  function beginStream(id, { autoFollow = true } = {}) {
+  function beginStream(id) {
     const isUser = false;
     const sid = safeId(id);
     const el = document.createElement("article");
@@ -286,7 +307,7 @@ export function createMessageFeed({
       </div>`;
     mount.appendChild(el);
     nodes.set(String(id), el);
-    return { el, autoFollow, buffer: "", settledAt: 0, settledEl: el.querySelector(".rp-stream-settled"), tailEl: el.querySelector(".rp-stream-tail") };
+    return { el, buffer: "", settledAt: 0, settledEl: el.querySelector(".rp-stream-settled"), tailEl: el.querySelector(".rp-stream-tail") };
   }
 
   /**
@@ -320,11 +341,19 @@ export function createMessageFeed({
     const resolved = resolve(msg.content || "");
     const prose = stripThoughts(resolved);
     const proseEl = el.querySelector(".rp-message__prose");
-    proseEl.removeAttribute("aria-busy");
-    proseEl.removeAttribute("role");
-    proseEl.removeAttribute("aria-live");
+    // The order here is the whole point. The element is a live region with
+    // `aria-busy="true"`, which tells assistive tech to hold its announcement
+    // until the busy flag clears. Retiring the role and clearing the flag
+    // *before* writing the text — which is what this used to do — meant the
+    // settled content landed on an element that was no longer a live region, so
+    // the reply was never announced: the reader heard "Writing a reply." and
+    // then silence. Write the text first, clear the flag so the deferred
+    // announcement fires against the settled content, then retire the
+    // attributes once it has been made.
     proseEl.classList.remove("is-streaming");
     proseEl.innerHTML = formatProse(prose);
+    proseEl.setAttribute("aria-busy", "false");
+    retireLiveRegion(proseEl);
 
     const content = el.querySelector(".rp-message__content");
     const head = content.querySelector(".rp-message__head");
@@ -388,7 +417,18 @@ export function createMessageFeed({
   function scrollToMessage(id, { behavior = "smooth" } = {}) {
     const el = nodes.get(String(id));
     if (!el) return false;
-    el.scrollIntoView({ block: "start", behavior });
+    return scrollIntoViewRespectingMotion(el, { block: "start", behavior });
+  }
+
+  /**
+   * Renders one more slice of the transcript. Returns false when the whole
+   * transcript is already in the DOM, so a caller walking backwards through
+   * matches can tell "there is more" from "that was all".
+   */
+  function showMore(step = RENDER_STEP) {
+    if (windowSize >= lastMessages.length) return false;
+    windowSize = Math.min(lastMessages.length, windowSize + step);
+    reconcile(lastMessages);
     return true;
   }
 
@@ -445,6 +485,9 @@ export function createMessageFeed({
     getElement,
     getProse,
     scrollToMessage,
+    showMore,
     get count() { return nodes.size; },
+    /** How much of the transcript is currently rendered. */
+    get rendered() { return Math.min(windowSize, lastMessages.length); },
   };
 }

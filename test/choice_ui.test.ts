@@ -138,9 +138,26 @@ describe("chat surface wiring", () => {
     expect(css).toContain("overscroll-behavior: contain");
   });
 
-  test("composer input yields in choice mode when choices are active", () => {
-    expect(css).toMatch(/\.rp-composer\[data-mode="choice"\]\[data-has-choices="true"\]\s+\.rp-composer__input[\s\S]*?display:\s*none/);
+  test("the composer stays usable while choices are live", () => {
+    // Choice Mode used to set `display: none` on the textarea AND the send
+    // button whenever choices were on screen. That removed the app's primary
+    // action — its own placeholder says "Write as you." — and the only way back
+    // was a control labelled "Collapse", a word about layout. A choice menu is a
+    // suggestion, so the composer keeps working beside it. Verified on the real
+    // page at 390px: textarea display=block, Send display=flex, 48px wide.
+    const scope = '.rp-composer[data-mode="choice"][data-has-choices="true"]';
+    expect(css).not.toContain(`${scope} .rp-composer__input`);
+    expect(css).not.toContain(`${scope} #send-btn`);
+    // The panel is still a mode of the composer, so the wiring stays.
     expect(boot).toMatch(/\$\("composer"\)\.dataset\.hasChoices\s*=/);
+  });
+
+  test("the dock keeps its own surface while choices are live", () => {
+    // The composer is a control, not a footnote to the menu: it keeps its
+    // border, its background and its padding in both modes, so the reader never
+    // has to work out whether it is still theirs to use.
+    const scope = '.rp-composer[data-mode="choice"][data-has-choices="true"]';
+    expect(css).not.toContain(`${scope} .rp-composer__box`);
   });
 
   test("a selected choice goes through the ordinary user-turn path", () => {
@@ -185,10 +202,6 @@ describe("chat surface wiring", () => {
   test("mobile choices provide generous breathing room and distinct button height", () => {
     expect(css).toMatch(/@media\s*\(max-width:\s*720px\)[\s\S]*?\.rp-choices__list\s*\{[\s\S]*?gap:\s*var\(--space-2-5\)/);
     expect(css).toMatch(/@media\s*\(max-width:\s*720px\)[\s\S]*?\.rp-choices__option\s*\{[\s\S]*?min-height:\s*2\.75rem/);
-  });
-
-  test("composer dock drops visible border while preserving layout bounds", () => {
-    expect(css).toMatch(/\.rp-composer\[data-mode="choice"\]\[data-has-choices="true"\]\s+\.rp-composer__box\s*\{[\s\S]*?border:\s*var\(--border-width\)\s+solid\s+transparent/);
   });
 
   test("Normal RP composer clears input only on settled success matching submitted text", () => {

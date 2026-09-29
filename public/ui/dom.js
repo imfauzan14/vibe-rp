@@ -11,6 +11,8 @@
 //   on(node, type, handler, options)  attach listener; returns remover
 //   renderKeyed(container, items, keyOf, renderItem)  reuse nodes by key
 //   focusables(root)           elements that can hold focus, in tab order
+//   prefersReducedMotion()     the OS preference, never throwing
+//   scrollIntoViewRespectingMotion(element, options)  the only scroll call
 /**
  * Creates an element.
  * `props` supports `class`, `text`, `html` (trusted markup only), `dataset`,
@@ -44,6 +46,34 @@ export function el(tag, props = {}, children = []) {
 /** First match inside `root`, or null. */
 export function qs(root, selector) {
   return root ? root.querySelector(selector) : null;
+}
+
+/**
+ * True when the reader has asked the operating system for less motion.
+ * Never throws: a host without `matchMedia` simply reports no preference.
+ */
+export function prefersReducedMotion() {
+  try {
+    return Boolean(globalThis.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * The only scroll call the interface makes.
+ *
+ * A `scroll-behavior: auto` rule under `prefers-reduced-motion` cannot help
+ * here: an explicit `behavior: "smooth"` passed to `scrollIntoView` outranks the
+ * stylesheet, so every programmatic scroll would keep animating for a reader who
+ * asked it not to. Resolving the preference at the one call site that knows
+ * about it is what makes the stylesheet's promise true.
+ */
+export function scrollIntoViewRespectingMotion(element, options = {}) {
+  if (!element || typeof element.scrollIntoView !== "function") return false;
+  const behavior = prefersReducedMotion() ? "auto" : options.behavior || "auto";
+  element.scrollIntoView({ ...options, behavior });
+  return true;
 }
 
 /** Every match inside `root`, as an array (internal to focusables). */

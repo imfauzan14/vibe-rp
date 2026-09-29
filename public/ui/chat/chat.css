@@ -32,6 +32,11 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* The toast stack is fixed to the top of the viewport, so the reading column
+     reserves the height the host publishes rather than letting a notice sit over
+     the opening line of the scene. `min-height: 100%` on the container below
+     resolves against this content box, so the reserve adds no scroll of its own. */
+  padding-top: var(--rp-toast-band, 0px);
 }
 /* The well centres inside the feed's scrollport while the composer box
    centres in the viewport: with a classic scrollbar the scrollport narrows
@@ -111,17 +116,9 @@
     padding-block: var(--space-4);
   }
 
-  .rp-composer__actions {
-    gap: var(--space-2);
-  }
-
-  .rp-composer__identity {
-    gap: var(--space-2);
-    margin-left: var(--space-1);
-    padding-left: var(--space-2);
-  }
-
-
+  /* The composer's own mobile rules live further down, beside the rest of the
+     dock. Duplicates here were dead: the later block wins on source order, so
+     these two only ever misled a reader of this file. */
 }
 /* --------------------------------------------------------------- header --- */
 
@@ -741,28 +738,45 @@ mark.rp-search-hit.is-current {
     font-size: var(--text-2xs);
   }
 
-  .rp-composer__identity {
+  /* These three selectors are written with a `.rp-composer` prefix on purpose.
+     The composer's base rules live BELOW this media query in the file, so at
+     equal specificity they would win and silently cancel every override here —
+     which is what happened to the identity's `flex` and the figure's. One extra
+     class makes the mobile intent hold wherever the block sits. */
+  .rp-composer .rp-composer__identity {
     gap: var(--space-1-5);
     margin-left: var(--space-1);
     padding-left: var(--space-1-5);
+    /* Takes the row's slack rather than being shrunk by it. */
     flex: 1 1 auto;
     min-width: 0;
     height: 26px;
   }
 
-  .rp-composer__identity .rp-chat__persona {
+  /* The reader's own name is identity, not decoration: it is the last thing that
+     may give way, so it never shrinks. It used to carry `max-width: 10ch` and
+     shrink freely, so at 390px "You" rendered in a 10px box as "Y…". The cap
+     keeps a very long name bounded, and `composer.js` puts the full name in the
+     title attribute. */
+  .rp-composer .rp-composer__identity .rp-chat__persona {
     font-size: var(--text-2xs);
-    max-width: 10ch;
+    max-width: 16ch;
+    flex: none;
   }
 
-  .rp-composer__identity .rp-composer__figures {
+  /* The secondary figure yields first when the row is genuinely full. */
+  .rp-composer .rp-composer__identity .rp-composer__figures {
     font-size: var(--text-2xs);
     padding-left: var(--space-1-5);
+    flex: 0 1 auto;
+    min-width: 0;
   }
 
-  .rp-composer__actions--end {
+  .rp-composer .rp-composer__actions--end {
     flex: none;
-    margin-left: auto;
+    /* No `margin-left: auto`: it absorbed the row's slack, which is exactly the
+       space the identity needs to render the name in full. The identity's own
+       flex-grow already pushes this group to the end. */
   }
 
   .rp-composer__actions--end .rp-btn {
@@ -772,27 +786,12 @@ mark.rp-search-hit.is-current {
   }
 }
 
-/* When Choice Mode has active choices, the composer's textarea and send button
-   yield to the choices menu. The composer box keeps identical padding
-   and border width so the mode buttons stay in the EXACT same position without jumping. */
-.rp-composer[data-mode="choice"][data-has-choices="true"] .rp-composer__input,
-.rp-composer[data-mode="choice"][data-has-choices="true"] #send-btn {
-  display: none;
-}
-
-.rp-composer[data-mode="choice"][data-has-choices="true"] .rp-composer__box {
-  padding: var(--space-2);
-  border: var(--border-width) solid transparent;
-  background-color: transparent;
-  box-shadow: none;
-}
-
-.rp-composer[data-mode="choice"][data-has-choices="true"] .rp-composer__actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: 36px;
-}
+/* Choice Mode adds the menu above the dock. The composer stays as it is.
+   It used to hide the textarea AND the send button while choices were live, so
+   the reader could not write their own line — the app's whole premise — and the
+   only way back was a control labelled "Collapse", a word about layout. The
+   menu's list is capped at `min(44dvh, 320px)` and the panel collapses in one
+   press, so the dock still leaves the reading area most of the viewport. */
 
 /* Focus is stated on the option itself, since it is a real control.
    Inset outline ensures crisp borders without being clipped by the scroll container. */

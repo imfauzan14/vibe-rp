@@ -22,7 +22,7 @@
 // Exports
 //   mountEnginePanel(root, options) -> { refresh, destroy }
 
-import { qs } from "../dom.js";
+import { qs, scrollIntoViewRespectingMotion } from "../dom.js";
 import { clearModelCapabilities } from "../../browser_engine.js";
 
 const MODEL_PLACEHOLDER = "Select a model after fetching models";
@@ -180,7 +180,7 @@ export function mountEnginePanel(root, options = {}) {
     secretClicks++;
     if (secretClicks >= SECRET_THRESHOLD) {
       sessionWrap.hidden = false;
-      sessionWrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      scrollIntoViewRespectingMotion(sessionWrap, { behavior: "smooth", block: "nearest" });
       announce("Session import unlocked.");
       secretClicks = 0;
     }

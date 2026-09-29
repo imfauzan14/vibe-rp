@@ -62,8 +62,11 @@ function dossier(title, content, { mono = false } = {}) {
 function variation(label, text, onStart) {
   const cleaned = String(text ?? "").trim();
   if (!cleaned) return null;
-  const firstLine = cleaned.split("\n")[0];
-  const preview = firstLine.length > 65 ? `${firstLine.slice(0, 65)}\u2026` : firstLine;
+  // The first line only: the summary is one `nowrap` row. The character cut that
+  // used to be here was redundant with the stylesheet's own ellipsis AND worse —
+  // it sliced at 65 characters, mid-word, where the box-edge ellipsis cuts at the
+  // widest point that fits and follows the reader's window width.
+  const preview = cleaned.split("\n")[0];
   const body = [el("p", { class: "rp-variation__text", text: cleaned })];
   if (onStart) {
     const button = el("button", {
@@ -366,7 +369,6 @@ export function openDetailModal({ card, sessions = [], loadSessions = null, hand
   async function reloadThreads() {
     const list = await currentSessions();
     countLabel.textContent = String(list.length);
-    historyBtn.disabled = list.length === 0;
     paintThreads(list);
   }
 
@@ -409,7 +411,9 @@ export function openDetailModal({ card, sessions = [], loadSessions = null, hand
     class: "rp-btn rp-btn--ghost",
   });
   historyBtn.append("Saved chats (", countLabel, ")");
-  historyBtn.disabled = sessions.length === 0;
+  // Never disabled. It used to be, whenever the card had no chats — which made
+  // the empty state it guards unreachable, so the one message that explains the
+  // absence could never be read.
 
   const deleteBtn = el("button", {
     type: "button",
@@ -508,7 +512,6 @@ export function openDetailModal({ card, sessions = [], loadSessions = null, hand
       if (Array.isArray(nextSessions)) {
         sessions = nextSessions;
         countLabel.textContent = String(nextSessions.length);
-        historyBtn.disabled = nextSessions.length === 0;
         if (!historyView.hidden) paintThreads(nextSessions);
       }
     },

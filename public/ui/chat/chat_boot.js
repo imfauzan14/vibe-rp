@@ -442,7 +442,18 @@
       showToast,
       isNearBottom,
       scrollFeed: () => scrollFeed(),
-      scrollToStream: (id) => {
+      scrollToStream: (id, { autoFollow = false } = {}) => {
+        // A reader who was at the end of the conversation keeps following it, so
+        // the reply streams into view. A reader who was reading further up is
+        // shown the new reply once, at the top of the view, and then left alone.
+        // Setting stickiness to false unconditionally — which is what this did —
+        // switched the follow path off for the whole turn, so a reply longer
+        // than the viewport scrolled out of sight while it was being written.
+        if (autoFollow) {
+          stickToBottom = true;
+          scrollFeed();
+          return;
+        }
         stickToBottom = false;
         feed.scrollToMessage?.(id, { behavior: "smooth" });
       },
@@ -506,12 +517,45 @@
     // In-chat search panel wiring.
     const searchPanel = $("chat-search");
     const searchInput = $("chat-search-input");
+
+    /**
+     * Occurrences of `query` across the WHOLE transcript, case-insensitive.
+     *
+     * The feed renders a capped window of messages, so counting the DOM answers
+     * a different question from the one the reader is asking — it reports a
+     * phrase in an older turn as absent. This counts the transcript, and the
+     * search module compares it with what it could highlight.
+     */
+    function countTranscriptMatches(messages, query) {
+      const needle = String(query || "").trim().toLowerCase();
+      if (!needle) return 0;
+      let count = 0;
+      for (const msg of messages) {
+        const text = stripThoughtBlocks(String(msg?.content || "")).toLowerCase();
+        if (!text) continue;
+        let at = text.indexOf(needle);
+        while (at !== -1) {
+          count += 1;
+          at = text.indexOf(needle, at + needle.length);
+        }
+      }
+      return count;
+    }
+
     const search = createSearch({
       input: searchInput,
       container: chatInner,
       countEl: $("chat-search-count"),
-      root: searchPanel,
       onChange: (msg) => notifier.setStatus(msg),
+      // The page owns the panel's open state, so the toggle's `aria-expanded`,
+      // the `data-open` attribute and focus all move together. The module used
+      // to set `data-open` itself, which left the button claiming the panel was
+      // open and focus stranded inside a hidden field.
+      onClose: () => setSearchOpen(false),
+      matchTotal: (query) => countTranscriptMatches(controller.activeSession?.messages || [], query),
+      // Walking past the last rendered match renders more history rather than
+      // wrapping, so Next keeps reaching older turns.
+      onExpand: () => feed.showMore(),
     });
 
     function setSearchOpen(open) {

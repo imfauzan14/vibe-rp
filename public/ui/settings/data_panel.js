@@ -43,10 +43,10 @@ export function mountDataPanel(root, options = {}) {
 
   // Guidance header
   const guidanceEl = el("div", { class: "rp-settings__guidance" }, [
-    el("p", { class: "rp-settings__guidance-title", text: "Data & Storage Management" }),
+    el("p", { class: "rp-settings__guidance-title", text: "Data and storage" }),
     el("p", {
       class: "rp-settings__guidance-text",
-      text: "Export complete browser backups, restore from files, or perform granular storage resets. All data is kept strictly inside this browser.",
+      text: "Export a complete browser backup, restore from a file, or reset one kind of data at a time. Everything stays inside this browser.",
     }),
   ]);
 
@@ -57,18 +57,19 @@ export function mountDataPanel(root, options = {}) {
     try {
       const stats = await LocalDb.getStorageStats();
       const cookies = readBrowserCookies();
-      statsWrap.innerHTML = "";
+      statsWrap.className = "rp-storage-stats";
+      statsWrap.textContent = "";
 
       const items = [
         { label: "Cards", count: stats.cardCount },
         { label: "Conversations", count: stats.sessionCount },
         { label: "Personas", count: stats.personaCount },
-        { label: "System Prompts", count: stats.directiveCount },
-        { label: "Cookies", count: cookies.length },
+        { label: "System prompts", count: stats.directiveCount },
+        { label: "Sign-in cookies", count: cookies.length },
       ];
 
       for (const item of items) {
-        statsWrap.appendChild(
+        statsWrap.append(
           el("div", { class: "rp-storage-stat" }, [
             el("span", { class: "rp-storage-stat__label", text: item.label }),
             el("span", { class: "rp-badge rp-badge--count rp-tnum", text: String(item.count) }),
@@ -77,27 +78,32 @@ export function mountDataPanel(root, options = {}) {
       }
 
       if (stats.usage > 0) {
-        statsWrap.appendChild(
+        statsWrap.append(
           el("div", { class: "rp-storage-stat" }, [
-            el("span", { class: "rp-storage-stat__label", text: "Disk Estimate" }),
+            el("span", { class: "rp-storage-stat__label", text: "Disk used" }),
             el("span", { class: "rp-badge", text: formatBytes(stats.usage) }),
           ])
         );
       }
-    } catch (_) {}
+    } catch (err) {
+      // Swallowing this left the block empty, which reads as "nothing stored"
+      // rather than "the figures could not be read".
+      statsWrap.className = "rp-storage-stats rp-help";
+      statsWrap.textContent = `Storage figures unavailable: ${err.message}`;
+    }
   };
 
   // Section 1: Backup & Restore
   const backupNotice = el("p", {
     class: "rp-help",
-    text: "Backups contain your stored API keys, cards, chat transcripts, custom personas, system prompts, and cookies. Store your backup file securely.",
+    text: "A backup contains your stored API keys, characters, chat transcripts, personas, system prompts and sign-in cookies. Keep the file somewhere safe.",
   });
 
   const exportBtn = el("button", {
     type: "button",
     id: "rp-data-export-btn",
     class: "rp-btn rp-btn--primary rp-btn--md",
-    text: "Export All Browser Data (JSON)",
+    text: "Export all browser data (JSON)",
   });
 
   const importInput = el("input", {
@@ -111,7 +117,7 @@ export function mountDataPanel(root, options = {}) {
     type: "button",
     id: "rp-data-import-btn",
     class: "rp-btn rp-btn--secondary rp-btn--md",
-    text: "Import Backup File",
+    text: "Import a backup file",
   });
 
   const backupActions = el("div", { class: "rp-actions-row" }, [
@@ -121,7 +127,7 @@ export function mountDataPanel(root, options = {}) {
   ]);
 
   const backupSection = el("div", { class: "rp-field" }, [
-    el("span", { class: "rp-label", text: "Full Backup & Restore" }),
+    el("span", { class: "rp-label", text: "Backup and restore" }),
     backupNotice,
     backupActions,
   ]);
@@ -154,13 +160,13 @@ export function mountDataPanel(root, options = {}) {
   const resetSettingsBtn = el("button", {
     type: "button",
     class: "rp-btn rp-btn--ghost rp-btn--sm",
-    text: "Reset API & generation settings",
+    text: "Reset API and generation settings",
   });
 
   const clearAuthBtn = el("button", {
     type: "button",
     class: "rp-btn rp-btn--ghost rp-btn--sm",
-    text: "Clear import session & cookies",
+    text: "Clear saved sign-in",
   });
 
   const granularActions = el("div", { class: "rp-actions-row" }, [
@@ -173,10 +179,10 @@ export function mountDataPanel(root, options = {}) {
   ]);
 
   const granularSection = el("div", { class: "rp-field" }, [
-    el("span", { class: "rp-label", text: "Granular Resets" }),
+    el("span", { class: "rp-label", text: "Targeted resets" }),
     el("p", {
       class: "rp-help",
-      text: "Targeted resets allow deleting conversations or resetting presets without losing your full configuration.",
+      text: "Delete one kind of data, or restore one kind to its default, without losing the rest.",
     }),
     granularActions,
   ]);
@@ -186,11 +192,11 @@ export function mountDataPanel(root, options = {}) {
     type: "button",
     id: "rp-factory-reset-btn",
     class: "rp-btn rp-btn--danger rp-btn--md",
-    text: "Wipe everything & reset browser",
+    text: "Wipe everything and reset this browser",
   });
 
   const dangerZone = el("div", { class: "rp-settings__danger-zone" }, [
-    el("p", { class: "rp-settings__danger-title", text: "Danger Zone: Factory Reset" }),
+    el("p", { class: "rp-settings__danger-title", text: "Danger zone: factory reset" }),
     el("p", {
       class: "rp-settings__danger-text",
       text: "Permanently erase all character cards, chat sessions, custom personas, system prompts, API settings, and browser cookies. Restores Vibe RP to pristine factory state.",
@@ -239,7 +245,7 @@ export function mountDataPanel(root, options = {}) {
           const ok = await confirm({
             title: "Restore conversation?",
             body: `This legacy export contains ${payload.messages?.length || 0} messages. It will be added as a saved conversation.`,
-            confirmLabel: "Import Conversation",
+            confirmLabel: "Import conversation",
           });
           if (!ok) return;
 
@@ -258,7 +264,7 @@ export function mountDataPanel(root, options = {}) {
           const ok = await confirm({
             title: "Restore full backup?",
             body: `Backup contains ${cardsCount} cards and ${sessionsCount} conversations. Existing matching items will be updated.`,
-            confirmLabel: "Merge & Restore",
+            confirmLabel: "Merge and restore",
           });
           if (!ok) return;
 
@@ -289,7 +295,7 @@ export function mountDataPanel(root, options = {}) {
       const ok = await confirm({
         title: "Clear all conversations?",
         body: "Permanently delete all chat transcripts and histories across all characters. Cards and settings are kept safe.",
-        confirmLabel: "Clear Sessions",
+        confirmLabel: "Clear conversations",
         tone: "danger",
         initialFocus: "cancel",
       });
@@ -312,7 +318,7 @@ export function mountDataPanel(root, options = {}) {
       const ok = await confirm({
         title: "Delete all character cards?",
         body: "Permanently delete all character cards and their associated conversation histories. Settings are kept.",
-        confirmLabel: "Delete All Cards",
+        confirmLabel: "Delete all cards",
         tone: "danger",
         initialFocus: "cancel",
       });
@@ -335,7 +341,9 @@ export function mountDataPanel(root, options = {}) {
       const ok = await confirm({
         title: "Reset personas to default?",
         body: "Removes all custom author personas and restores the default 'User' persona.",
-        confirmLabel: "Reset Personas",
+        confirmLabel: "Reset personas",
+        tone: "danger",
+        initialFocus: "cancel",
       });
       if (!ok) return;
 
@@ -352,7 +360,9 @@ export function mountDataPanel(root, options = {}) {
       const ok = await confirm({
         title: "Reset system prompts to default?",
         body: "Removes all custom directives and restores the canonical Author's Craft Directive.",
-        confirmLabel: "Reset Prompts",
+        confirmLabel: "Reset prompts",
+        tone: "danger",
+        initialFocus: "cancel",
       });
       if (!ok) return;
 
@@ -369,7 +379,9 @@ export function mountDataPanel(root, options = {}) {
       const ok = await confirm({
         title: "Reset API & generation settings?",
         body: "Reverts API endpoints, keys, models, and sampling sliders to default values.",
-        confirmLabel: "Reset Settings",
+        confirmLabel: "Reset settings",
+        tone: "danger",
+        initialFocus: "cancel",
       });
       if (!ok) return;
 
@@ -385,8 +397,10 @@ export function mountDataPanel(root, options = {}) {
     on(clearAuthBtn, "click", async () => {
       const ok = await confirm({
         title: "Clear import session & cookies?",
-        body: "Clears your stored Chub authentication tokens and expires domain cookies.",
-        confirmLabel: "Clear Auth",
+        body: "Clears the saved character-page sign-in and expires this site's cookies.",
+        confirmLabel: "Clear sign-in",
+        tone: "danger",
+        initialFocus: "cancel",
       });
       if (!ok) return;
 
@@ -403,7 +417,7 @@ export function mountDataPanel(root, options = {}) {
       const ok = await confirm({
         title: "Wipe all browser data?",
         body: "Permanently delete all cards, chat histories, personas, settings, and cookies. This cannot be undone.",
-        confirmLabel: "Wipe Everything",
+        confirmLabel: "Wipe everything",
         tone: "danger",
         initialFocus: "cancel",
       });

@@ -51,6 +51,15 @@ export function openEditorDialog({
     document.body.appendChild(dialog);
     onDialog?.(dialog);
 
+    // The error element carries its role from the start, so it is already a
+    // live region by the time any text lands in it — an element that only
+    // becomes an alert as it is filled is not reliably announced. The field
+    // points at it, so tabbing back to the name reads the reason.
+    const errorId = `${titleId}-error`;
+    error.id = errorId;
+    error.setAttribute("role", "alert");
+    nameInput.setAttribute("aria-describedby", errorId);
+
     let busy = false;
     let settled = false;
     const finish = () => {
@@ -61,15 +70,34 @@ export function openEditorDialog({
       resolve();
     };
 
+    function showError(text) {
+      error.hidden = false;
+      error.textContent = text;
+    }
+
+    function clearError() {
+      error.hidden = true;
+      error.textContent = "";
+    }
+
+    // A corrected field should not keep its old complaint on screen.
+    nameInput.addEventListener("input", () => {
+      if (error.hidden) return;
+      clearError();
+      nameInput.classList.remove("is-invalid");
+      nameInput.removeAttribute("aria-invalid");
+    });
+
+    const saveBtn = dialog.querySelector('[data-role="save"]');
+
     dialog.querySelector('[data-role="close"]').addEventListener("click", finish);
     dialog.querySelector('[data-role="cancel"]').addEventListener("click", finish);
 
-    dialog.querySelector('[data-role="save"]').addEventListener("click", async () => {
+    saveBtn.addEventListener("click", async () => {
       if (busy) return;
       const name = nameInput.value.trim();
       if (!name) {
-        error.hidden = false;
-        error.textContent = requiredMessage;
+        showError(requiredMessage);
         nameInput.classList.add("is-invalid");
         nameInput.setAttribute("aria-invalid", "true");
         nameInput.focus();
@@ -78,15 +106,19 @@ export function openEditorDialog({
       nameInput.classList.remove("is-invalid");
       nameInput.removeAttribute("aria-invalid");
       busy = true;
+      // A save that takes a moment used to look like a button that did nothing.
+      saveBtn.disabled = true;
+      saveBtn.setAttribute("aria-busy", "true");
       try {
         await onSave?.(buildPayload(name));
         host?.toast?.(successToast(name), { tone: "success" });
         finish();
       } catch (err) {
-        error.hidden = false;
-        error.textContent = `${errorPrefix}: ${err.message}`;
+        showError(`${errorPrefix}: ${err.message}`);
       } finally {
         busy = false;
+        saveBtn.disabled = false;
+        saveBtn.removeAttribute("aria-busy");
       }
     });
 

@@ -19,16 +19,31 @@
 //   createToastHost(options) -> { toast, dismiss, destroy, region }
 //   createNotifier(options)  -> { toast, setStatus, clear, region }  (chat adapter)
 
+import { prefersReducedMotion } from "./dom.js";
+
 const DEFAULT_DURATION = 3500;
 const ERROR_DURATION = 8000;
 const MAX_VISIBLE = 4;
+/** Breathing room between the toast stack and the content it must not cover. */
+const BAND_GAP = 12;
 
-function prefersReducedMotion() {
-  try {
-    return Boolean(window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches);
-  } catch (_) {
-    return false;
+/**
+ * Publishes the stack's height so the page can keep its own content clear of it.
+ *
+ * The region is `position: fixed` at the top of the viewport, so without this a
+ * notice sits over the first lines of whatever is beneath it. On a new reader's
+ * first view that is the opening line of the story — and the notice being shown
+ * is the one introducing it. The two scroll surfaces read
+ * `var(--rp-toast-band, 0px)`; nothing else needs to know toasts exist.
+ */
+function syncReservedBand(region) {
+  const root = globalThis.document?.documentElement;
+  if (!root?.style?.setProperty) return;
+  let height = 0;
+  if (region.children.length && typeof region.getBoundingClientRect === "function") {
+    height = Math.ceil(region.getBoundingClientRect().height) || 0;
   }
+  root.style.setProperty("--rp-toast-band", `${height > 0 ? height + BAND_GAP : 0}px`);
 }
 
 /**
@@ -69,6 +84,7 @@ export function createToastHost({ root = document.body, region: provided = null 
     live.delete(id);
     clearTimeout(entry.timer);
     entry.node.remove();
+    syncReservedBand(region);
   }
 
   /* The toast's own window closed it. This is the one exit that must also
@@ -149,6 +165,9 @@ export function createToastHost({ root = document.body, region: provided = null 
 
     if (prefersReducedMotion()) node.classList.add("is-shown");
     region.appendChild(node);
+    // Measured after the append, so the band matches the stack that is actually
+    // on screen rather than the one that was there before it.
+    syncReservedBand(region);
 
     const ms = duration ?? (tone === "danger" ? ERROR_DURATION : DEFAULT_DURATION);
     const timer = ms > 0 ? setTimeout(() => expire(id), ms) : 0;
@@ -163,6 +182,7 @@ export function createToastHost({ root = document.body, region: provided = null 
   function destroy() {
     for (const id of Array.from(live.keys())) remove(id);
     region.remove();
+    syncReservedBand(region);
   }
 
   return { toast, dismiss, destroy, region };
@@ -217,6 +237,7 @@ export function createNotifier({ region, status = null } = {}) {
 
   function clear() {
     region.textContent = "";
+    syncReservedBand(region);
     setStatus("");
   }
 

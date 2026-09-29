@@ -222,7 +222,11 @@ describe("Redundancy cleanup and legacy export removal", () => {
       expect(deleteHelperCalled).toBe(false);
       expect(structuredConfirmOpts).not.toBeNull();
       expect(structuredConfirmOpts.title).toBe("Clear all conversations?");
-      expect(structuredConfirmOpts.confirmLabel).toBe("Clear Sessions");
+      // The button label is copy and may change. What has to hold is the safety
+      // contract: a destructive confirm is marked dangerous and opens with focus
+      // on Cancel, so Enter does not destroy anything by reflex.
+      expect(structuredConfirmOpts.tone).toBe("danger");
+      expect(structuredConfirmOpts.initialFocus).toBe("cancel");
     } finally {
       if (orig === undefined) {
         delete (globalThis as any).document;
@@ -230,6 +234,36 @@ describe("Redundancy cleanup and legacy export removal", () => {
         (globalThis as any).document = orig;
       }
     }
+  });
+
+  test("every destructive confirm in the Data panel is marked and opens on Cancel", () => {
+    // Six resets sit in one row. Two of them passed `tone` and `initialFocus`
+    // and four did not, so the same reflex — press the button, press Enter —
+    // was safe on one and destroyed data on the next. The restores are additive
+    // (merge, import) and are deliberately NOT danger-toned, so the invariant is
+    // scoped to the confirms that destroy something.
+    const src = read("ui/settings/data_panel.js");
+    const blocks = src.split("await confirm({").slice(1).map((chunk) => chunk.split("});")[0]);
+    const destructive = blocks.filter((block) => /title:\s*"(Clear|Delete|Reset|Wipe)\b/.test(block));
+    expect(destructive.length).toBeGreaterThanOrEqual(7);
+    for (const block of destructive) {
+      expect(block).toContain('tone: "danger"');
+      expect(block).toContain('initialFocus: "cancel"');
+    }
+    // And the additive ones stay additive: nothing to destroy, nothing to warn.
+    const additive = blocks.filter((block) => /title:\s*"Restore\b/.test(block));
+    expect(additive.length).toBeGreaterThanOrEqual(2);
+    for (const block of additive) {
+      expect(block).not.toContain('tone: "danger"');
+    }
+  });
+
+  test("the storage figures say so when the read fails", () => {
+    // `catch (_) {}` left the block empty, which reads as "nothing stored"
+    // rather than "the figures could not be read".
+    const src = read("ui/settings/data_panel.js");
+    expect(src).not.toMatch(/catch\s*\(_\)\s*\{\s*\}/);
+    expect(src).toContain("Storage figures unavailable");
   });
 });
 
