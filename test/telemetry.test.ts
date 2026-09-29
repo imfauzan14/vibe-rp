@@ -46,6 +46,240 @@ afterEach(() => {
   delete (globalThis as unknown as Record<string, unknown>).localStorage;
 });
 
+// ───────────────── the frozen preamble ─────────────────
+
+describe("The charged preamble is frozen for a session", () => {
+  const settings = { apiEndpoint: EP, model: MODEL, maxContextTokens: 8192, maxTokens: 1200 };
+  const messages = () => {
+    const list: Array<{ role: string; content: string }> = [{ role: "assistant", content: "The lamp gutters." }];
+    for (let i = 1; i <= 20; i += 1) {
+      list.push({ role: "user", content: `I move. ${"word ".repeat(40)}[${i}]` });
+      list.push({ role: "assistant", content: `She answers. ${"word ".repeat(120)}[${i}]` });
+    }
+    list.push({ role: "user", content: "I wait." });
+    return list;
+  };
+  const session = () => ({ id: "s", messages: messages(), ledger: "", consumed: 1 });
+  const plan = (s: object) => BrowserChatEngine.planRequest({ card: null, session: s, settings, persona: null });
+
+  test("once a session charges a preamble, later samples cannot move it", () => {
+    // The charged value is a median over a sliding window, so on an endpoint
+    // whose reports jitter it moves from turn to turn — and every move re-plans
+    // the request, which can change the system message, the recap, or where the
+    // history is cut. All of those sit in front of the new content. Measured
+    // before the freeze: a single re-plan cost 49.5 points of cache-served
+    // input, and the charged value moved on 43% of turns.
+    const s = session();
+    expect(plan(s).overheadTokens).toBe(0);
+
+    notePromptOverhead(EP, MODEL, 4000 + 2150, 4000);
+    const frozen = plan(s);
+    expect(frozen.overheadTokens).toBe(2150);
+
+    // The endpoint's reports drift, exactly as a real gateway's did.
+    for (const delta of [900, 3400, 1200, 2900, 1600, 700, 3200]) {
+      notePromptOverhead(EP, MODEL, 4000 + delta, 4000);
+    }
+    // The store has moved on. The session has not.
+    expect(promptOverheadTokens(settings)).not.toBe(2150);
+    const later = plan(s);
+    expect(later.overheadTokens).toBe(2150);
+    expect(later.payload[0].content).toBe(frozen.payload[0].content);
+  });
+
+  test("a new session starts from the latest learned value, so learning still crosses sessions", () => {
+    notePromptOverhead(EP, MODEL, 4000 + 2150, 4000);
+    expect(plan(session()).overheadTokens).toBe(2150);
+    for (let i = 0; i < 5; i += 1) notePromptOverhead(EP, MODEL, 4000 + 500, 4000);
+    expect(promptOverheadTokens(settings)).toBe(500);
+    expect(plan(session()).overheadTokens).toBe(500);
+  });
+
+  test("forgetting learned limits forgets the freeze too", () => {
+    const s = session();
+    notePromptOverhead(EP, MODEL, 4000 + 2150, 4000);
+    expect(plan(s).overheadTokens).toBe(2150);
+    clearModelCapabilities();
+    expect(plan(s).overheadTokens).toBe(0);
+  });
+});
+
+// ───────────────── the menu as a request ─────────────────
+
+describe("The choice menu is a request like any other", () => {
+  const CARD = {
+    id: "c",
+    data: { name: "Elena", description: "word ".repeat(200), first_mes: "The lamp gutters." },
+  };
+  const session = () => {
+    const list: Array<{ role: string; content: string }> = [{ role: "assistant", content: "The lamp gutters." }];
+    for (let i = 1; i <= 10; i += 1) {
+      list.push({ role: "user", content: `I move. ${"word ".repeat(30)}[${i}]` });
+      list.push({ role: "assistant", content: `She answers. ${"word ".repeat(90)}[${i}]` });
+    }
+    return { id: "s", messages: list, ledger: "", consumed: 1 };
+  };
+  const OK = JSON.stringify({
+    choices: [{ message: { content: JSON.stringify({ choices: [{ text: "I step forward." }, { text: "I hold still." }] }) } }],
+  });
+  const jsonOk = () => new Response(OK, { status: 200, headers: { "content-type": "application/json" } });
+
+  function captureFetch(respond: () => Response) {
+    const calls: Array<Record<string, unknown>> = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      calls.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+      return respond();
+    }) as unknown as typeof fetch;
+    return { calls, restore: () => { globalThis.fetch = original; } };
+  }
+
+  const settings = (over: Record<string, unknown> = {}) => ({
+    apiEndpoint: EP,
+    model: MODEL,
+    maxContextTokens: 8192,
+    maxTokens: 1200,
+    ...over,
+  });
+
+  test("it charges the measured preamble, so the window it plans against is smaller", () => {
+    // The menu used not to charge it, so on an endpoint adding a hidden preamble
+    // the menu was planned to the whole window and then billed past it: measured
+    // at a 6,144-token window, a menu planned at 4,417 and billed 6,567, while
+    // the main turn — which does charge it — was billed 5,618 and succeeded.
+    //
+    // The window is deliberately small here. At 8,192 both of the menu's
+    // allowances are still capped, so the preamble changes nothing and the
+    // assertion could not fail; at 4,096 the caps stop binding and the charge
+    // has to show up in the plan.
+    const small = settings({ maxContextTokens: 4096 });
+    const plan = (s: object) =>
+      BrowserChatEngine.planChoiceRequest({ card: CARD, session: s, settings: small, persona: null, count: 4, charName: "Elena", playerName: "Rin" });
+
+    const s = session();
+    const before = plan(s);
+    expect(before.overheadTokens).toBe(0);
+
+    notePromptOverhead(EP, MODEL, 4000 + 2150, 4000);
+    const after = plan(s);
+    expect(after.overheadTokens).toBe(2150);
+    // The plan is smaller: the window now has to pay for input the app never sends.
+    expect(before.inputTokens + before.outputTokens).toBeGreaterThan(after.inputTokens + after.outputTokens);
+    // And the request the provider receives still fits the window it was
+    // planned against — the whole point of charging it.
+    expect(after.inputTokens + after.outputTokens + after.overheadTokens).toBeLessThanOrEqual(after.contextWindow);
+  });
+
+  test("it asks for a cache breakpoint where the provider caches only on request", async () => {
+    const { calls, restore } = captureFetch(jsonOk);
+    try {
+      await BrowserChatEngine.generateChoices({
+        card: CARD,
+        session: session(),
+        settings: settings({ apiEndpoint: "https://api.anthropic.com/v1" }),
+        persona: null,
+        count: 4,
+        charName: "Elena",
+        playerName: "Rin",
+      });
+      const body = calls[0] as { messages: Array<{ content: unknown }> };
+      expect(Array.isArray(body.messages[0].content)).toBe(true);
+      expect((body.messages[0].content as Array<{ cache_control?: unknown }>)[0].cache_control).toEqual({ type: "ephemeral" });
+    } finally {
+      restore();
+    }
+  });
+
+  test("and does not, where the provider caches automatically", async () => {
+    const { calls, restore } = captureFetch(jsonOk);
+    try {
+      await BrowserChatEngine.generateChoices({
+        card: CARD,
+        session: session(),
+        settings: settings(),
+        persona: null,
+        count: 4,
+        charName: "Elena",
+        playerName: "Rin",
+      });
+      const body = calls[0] as { messages: Array<{ content: unknown }> };
+      expect(typeof body.messages[0].content).toBe("string");
+    } finally {
+      restore();
+    }
+  });
+
+  test("a context overflow is re-fitted once instead of failing the menu", async () => {
+    // The main turn has adapted to a named window since the beginning; the menu
+    // had no re-fit at all, so it failed outright on exactly the endpoints where
+    // the turn recovered.
+    const original = globalThis.fetch;
+    let n = 0;
+    globalThis.fetch = (async () => {
+      n += 1;
+      if (n === 1) {
+        return new Response(JSON.stringify({ error: { message: "This model's maximum context length is 4096 tokens." } }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return jsonOk();
+    }) as unknown as typeof fetch;
+    const notices: string[] = [];
+    try {
+      const r = await BrowserChatEngine.generateChoices({
+        card: CARD,
+        session: session(),
+        settings: settings(),
+        persona: null,
+        count: 4,
+        charName: "Elena",
+        playerName: "Rin",
+        onNotice: (m: string) => notices.push(m),
+      });
+      expect(n).toBe(2);
+      expect(r.choices.length).toBe(2);
+      expect(notices.length).toBe(1);
+      expect(notices[0]).toContain("4096");
+      // The provider's window is remembered for the model, so the next menu on
+      // this model starts from the real limit.
+      expect(getModelCapability(EP, MODEL).contextWindow).toBe(4096);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
+  test("a second overflow propagates rather than looping", async () => {
+    const original = globalThis.fetch;
+    let n = 0;
+    globalThis.fetch = (async () => {
+      n += 1;
+      return new Response(JSON.stringify({ error: { message: "This model's maximum context length is 4096 tokens." } }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }) as unknown as typeof fetch;
+    try {
+      await expect(
+        BrowserChatEngine.generateChoices({
+          card: CARD,
+          session: session(),
+          settings: settings(),
+          persona: null,
+          count: 4,
+          charName: "Elena",
+          playerName: "Rin",
+        })
+      ).rejects.toThrow();
+      // Exactly two attempts: the original and one re-fit.
+      expect(n).toBe(2);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+});
+
+
 // ───────────────────────── describeUsage ─────────────────────────
 
 describe("describeUsage reconciles the estimate against the bill", () => {

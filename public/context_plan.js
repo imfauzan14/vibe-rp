@@ -180,6 +180,7 @@ export function allocateContext({
   minOutput = MIN_OUTPUT_TOKENS,
   requiredTokens = 0,
   optionalItems = [],
+  optionalBudgetTokens = null,
 } = {}) {
   const window = Math.max(0, Number(contextWindow) || 0);
   const margin = Math.max(0, Number(safetyMargin) || 0);
@@ -192,7 +193,14 @@ export function allocateContext({
   const inputBudget = Math.max(0, window - margin - output);
   const feasible = required + floor + margin <= window;
 
-  let remaining = Math.max(0, inputBudget - required);
+  // Degradable sections can be sized against a budget other than the required
+  // content. A caller uses this to keep the set — and therefore the shape of the
+  // system message — a function of stable inputs rather than of the turn being
+  // sent. `null` keeps the historical behaviour.
+  const optionalBase =
+    optionalBudgetTokens === null ? required : Math.max(0, Number(optionalBudgetTokens) || 0);
+
+  let remaining = Math.max(0, inputBudget - optionalBase);
   const ordered = [...optionalItems].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
   const included = [];
   const excluded = [];

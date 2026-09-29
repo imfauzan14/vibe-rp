@@ -209,7 +209,7 @@ describe("Empty & Simple System Prompts, Personas, and Cards Contract", () => {
     expect(plan.impossible).toBe(false);
   });
 
-  test("planChoiceRequest with null persona and empty contract provides clean defaults", () => {
+  test("planChoiceRequest with null persona and an empty contract still asks the question", () => {
     const req = BrowserChatEngine.planChoiceRequest({
       card: { data: { name: "Elena" } },
       session: { messages: [{ role: "user", content: "Hi" }] },
@@ -217,14 +217,16 @@ describe("Empty & Simple System Prompts, Personas, and Cards Contract", () => {
       persona: null,
       count: 3,
     });
-    const system = req.payload[0].content;
-    expect(system).toContain("Scene Context: Elena opposite the protagonist.");
-    expect(system).not.toContain("\nUser Persona (");
-    expect(system).not.toContain("System & Craft Directives");
+    // The menu shares the main prefix, so the card is the only identity in the
+    // system message — and the task names the reader generically rather than
+    // inventing one.
+    expect(req.payload[0].role).toBe("system");
+    expect(req.payload[0].content).toContain("### CHARACTER IN SCENE: Elena");
+    expect(req.payload[0].content).not.toContain("User Persona");
     expect(req.payload.at(-1)?.content).toContain("[the protagonist]");
   });
 
-  test("planChoiceRequest with nameless persona description includes description under the protagonist", () => {
+  test("planChoiceRequest carries a nameless persona's description to the model", () => {
     const req = BrowserChatEngine.planChoiceRequest({
       card: { data: { name: "Elena" } },
       session: { messages: [{ role: "user", content: "Hi" }] },
@@ -232,8 +234,6 @@ describe("Empty & Simple System Prompts, Personas, and Cards Contract", () => {
       persona: { description: "An apprentice healer." },
       count: 3,
     });
-    const system = req.payload[0].content;
-    expect(system).toContain("Scene Context: Elena opposite the protagonist.");
-    expect(system).toContain("User Persona (the protagonist): An apprentice healer.");
+    expect(req.payload[0].content).toContain("An apprentice healer.");
   });
 });

@@ -219,8 +219,49 @@ export function promptOverheadTokens(settings = {}) {
     : 0;
 }
 
+/**
+ * The per-request overhead frozen for one session.
+ *
+ * `planRequest` charges the measured preamble against the window, and the
+ * measured value is a median over a sliding window of samples — so on an
+ * endpoint whose reports jitter it moves from turn to turn. Every move re-plans
+ * the request, and a re-plan can change the system message, the recap, or where
+ * the history is cut, all of which sit *before* the new content. Measured: a
+ * single re-plan cost 49.5 points of cache-served input at a 6,144-token window,
+ * and the charged value moved on 43% of turns under the jitter a real gateway
+ * showed.
+ *
+ * Freezing it for the life of a session removes that whole class of
+ * self-inflicted prefix break while still learning across sessions: the store
+ * keeps sampling, and the next session starts from whatever it learned.
+ *
+ * Keyed weakly on the session object, so there is no schema change, nothing to
+ * clean up, and nothing that outlives the session.
+ */
+let sessionOverhead = new WeakMap();
+
+/**
+ * The overhead to charge for one session: the value frozen at the first plan
+ * that had one, otherwise the learned value, which is then frozen.
+ *
+ * A session that begins before the endpoint has ever reported an overhead
+ * charges nothing and freezes nothing, so the first observation still lands and
+ * every turn after it is stable.
+ */
+export function sessionOverheadTokens(settings = {}, session = null) {
+  const learned = promptOverheadTokens(settings);
+  if (!session || typeof session !== "object") return learned;
+  const frozen = sessionOverhead.get(session);
+  if (frozen !== undefined) return frozen;
+  if (learned <= 0) return 0;
+  sessionOverhead.set(session, learned);
+  return learned;
+}
+
 export function clearModelCapabilities() {
   modelCapabilities.clear();
+  // A frozen overhead derives from the store, so forgetting the store forgets it.
+  sessionOverhead = new WeakMap();
   // Re-arm hydration rather than latching it shut: clearing means "forget
   // everything", including what was read from storage, so a later read picks up
   // whatever the store holds then. The store is emptied here too, so in normal
@@ -845,167 +886,132 @@ export function planChoiceRequest({
   charName = "",
   playerName = "",
   previousChoices = [],
+  window: windowOverride = null,
 }) {
-  const budgets = resolveContextBudgets({ ...settings, maxContextTokens: effectiveContextWindow(settings) });
-  const contextWindow = budgets.contextWindow;
-  const margin = budgets.safetyMargin;
-  const window = Math.max(0, contextWindow - margin);
-  const floor = MIN_OUTPUT_TOKENS;
-  const isTight = window <= 2400;
-
-  // One-line slots: a card name or persona name that contains a newline can
-  // open a new prompt line and impersonate a section heading in the scene
-  // context line. renderInlineField flattens and clamps before interpolation.
+  // One-line slots: a card name or persona name containing a newline could open
+  // a new prompt line and impersonate a section heading. renderInlineField
+  // flattens and clamps before interpolation.
   const name = renderInlineField(charName || card?.data?.name || card?.name || "the character");
   const who = renderInlineField(playerName || persona?.name || "the protagonist");
 
-  let scenarioHint = "";
-  const rawScenario = card?.data?.scenario || card?.scenario || "";
-  if (rawScenario) {
-    const cleanScenario = substituteCardPlaceholders(rawScenario, card, persona).replace(/\s+/g, " ").trim();
-    if (cleanScenario) {
-      scenarioHint = `\nScenario: ${cleanScenario.slice(0, isTight ? 100 : 400)}`;
-    }
-  }
-
-  // Ensemble cards: prefer the compact roster over the single character's
-  // personality, so the choice model calibrates against the whole cast rather
-  // than one member. Single-character cards fall through to the legacy hint.
-  let charHint = "";
-  const roster = ensembleCast(card);
-  if (roster.length > 0) {
-    const rosterBits = roster
-      .map((member) => {
-        const role = renderInlineField(member.role, 80);
-        return role ? `${member.name} (${role})` : member.name;
-      })
-      .slice(0, 8);
-    if (rosterBits.length > 1) {
-      charHint = `\nEnsemble Cast: ${rosterBits.join(", ")}`;
-    }
-  }
-  if (!charHint) {
-    const rawCharParts = [
-      card?.data?.system_prompt || card?.system_prompt || "",
-      card?.data?.personality || card?.personality || "",
-      card?.data?.description || card?.description || "",
-    ].filter(Boolean);
-    if (rawCharParts.length > 0) {
-      const cleanChar = substituteCardPlaceholders(rawCharParts.join(" | "), card, persona).replace(/\s+/g, " ").trim();
-      if (cleanChar) {
-        charHint = `\nCharacter Context (${name}): ${cleanChar.slice(0, isTight ? 100 : 800)}`;
-      }
-    }
-  }
-
-  let personaHint = "";
-  if (persona) {
-    const rawDesc = persona.description || persona.persona || persona.content || "";
-    const pDesc = rawDesc ? substituteCardPlaceholders(rawDesc, card, persona).replace(/\s+/g, " ").trim() : "";
-    const pTemplate = persona.template ? substituteCardPlaceholders(persona.template, card, persona).replace(/\s+/g, " ").trim() : "";
-    const combined = [pDesc, pTemplate].filter(Boolean).join(" ");
-    if (combined) {
-      personaHint = `\nUser Persona (${who}): ${combined.slice(0, isTight ? 300 : 1500)}`;
-    }
-  }
-
-  // The craft contract is deliberately NOT carried into this request.
-  //
-  // It used to be, clipped to 800 *characters*. That is a quarter of the
-  // contract, and it ended mid-sentence inside the "Medium" bullet — so the
-  // choice model received a rule cut in half and none of the craft (voice
-  // matching, tension, subtext, continuity) that the choices are supposed to
-  // embody. Measured: 25% of the contract survived, ending on "…set the medium".
-  //
-  // It was also redundant. CHOICE_SYSTEM_PROMPT states agency, narrative
-  // perspective and language authority in its own words, so three of the
-  // slice's rules were already in the same request, stated twice — the
-  // duplication this file removes everywhere else. A/B at n=5 per arm: both
-  // arms returned 4 valid, fully distinct choices every time, with 1 shared
-  // label across 18 and 16; dropping the slice saved 209 tokens per call.
-  //
-  // If a card's own `system_prompt` should reach the choice model, that is a
-  // different input from the craft contract and must be passed as one.
-  const system = `${CHOICE_SYSTEM_PROMPT}\n\nScene Context: ${name} opposite ${who}.${scenarioHint}${charHint}${personaHint}`;
   const task = choicePrompt(count, {
     charName: name,
     playerName: who,
     previousChoices,
-    deliberate: shouldDeliberate(settings, { endpoint: settings?.apiEndpoint, model: settings?.choiceModel || settings?.model }),
+    deliberate: shouldDeliberate(settings, {
+      endpoint: settings?.apiEndpoint,
+      model: settings?.choiceModel || settings?.model,
+    }),
   });
 
-  // Everything that is not history or ledger: the fixed instruction overhead.
-  const fixedTokens =
-    estimateTokens(system) + 4 + estimateTokens(task) + 4;
-  const outputTokens = Math.max(floor, Math.min(CHOICE_OUTPUT_TOKENS, Math.max(floor, window - fixedTokens)));
-  let remaining = Math.max(0, window - outputTokens - fixedTokens);
+  // The menu is built on the MAIN family's prefix: the same system prompt, the
+  // same recap, the same history — then the menu's own instruction and task
+  // lines, last.
+  //
+  // It used to be a third prompt family with its own system message and a
+  // compact recent-tail window. Measured, that shared 0.1% of its prefix with
+  // the main turn, and once its 2,200-token tail cap bit — about twelve turns in
+  // — only 44.9% with its own previous request, because the tail slid rather
+  // than grew. The same design capped its *stable* portion at ~1,919 tokens,
+  // below every Gemini minimum (2,048 for 2.5, 4,096 for 3.x), so on those
+  // models a menu cache hit was not unlikely but impossible.
+  //
+  // Built on the main prefix it shares 93.8% of its bytes with the turn that
+  // precedes it, and its stable portion is the whole main prefix, which clears
+  // every minimum. A/B, n=5 per arm on a live endpoint: both arms 5/5 usable,
+  // 5/5 strict JSON, four choices each, mean 4.0 distinct, comparable length.
+  // The blinded judge disagreed with itself between two runs (B 10-4, then A
+  // 10-0), so it is not evidence in either direction; the objective metrics are
+  // equal and the cost case is not.
+  //
+  // The menu's instructions travel in the task rather than being dropped: the
+  // same words, so no behaviour depends on the move. Dropping them outright is a
+  // further ~600 tokens per menu and needs a *reliable* quality measurement
+  // before it can be called a win.
+  const taskContent = `${task}\n\n${CHOICE_SYSTEM_PROMPT}`;
+  const taskTokens = estimateTokens(taskContent) + 4;
+  const baseWindow = Math.max(0, Number(windowOverride) || effectiveContextWindow(settings));
+  const margin = resolveSafetyMargin(baseWindow);
+  const main = BrowserChatEngine.planRequest({
+    card,
+    session,
+    settings,
+    persona,
+    // The task is appended after planning, so the plan is sized to leave room
+    // for it. Without this the menu would be the one request that ignores its
+    // own instruction line.
+    window: Math.max(MIN_OUTPUT_TOKENS * 4, baseWindow - taskTokens),
+  });
 
-  // The ledger is a hint, never the continuity document: capped both by its own
-  // allowance and by what is left, and charged before the transcript.
+  const mainPayload = [...main.payload, { role: "user", content: taskContent }];
+  const mainFits = !main.impossible && countMessages(mainPayload) + main.outputTokens <= baseWindow;
+  if (mainFits) {
+    return {
+      payload: mainPayload,
+      inputTokens: countMessages(mainPayload),
+      outputTokens: main.outputTokens,
+      contextWindow: baseWindow,
+      overheadTokens: main.overheadTokens,
+      ledgerIncluded: Boolean(main.requestLedger),
+      historyIncluded: main.plan.history.length,
+      sharedPrefix: true,
+    };
+  }
+
+  // The main prefix does not fit: a window small enough that the required
+  // sections nearly fill it, or a card large enough that they overflow. The main
+  // prefix exists to be cached, and a request that does not fit has no cache to
+  // win — so fall back to the menu's own compact prompt, keeping the newest
+  // history that fits. This is the guarantee the menu had before it shared a
+  // prefix at all: a large preset cannot make it as fragile as the main turn.
+  //
+  // The instructions go in the *system* message here and the task stays small,
+  // which is the layout the menu used before it shared a prefix. Putting them in
+  // the task as well would state every rule twice in one request.
+  const head = [{ role: "system", content: CHOICE_SYSTEM_PROMPT }];
+  const taskOnlyTokens = estimateTokens(task) + 4;
+  // The same allowances the menu carried before it shared a prefix: a recent
+  // slice rather than the whole transcript, and a recap capped on its own. A
+  // window that cannot hold the main prefix must not turn the menu into a second
+  // full-context send either.
+  let budget = Math.min(
+    CHOICE_RECENT_TOKENS,
+    baseWindow - estimateTokens(CHOICE_SYSTEM_PROMPT) - 4 - taskOnlyTokens - MIN_OUTPUT_TOKENS - margin
+  );
   const storedLedger = session?.ledger || "";
-  let ledger = "";
-  let ledgerTokens = 0;
-  if (storedLedger && remaining > LEDGER_FRAMING_TOKENS) {
-    const ledgerAllowance = Math.min(
-      CHOICE_LEDGER_TOKENS,
-      Math.max(0, remaining - LEDGER_FRAMING_TOKENS)
-    );
-    // Reuse the ledger clip (empty marker: this is a throwaway send, not canon).
-    ledger = clipLedgerToTokens(storedLedger, ledgerAllowance, "");
+  const recap = [];
+  if (storedLedger && budget > LEDGER_FRAMING_TOKENS) {
+    const ledger = clipLedgerToTokens(storedLedger, Math.min(CHOICE_LEDGER_TOKENS, budget - LEDGER_FRAMING_TOKENS), "");
     if (ledger) {
-      ledgerTokens = estimateTokens(ledger) + LEDGER_FRAMING_TOKENS;
-      remaining = Math.max(0, remaining - ledgerTokens);
+      recap.push({ role: "user", content: `${LEDGER_OPEN}${ledger}${LEDGER_CLOSE}` });
+      budget -= estimateTokens(ledger) + LEDGER_FRAMING_TOKENS;
     }
   }
-
-  // The recent tail, newest-first while we decide, so the latest assistant turn
-  // is kept even when the window can hold nothing else. Empty-content entries
-  // carry no scene and are skipped. The transcript portion is additionally
-  // capped by its own allowance: a choice only needs the immediately preceding
-  // scene, so a large window must not turn this auxiliary request into a second
-  // full-context send.
-  const all = Array.isArray(session?.messages) ? session.messages : [];
-  let tailBudget = Math.min(remaining, CHOICE_RECENT_TOKENS);
+  // Newest-first while we decide, so the latest turn is kept even when the
+  // window can hold nothing else.
   const tail = [];
-  for (let i = all.length - 1; i >= 0; i -= 1) {
-    const msg = all[i];
-    if (!msg || !msg.content) continue;
-    const role = msg.role === "user" ? "user" : "assistant";
-    let content = substituteCardPlaceholders(msg.content, card, persona);
-    // Thought-shaking: strip scratchpad thoughts so choices never pay for internal chain-of-thought
-    if (role === "assistant") {
-      content = stripThoughtBlocks(content);
-      if (!content) continue;
-    }
-    let tokens = estimateTokens(content) + 4;
-    let text = content;
-    // The newest message is always kept, clipped if it alone exceeds what is
-    // left; older ones are dropped rather than truncated, so a choice is never
-    // offered from a mangled half-sentence.
-    if (tokens > tailBudget) {
-      if (tail.length === 0 && tailBudget > 40) {
-        text = clipLedgerToTokens(content, tailBudget - 4, "");
-        tokens = estimateTokens(text) + 4;
-      } else {
-        break;
-      }
-    }
-    tail.unshift({ role, content: text });
-    tailBudget = Math.max(0, tailBudget - tokens);
+  const all = (Array.isArray(session?.messages) ? session.messages : []).filter((m) => m && m.content);
+  for (let i = all.length - 1; i >= 0 && budget > 0; i -= 1) {
+    const role = all[i].role === "user" ? "user" : "assistant";
+    const content = role === "assistant" ? stripThoughtBlocks(String(all[i].content)) : String(all[i].content);
+    if (!content) continue;
+    const tokens = estimateTokens(content) + 4;
+    if (tokens > budget) break;
+    tail.unshift({ role, content });
+    budget -= tokens;
   }
+  const payload = [...head, ...recap, ...tail, { role: "user", content: task }];
 
-  const payload = [{ role: "system", content: system }];
-  if (ledger) payload.push({ role: "user", content: `${LEDGER_OPEN}${ledger}${LEDGER_CLOSE}` });
-  for (const msg of tail) payload.push(msg);
-  payload.push({ role: "user", content: task });
-
+  const inputTokens = countMessages(payload);
   return {
     payload,
-    inputTokens: countMessages(payload),
-    outputTokens,
-    contextWindow,
-    ledgerIncluded: Boolean(ledger),
-    historyIncluded: tail.length,
+    inputTokens,
+    outputTokens: Math.max(MIN_OUTPUT_TOKENS, Math.min(main.outputTokens, baseWindow - inputTokens - margin)),
+    contextWindow: baseWindow,
+    overheadTokens: main.overheadTokens,
+    ledgerIncluded: false,
+    historyIncluded: payload.length - 2,
+    sharedPrefix: false,
   };
 }
 
@@ -1048,33 +1054,32 @@ export class BrowserChatEngine {
    * rewriting deep history re-bills everything after it; the tail-adjacent
    * rewrite is the cheap one.
    */
-  static #shakeThoughts(messages, keepRecent = 2, suffixLimitTokens = 8000) {
+  /**
+   * Strips reasoning scratchpad blocks (`<thought>`, `<think>`, `<reasoning>`,
+   * via the shared `stripThoughtBlocks`) from every assistant turn except the
+   * newest `keepRecent`.
+   *
+   * The eligibility rule is position-only, which makes it **monotone**: a
+   * message that has been shaken is never sent unshaken again. It used to also
+   * require the message's *suffix* to fit a token limit derived from the tail
+   * budget — a limit that shrank as the history grew — so a message shaken on
+   * one turn reappeared unshaken on a later one. Since a provider reuses the
+   * longest byte-identical prefix, each flip re-billed everything after it, in
+   * both directions, forever. Anthropic states the requirement directly: any
+   * message-compression must be idempotent.
+   *
+   * Dropping the limit costs nothing. A message becomes eligible exactly when a
+   * newer message is appended after it, so at the moment of the rewrite its
+   * suffix is one message long. The expensive case the limit was guarding
+   * against — rewriting deep history — is the one it actually caused, because
+   * the limit tightened as the history grew while the suffix only ever grew.
+   */
+  static #shakeThoughts(messages, keepRecent = 2) {
     if (!Array.isArray(messages) || messages.length === 0) return messages;
     const threshold = Math.max(0, messages.length - keepRecent);
 
-    let candidates = 0;
-    for (let i = 0; i < threshold; i++) {
-      const c = messages[i] && messages[i].content;
-      if (typeof c === "string" && (c.indexOf("<thought") !== -1 || c.indexOf("<think") !== -1 || c.indexOf("<reasoning") !== -1)) candidates++;
-    }
-    if (candidates === 0) return messages;
-
-    // suffixTokens[i] = tokens of everything after index i. A rewrite at the
-    // deepest index whose suffix still fits the limit costs the least to recache.
-    const suffixTokens = new Array(messages.length + 1);
-    suffixTokens[messages.length] = 0;
-    for (let i = messages.length - 1; i >= 0; i--) {
-      suffixTokens[i] = suffixTokens[i + 1] + estimateTokens(messages[i].content);
-    }
-    let deepestCheap = -1;
-    for (let i = 0; i < threshold; i++) {
-      if (suffixTokens[i] <= suffixLimitTokens) deepestCheap = i;
-    }
-    if (deepestCheap < 0) return messages;
-
     let result = null;
     for (let i = 0; i < threshold; i++) {
-      if (suffixTokens[i] > suffixLimitTokens) continue;
       const m = messages[i];
       if (!m || m.role !== "assistant") continue;
       const c = m.content;
@@ -1269,9 +1274,10 @@ export class BrowserChatEngine {
     }
     const pinnedTokens = countMessages(pinned);
     const tailBudget = Math.max(256, budget - pinnedTokens);
-    // ponytail: thoughts are shaken in the payload per turn (silent prefix
-    // repair); bounded adaptively so the re-bill stays cheap.
-    const shakenLive = this.#shakeThoughts(live, 1, Math.min(Math.floor(tailBudget * 0.35), 8000));
+    // Thoughts are shaken in the payload per turn (silent prefix repair). The
+    // rule is position-only and therefore monotone — see #shakeThoughts for why
+    // the token limit that used to bound it was removed.
+    const shakenLive = this.#shakeThoughts(live, 1);
     const liveTokens = countMessages(shakenLive);
 
     const unchanged = {
@@ -1962,7 +1968,11 @@ export class BrowserChatEngine {
     // receive rather than the one the app assembled. Zero until measured, which
     // is the correct default: it asserts nothing about a provider the app has
     // not observed.
-    const overheadTokens = promptOverheadTokens(activeSettings);
+    //
+    // Read through the session freeze rather than straight from the store: the
+    // stored value moves as samples arrive, and a moving allocation input moves
+    // the prefix with it.
+    const overheadTokens = sessionOverheadTokens(activeSettings, session);
     const usableWindow = Math.max(MIN_OUTPUT_TOKENS, contextWindow - overheadTokens);
 
     const all = Array.isArray(session?.messages) ? session.messages : [];
@@ -2050,8 +2060,18 @@ export class BrowserChatEngine {
     // ledger (`session.ledger`) is canon and is never touched; only the bytes
     // actually sent are condensed, and only when the full ledger could not fit
     // beside the minimum viable reply and the required dynamic content.
-    const requiredWithoutLedger = requiredStaticTokens + guidanceTokens + pinnedTokens + currentTurnTokens + LEDGER_FRAMING_TOKENS;
+    //
+    // This budget deliberately includes the current turn and the adaptive
+    // guidance, which are per-turn quantities. Dropping them looks like an
+    // obvious de-churning fix — the recap sits at payload index 1, in front of
+    // everything a re-clip would re-bill — and it was tried and reverted: the
+    // recap then eats the tail's room, and the assembled request lands a few
+    // tokens over the window (measured: 8,195 against 8,192). Reserving a fixed
+    // constant for the tail instead would be a magic number plus a new
+    // over-window risk, for a measured 2–8 points of prefix share that only
+    // applies at windows tight enough to clip at all. Leave it.
     const desiredOutput = typeof activeSettings.maxTokens === "number" ? activeSettings.maxTokens : budgets.maxOutput;
+    const requiredWithoutLedger = requiredStaticTokens + guidanceTokens + pinnedTokens + currentTurnTokens + LEDGER_FRAMING_TOKENS;
     const ledgerBudget = Math.max(0, usableWindow - budgets.safetyMargin - MIN_OUTPUT_TOKENS - requiredWithoutLedger);
 
     let requestLedger = session?.ledger || "";
@@ -2063,14 +2083,30 @@ export class BrowserChatEngine {
     const ledgerTokens = requestLedger ? estimateTokens(requestLedger) + LEDGER_FRAMING_TOKENS : 0;
     const requiredTokens = requiredStaticTokens + ledgerTokens + guidanceTokens + pinnedTokens + currentTurnTokens;
 
-    const alloc = allocateContext({
+    // Degradable sections decide the shape of the *system* message, which is
+    // payload index 0 — the first bytes of every request. They used to be sized
+    // against `requiredTokens`, which includes the current turn and the adaptive
+    // guidance, so the set followed the newest message's length and the system
+    // message changed shape between turns (measured: two shapes at a 4,096-token
+    // window).
+    //
+    // The set is now decided against the prefix alone, so it is a function of
+    // (window, settings, card, recap). The more generous set is only taken when
+    // it still fits beside the real required content: a stable system message is
+    // worth a lot, but not a truncated history.
+    const prefixOnly = requiredStaticTokens + ledgerTokens + pinnedTokens;
+    const allocOptions = {
       contextWindow: usableWindow,
       desiredOutput,
       safetyMargin: budgets.safetyMargin,
       minOutput: MIN_OUTPUT_TOKENS,
       requiredTokens,
       optionalItems: optionalSections,
-    });
+    };
+    let alloc = allocateContext({ ...allocOptions, optionalBudgetTokens: prefixOnly });
+    if (requiredTokens + alloc.optionalTokens + MIN_OUTPUT_TOKENS + budgets.safetyMargin > usableWindow) {
+      alloc = allocateContext(allocOptions);
+    }
 
     const includedIds = new Set([...requiredIds, ...alloc.included.map((i) => i.id)]);
     const systemPrompt = renderSystem(includedIds);
@@ -2418,6 +2454,7 @@ export class BrowserChatEngine {
     playerName = "",
     previousChoices = [],
     isRegenerate = false,
+    onNotice = null,
     signal,
   } = {}) {
     const hasPersonaContent = Boolean(
@@ -2429,60 +2466,80 @@ export class BrowserChatEngine {
     );
     const activePersona = hasPersonaContent ? persona : null;
     const activeSettings = agentsContract !== undefined ? { ...settings, agentsContract } : settings;
-    const request = planChoiceRequest({ card, session, settings: activeSettings, persona: activePersona, count, charName, playerName, previousChoices });
     const { base, headers } = this.#resolveEndpoint(activeSettings);
 
     const choiceModel = String(activeSettings.choiceModel || activeSettings.model || "").trim();
     const endpoint = activeSettings.apiEndpoint || "";
-    const cap = getModelCapability(endpoint, choiceModel);
-    const tokenKey = cap.tokenKey === "max_completion_tokens" ? "max_completion_tokens" : "max_tokens";
+    const planArgs = { card, session, settings: activeSettings, persona: activePersona, count, charName, playerName, previousChoices };
+    let request = planChoiceRequest(planArgs);
 
-    let body = {
-      model: choiceModel,
-      messages: request.payload,
-      stream: false,
-      [tokenKey]: request.outputTokens,
-    };
-    if (cap.supportsTemperature !== false) {
-      const baseTemp = typeof activeSettings.temperature === "number" ? activeSettings.temperature : 0.8;
-      body.temperature = isRegenerate || (previousChoices && previousChoices.length > 0)
-        ? Math.min(1.0, Math.max(0.85, baseTemp + 0.15))
-        : Math.min(1.0, baseTemp);
-    }
-    if (activeSettings?.reasoningEffort && cap.supportsReasoningEffort !== false) {
-      body.reasoning_effort = activeSettings.reasoningEffort;
-    }
-
-    let res = await this.#postChat(base, headers, body, signal);
-    if (!res.ok) {
-      const httpErr = await this.#generationHttpError(res);
-      const rejection = detectParameterRejection(httpErr);
-      if (rejection) {
-        if (rejection.unsupportedTemp) updateModelCapability(endpoint, choiceModel, { supportsTemperature: false });
-        if (rejection.needsMaxCompletionTokens) updateModelCapability(endpoint, choiceModel, { tokenKey: "max_completion_tokens" });
-        if (rejection.needsMaxTokens) updateModelCapability(endpoint, choiceModel, { tokenKey: "max_tokens" });
-        if (rejection.unsupportedReasoningEffort) updateModelCapability(endpoint, choiceModel, { supportsReasoningEffort: false });
-
-        const updatedCap = getModelCapability(endpoint, choiceModel);
-        const updatedTokenKey = updatedCap.tokenKey === "max_completion_tokens" ? "max_completion_tokens" : "max_tokens";
-        body = {
-          model: choiceModel,
-          messages: request.payload,
-          stream: false,
-          [updatedTokenKey]: request.outputTokens,
-        };
-        if (updatedCap.supportsTemperature !== false) {
-          body.temperature = typeof activeSettings.temperature === "number" ? Math.min(activeSettings.temperature, 0.7) : 0.7;
+    /**
+     * One attempt at the menu: build the body the menu needs, POST it, and — when
+     * the provider rejects a *parameter* — learn the capability and send once
+     * more. Returns the response and, when it failed, the error to report.
+     */
+    const attempt = async (plan) => {
+      const send = async (tempFloor = null) => {
+        const cap = getModelCapability(endpoint, choiceModel);
+        const tokenKey = cap.tokenKey === "max_completion_tokens" ? "max_completion_tokens" : "max_tokens";
+        // Where a provider caches only behind an explicit breakpoint, the menu
+        // asks for one. `buildRequestBody` does this for the main turn; the menu
+        // builds its own body, so it has to ask for itself. Without it the menu
+        // is never cached on Anthropic even where its prefix clears the model's
+        // minimum.
+        const messages = shouldUseCacheBreakpoints({ ...activeSettings, model: choiceModel }, cap)
+          ? withCacheBreakpoints(plan.payload)
+          : plan.payload;
+        const body = { model: choiceModel, messages, stream: false, [tokenKey]: plan.outputTokens };
+        if (cap.supportsTemperature !== false) {
+          const baseTemp = typeof activeSettings.temperature === "number" ? activeSettings.temperature : 0.8;
+          const wanted =
+            isRegenerate || (previousChoices && previousChoices.length > 0)
+              ? Math.min(1.0, Math.max(0.85, baseTemp + 0.15))
+              : Math.min(1.0, baseTemp);
+          body.temperature = tempFloor === null ? wanted : Math.min(wanted, tempFloor);
         }
-        if (activeSettings?.reasoningEffort && updatedCap.supportsReasoningEffort !== false) {
+        if (activeSettings?.reasoningEffort && cap.supportsReasoningEffort !== false) {
           body.reasoning_effort = activeSettings.reasoningEffort;
         }
-        res = await this.#postChat(base, headers, body, signal);
-        if (!res.ok) throw await this.#generationHttpError(res);
-      } else {
-        throw httpErr;
+        return this.#postChat(base, headers, body, signal);
+      };
+
+      let res = await send();
+      if (res.ok) return { res, error: null };
+      const httpErr = await this.#generationHttpError(res);
+      const rejection = detectParameterRejection(httpErr);
+      if (!rejection) return { res, error: httpErr };
+      if (rejection.unsupportedTemp) updateModelCapability(endpoint, choiceModel, { supportsTemperature: false });
+      if (rejection.needsMaxCompletionTokens) updateModelCapability(endpoint, choiceModel, { tokenKey: "max_completion_tokens" });
+      if (rejection.needsMaxTokens) updateModelCapability(endpoint, choiceModel, { tokenKey: "max_tokens" });
+      if (rejection.unsupportedReasoningEffort) updateModelCapability(endpoint, choiceModel, { supportsReasoningEffort: false });
+      if (rejection.unsupportedCacheControl) updateModelCapability(endpoint, choiceModel, { supportsCacheControl: false });
+      res = await send(0.7);
+      return res.ok ? { res, error: null } : { res, error: await this.#generationHttpError(res) };
+    };
+
+    let { res, error } = await attempt(request);
+
+    // A context overflow is the one failure that can be adapted to, because the
+    // provider names the model's real window. The main turn has had this since
+    // the beginning; the menu did not, so it failed outright on exactly the
+    // endpoints where the main turn recovered. Bounded to a single re-fit, and
+    // only when the provider named a window smaller than the one planned for.
+    if (!res.ok) {
+      const realWindow = this.#providerContextWindow(error);
+      if (realWindow !== null && realWindow < request.contextWindow) {
+        noteContextWindow(endpoint, choiceModel, realWindow);
+        request = planChoiceRequest({ ...planArgs, window: realWindow });
+        ({ res, error } = await attempt(request));
+        if (onNotice) {
+          onNotice(
+            `Your provider's window for this model is ~${realWindow} tokens, smaller than the ${request.contextWindow} configured. The choice menu was re-fitted to it and sent again.`
+          );
+        }
       }
     }
+    if (!res.ok) throw error;
 
     // A body that is not JSON (an HTML error page, a truncated response) is a
     // malformed choice response, not a crash: it yields no choices, which the

@@ -194,3 +194,49 @@ describe("Context panel", () => {
     expect(sheet).not.toContain("rp-ledger__group-help");
   });
 });
+
+// The one row that can tell a reader their prompt is not being reused. It exists
+// only when the provider reported a cache count: a provider that reports nothing
+// has not measured a miss, and the app must not imply one. The cause is left
+// open — the app can see that nothing was reused, not why.
+describe("The cache row reports a measurement, never a guess", () => {
+  const usage = (over: Record<string, unknown> = {}) => ({
+    reported: true,
+    billedInput: 6000,
+    overhead: 0,
+    cachedTokens: 0,
+    cacheHitRate: 0,
+    completionTokens: 100,
+    reasoningTokens: null,
+    reasoningShare: null,
+    ceilingIgnored: false,
+    ...over,
+  });
+
+  test("a measured zero on a prompt long enough to have been cached is shown", () => {
+    const html = renderContextPanel({ request: request(20), usage: usage() });
+    expect(labels(html)).toContain("Served from cache");
+    expect(html).toContain("none of this prompt was reused");
+    // It must not name a cause it cannot know.
+    expect(html).not.toMatch(/because the prompt changed/);
+    expect(html).toMatch(/usually means/);
+  });
+
+  test("a provider that reported no cache count gets no cache row at all", () => {
+    const html = renderContextPanel({ request: request(20), usage: usage({ cachedTokens: null, cacheHitRate: null }) });
+    expect(labels(html)).not.toContain("Served from cache");
+  });
+
+  test("a measured zero on a prompt too short to cache is left out", () => {
+    // Below the length any provider would cache, a zero says nothing about the
+    // prefix and would only alarm the reader.
+    const html = renderContextPanel({ request: request(0), usage: usage({ billedInput: 900 }) });
+    expect(labels(html)).not.toContain("Served from cache");
+  });
+
+  test("a real hit rate is still reported as a rate", () => {
+    const html = renderContextPanel({ request: request(20), usage: usage({ cachedTokens: 4200, cacheHitRate: 0.7 }) });
+    expect(html).toContain("70%");
+    expect(html).not.toContain("none of this prompt was reused");
+  });
+});

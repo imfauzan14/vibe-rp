@@ -672,7 +672,7 @@ export class SessionController {
    * can retry, never a thrown error that could fail the RP turn, and the
    * transcript is never touched. Resolves to the settled `choiceState`.
    */
-  async requestChoices({ count, onState, isRegenerate = false } = {}) {
+  async requestChoices({ count, onState, isRegenerate = false, onNotice = null } = {}) {
     const previousChoices = isRegenerate || (this.choiceState?.choices?.length > 0)
       ? (this.choiceState?.choices || this.activeSession?.choiceSet?.choices || [])
       : [];
@@ -695,6 +695,7 @@ export class SessionController {
         playerName: this.currentPersona?.name || "the player",
         previousChoices,
         isRegenerate,
+        onNotice,
         signal: abort.signal,
       });
       settled = this.#settleChoices(token, choices);

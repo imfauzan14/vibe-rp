@@ -1127,8 +1127,8 @@ describe("Fix 2 - compaction desync", () => {
   });
 });
 
-describe("Fix 3 - thought shake bound", () => {
-  test("shake strips thoughts from old turns with a small suffix", () => {
+describe("Fix 3 - thought shake", () => {
+  test("shake strips thoughts from old turns", () => {
     const E = BrowserChatEngine;
     const msgs = [
       { role: "assistant", content: "greeting" },
@@ -1149,13 +1149,76 @@ describe("Fix 3 - thought shake bound", () => {
     expect(shaken.some((c) => c.includes("visible reply"))).toBe(true);
   });
 
-  test("shake refuses to rewrite when the suffix exceeds the 1500-token cap", () => {
+  test("the pinned opening is never rewritten, and the same message in the tail is", () => {
+    // This test used to be named after a suffix-token cap. It never exercised
+    // one: the thought-bearing message sits at index 0, which `planContext`
+    // pins, so it survived because it is not a shake candidate at all — the cap
+    // was irrelevant. Asserted here as the real reason, with the contrast that
+    // proves it.
     const E = BrowserChatEngine;
-    const bigTail = "tail ".repeat(2000); // ~2000 tokens > cap
-    const msgs = [
-      { role: "assistant", content: "<thought x>secret</thought>old reply" },
-      { role: "user", content: bigTail },
+    const thought = { role: "assistant", content: "<thought x>secret</thought>old reply" };
+    const rest = [
+      { role: "user", content: "tail ".repeat(2000) },
       { role: "assistant", content: "final" },
+    ];
+    const settings = { maxContextTokens: 32768, maxTokens: 1500 };
+
+    const pinned = E.planContext({ systemPrompt: "sys", messages: [thought, ...rest], ledger: "", consumed: 1, settings });
+    expect(pinned.history.some((m) => (m.content || "").includes("secret"))).toBe(true);
+
+    const inTail = E.planContext({
+      systemPrompt: "sys",
+      messages: [{ role: "assistant", content: "greeting" }, thought, ...rest],
+      ledger: "",
+      consumed: 1,
+      settings,
+    });
+    expect(inTail.history.some((m) => (m.content || "").includes("secret"))).toBe(false);
+  });
+
+  test("the shake is idempotent: a thought once stripped is never sent again", () => {
+    // The eligible set used to be `{i : suffix(i) <= a limit}` where the limit
+    // was derived from the tail budget and shrank as the history grew, while
+    // every suffix only grew. A message shaken on one turn therefore reappeared
+    // unshaken on a later one, and each flip re-billed everything after it — in
+    // both directions, for the life of the session. Anthropic states the
+    // requirement directly: any message-compression must be idempotent.
+    //
+    // The rule is now position-only, which is monotone: appending messages can
+    // only add to the eligible set. So the same message must be stripped
+    // whether the history behind it is short or enormous.
+    const E = BrowserChatEngine;
+    const build = (suffix) => [
+      { role: "assistant", content: "greeting" },
+      { role: "user", content: "early user" },
+      { role: "assistant", content: "<thought>deep secret</thought>early assistant" },
+      { role: "user", content: suffix },
+      { role: "assistant", content: "<thought>recent secret</thought>near-tail assistant" },
+      { role: "user", content: "tail question" },
+      { role: "assistant", content: "latest assistant" },
+    ];
+    for (const suffix of ["short", "word ".repeat(9000)]) {
+      const plan = E.planContext({
+        systemPrompt: "sys",
+        messages: build(suffix),
+        ledger: "",
+        consumed: 1,
+        settings: { maxContextTokens: 65536, maxTokens: 1500 },
+      });
+      const contents = plan.history.map((m) => m.content || "");
+      expect(contents.some((c) => c.includes("deep secret"))).toBe(false);
+      expect(contents.some((c) => c.includes("recent secret"))).toBe(false);
+      // The visible text survives; only the scratchpad goes.
+      expect(contents.some((c) => c.includes("early assistant"))).toBe(true);
+    }
+  });
+
+  test("the newest turn keeps its scratchpad, so the model sees its own last reasoning", () => {
+    const E = BrowserChatEngine;
+    const msgs = [
+      { role: "assistant", content: "greeting" },
+      { role: "user", content: "q1" },
+      { role: "assistant", content: "<thought>newest</thought>visible" },
     ];
     const plan = E.planContext({
       systemPrompt: "sys",
@@ -1164,33 +1227,7 @@ describe("Fix 3 - thought shake bound", () => {
       consumed: 1,
       settings: { maxContextTokens: 32768, maxTokens: 1500 },
     });
-    expect(plan.history.some((m) => (m.content || "").includes("secret"))).toBe(true);
-  });
-
-  test("shake preserves deep history thought tags to protect prompt cache while stripping near-tail thoughts", () => {
-    const E = BrowserChatEngine;
-    const msgs = [
-      { role: "assistant", content: "greeting" },
-      { role: "user", content: "early user" },
-      { role: "assistant", content: "<thought>deep secret</thought>early assistant" },
-      { role: "user", content: "word ".repeat(9000) }, // suffix of early assistant is ~9000 tokens (> 8000 limit)
-      { role: "assistant", content: "<thought>recent secret</thought>near-tail assistant" },
-      { role: "user", content: "tail question" },
-      { role: "assistant", content: "latest assistant" },
-    ];
-    const plan = E.planContext({
-      systemPrompt: "sys",
-      messages: msgs,
-      ledger: "",
-      consumed: 1,
-      settings: { maxContextTokens: 65536, maxTokens: 1500 },
-    });
-    const contents = plan.history.map((m) => m.content || "");
-    // Deep message is untouched to preserve cache prefix:
-    expect(contents.some((c) => c.includes("deep secret"))).toBe(true);
-    // Near-tail message whose suffix is small is stripped:
-    expect(contents.some((c) => c.includes("recent secret"))).toBe(false);
-    expect(contents.some((c) => c.includes("near-tail assistant"))).toBe(true);
+    expect(plan.history.some((m) => (m.content || "").includes("<thought>newest</thought>"))).toBe(true);
   });
 });
 

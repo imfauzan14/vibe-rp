@@ -492,6 +492,47 @@ describe("Context planners - history hygiene and lore selection", () => {
     expect(oldAssistant.content).not.toContain("<think>");
   });
 
+  test("the degradable-section set does not follow the newest message's length", () => {
+    // The set decides the shape of the *system* message — payload index 0, the
+    // first bytes of every request — so a set that tracks the current turn
+    // re-bills everything after it whenever the reader writes a longer or a
+    // shorter message. Measured before the fix: two system-message shapes across
+    // turns at a 4,096-token window.
+    const card = {
+      data: {
+        name: "Elena",
+        description: "word ".repeat(200),
+        personality: "word ".repeat(60),
+        scenario: "word ".repeat(40),
+        mes_example: "word ".repeat(150),
+        character_book: { entries: [{ keys: ["lamp"], content: "The lamp is brass. ".repeat(30), constant: true }] },
+      },
+    };
+    const build = (currentTurn: string) => {
+      const messages: Array<{ role: string; content: string }> = [{ role: "assistant", content: "Opening line." }];
+      for (let i = 1; i <= 6; i += 1) {
+        messages.push({ role: "user", content: `turn ${i} ${"word ".repeat(30)}` });
+        messages.push({ role: "assistant", content: `reply ${i} ${"word ".repeat(70)}` });
+      }
+      messages.push({ role: "user", content: currentTurn });
+      return messages;
+    };
+    const settings = { apiEndpoint: "https://x.test/v1", model: "m", maxContextTokens: 4096, maxTokens: 1200 };
+    const plan = (currentTurn: string) =>
+      BrowserChatEngine.describeRequest({
+        card,
+        session: { id: "s", messages: build(currentTurn), ledger: "", consumed: 1 },
+        settings,
+        persona: { name: "You" },
+      });
+    const short = plan("hi");
+    const long = plan(`I walk in. ${"word ".repeat(400)}`);
+    expect(long.includedSections).toEqual(short.includedSections);
+    // The system prompt itself is byte-identical, which is the whole point: it is
+    // the first thing every request sends.
+    expect(long.payload[0].content).toBe(short.payload[0].content);
+  });
+
   test("selectLorebookEntries uses word-boundary matching to prevent substring false-positives", () => {
     const card = {
       data: {

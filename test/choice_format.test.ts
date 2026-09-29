@@ -246,16 +246,43 @@ describe("planChoiceRequest", () => {
     return session;
   }
 
-  test("uses a small context, not the full preset or transcript", () => {
+  test("shares the main prefix when it fits, and stays small when it cannot", () => {
+    // The menu used to be a third prompt family, deliberately small: "a large
+    // preset cannot make choice generation as expensive or as fragile as the
+    // main turn". It now shares the main family's prefix, which is what makes it
+    // cacheable — measured, 93.8% of its bytes against 0.1% before, with its
+    // stable portion going from a ~1,919-token cap to the whole main prefix,
+    // which is the only way to clear every Gemini minimum. The old guarantee is
+    // kept as a fallback, for the window or the card that cannot carry the main
+    // prefix at all.
+    const small = {
+      messages: [
+        { id: "g", role: "assistant", content: "The greeting." },
+        { id: "u1", role: "user", content: words(30) },
+        { id: "a1", role: "assistant", content: words(60) },
+      ],
+      ledger: "",
+      consumed: 1,
+    };
+    const modest = { data: { name: "Elena", description: words(200) } };
+    const main = BrowserChatEngine.describeRequest({ card: modest, session: small, settings, persona: { name: "Rowan" } });
+    const shared = planChoiceRequest({ card: modest, session: small, settings, persona: { name: "Rowan" }, count: 4 });
+
+    expect(shared.sharedPrefix).toBe(true);
+    // The system message is the main one, byte for byte — that is the whole
+    // point, and what a provider's prefix cache matches on.
+    expect(shared.payload[0].content).toBe(main.payload[0].content);
+    expect(shared.payload.length).toBe(main.payload.length + 1);
+    expect(shared.payload.at(-1)?.content).toContain("Propose the next moves");
+
+    // A preset whose required sections cannot fit the window: the menu keeps the
+    // guarantee it had before the change, and stays small.
     const session = grownSession();
     session.ledger = words(3000);
     const req = planChoiceRequest({ card, session, settings, persona: { name: "Rowan" }, count: 4 });
-    // The whole preset is ~12k tokens; a choice request must be far smaller.
-    // Threshold raised to 4500 to account for the few-shot example now in CHOICE_SYSTEM_PROMPT.
+    expect(req.sharedPrefix).toBe(false);
     expect(req.inputTokens).toBeLessThan(4500);
     expect(req.inputTokens + req.outputTokens).toBeLessThanOrEqual(req.contextWindow);
-    // Only the recent tail is carried, never all 61 messages.
-    expect(req.payload.length).toBeLessThan(12);
   });
 
   test("the request always fits the effective window", () => {
@@ -304,30 +331,25 @@ describe("planChoiceRequest", () => {
     expect(BrowserChatEngine.planChoiceRequest(args).inputTokens).toBe(planChoiceRequest(args).inputTokens);
   });
 
-  test("the craft contract is deliberately absent from the choice request", () => {
-    // It used to be carried here, clipped to 800 *characters* — a quarter of the
-    // contract, ending mid-sentence inside the "Medium" bullet. It was also
-    // redundant: CHOICE_SYSTEM_PROMPT states agency, narrative perspective and
-    // language authority in its own words, so three of the slice's rules were
-    // already in the same request while the rest of the contract reached the
-    // model not at all. A/B at n=5 per arm: both arms returned four valid,
-    // fully distinct choices every time; dropping the slice saved 209 tokens
-    // per call. The card's own directives still arrive, via the character
-    // context the scene line carries.
+  test("the craft contract reaches the menu, because the menu shares the main prefix", () => {
+    // It used to be deliberately absent. The menu carried a copy of the contract
+    // clipped to 800 *characters* — a quarter of it, ending mid-sentence inside
+    // the "Medium" bullet — so the slice was dropped rather than fixed. The menu
+    // is now built on the main family's prefix, so the contract arrives whole,
+    // once, as the first thing the model reads, and it is also what makes the
+    // prefix cacheable.
     const customContract = "Custom contract: write in a clipped, watchful register.";
     const req = planChoiceRequest({
-      card,
+      card: { data: { name: "Elena", description: words(200) } },
       session: { messages: [{ id: "g", role: "assistant", content: "The greeting." }] },
       settings: { ...settings, agentsContract: customContract },
       persona: { name: "Rowan" },
       count: 4,
     });
     const systemMessage = req.payload.find((m) => m.role === "system");
-    expect(systemMessage?.content).not.toContain("Custom contract");
-    expect(systemMessage?.content).not.toContain("System & Craft Directives");
-    // The rules the contract would have duplicated are still present, once.
-    expect(systemMessage?.content).toContain("Each choice names what the player attempts");
-    expect(systemMessage?.content).toContain("Language Lock");
+    expect(systemMessage?.content).toContain("Custom contract");
+    // Once, not twice: the task line does not restate it.
+    expect(req.payload.at(-1)?.content).not.toContain("Custom contract");
   });
 
   test("carries previousChoices through to choicePrompt in task message", () => {
@@ -540,15 +562,22 @@ describe("Universal & Adaptive Choice Mode Prompt Contract", () => {
     expect(promptText).not.toContain("Adaptive Guidance");
   });
 
-  test("planChoiceRequest shakes thought blocks from assistant turns in history", () => {
+  test("planChoiceRequest inherits the main turn's thought-shake over history", () => {
+    // The menu used to strip scratchpads from its own compact tail. It now shares
+    // the main prefix, so it has to send exactly what the main turn sends — which
+    // means inheriting the main shake rule rather than applying its own: an older
+    // turn loses its scratchpad, the newest keeps it.
     const session = {
       messages: [
         { id: "u1", role: "user", content: "What do you see?" },
         {
           id: "a1",
           role: "assistant",
-          content: "<think>I should look at the horizon and see the storm approaching. This will heighten dramatic tension.</think>The horizon is dark with heavy clouds.",
+          content:
+            "<think>I should look at the horizon and see the storm approaching. This will heighten dramatic tension.</think>The horizon is dark with heavy clouds.",
         },
+        { id: "u2", role: "user", content: "And below us?" },
+        { id: "a2", role: "assistant", content: "The river is running high." },
       ],
       ledger: "",
       consumed: 1,
@@ -562,13 +591,13 @@ describe("Universal & Adaptive Choice Mode Prompt Contract", () => {
       count: 4,
     });
 
-    const assistantMsg = req.payload.find((m) => m.role === "assistant");
-    expect(assistantMsg).toMatchObject({ role: "assistant", content: "The horizon is dark with heavy clouds." });
-    expect(assistantMsg.content).not.toContain("<think>");
-    expect(assistantMsg.content).not.toContain("heighten dramatic tension");
+    const contents = req.payload.map((m) => m.content);
+    expect(contents.some((c) => c.includes("The horizon is dark with heavy clouds."))).toBe(true);
+    expect(contents.some((c) => c.includes("heighten dramatic tension"))).toBe(false);
 
-    // Also verify scenario hint is included in system prompt
-    expect(req.payload[0].content).toContain("Scenario: On the high ramparts at sunset.");
+    // And the card's scenario reaches the model — through the main system
+    // prompt's own scenario section, rather than a line the menu built.
+    expect(req.payload[0].content).toContain("On the high ramparts at sunset.");
   });
 
   test("stripThoughtBlocks removes provider reasoning tags", () => {
@@ -609,20 +638,20 @@ describe("Universal & Adaptive Choice Mode Prompt Contract", () => {
 
     const sysMsg = req.payload[0];
     expect(sysMsg.role).toBe("system");
-    expect(sysMsg.content).toContain("User Persona (Rowan): Cynical private scout");
-    expect(sysMsg.content).toContain("Character Context (Vance): Cold, watchful");
-    expect(sysMsg.content).toContain("Scenario: In an old interrogation room under a buzzing lamp.");
-    // The craft contract is deliberately not carried here — see the test above.
-    expect(sysMsg.content).not.toContain("System & Craft Directives");
-    expect(sysMsg.content).toContain("Language Lock & Register Adaptation");
+    // Everything the menu used to assemble into its own scene line now arrives
+    // through the main system prompt — the persona section, the card's own
+    // sections, and the craft contract — and in full rather than clipped.
+    expect(sysMsg.content).toContain("Cynical private scout");
+    expect(sysMsg.content).toContain("Cold, watchful");
+    expect(sysMsg.content).toContain("In an old interrogation room under a buzzing lamp.");
+    expect(sysMsg.content).toContain("Directives: Use a clipped, watchful register with a dockside backdrop.");
 
     const userPromptMsg = req.payload[req.payload.length - 1];
     expect(userPromptMsg.role).toBe("user");
-    // Persona and language guidance live in the system prompt; the task line
-    // carries only who, how many, and the field limits.
+    // The task line carries the ask; the instructions travel with it, once.
     expect(userPromptMsg.content).toContain("Propose the next moves for [Rowan] in the scene above, opposite [Vance].");
-    expect(userPromptMsg.content).not.toContain("Embody [Rowan]");
-    expect(sysMsg.content).toContain("Language Lock & Register Adaptation");
+    expect(userPromptMsg.content).toContain("Language Lock & Register Adaptation");
+    expect(userPromptMsg.content).not.toContain("Directives: Use a clipped");
   });
 
   test("planChoiceRequest incorporates character description when personality and system_prompt are absent", () => {
@@ -645,7 +674,10 @@ describe("Universal & Adaptive Choice Mode Prompt Contract", () => {
       count: 3,
     });
     const sysMsg = req.payload[0];
-    expect(sysMsg.content).toContain("Character Context (Lyra): A mysterious cartographer carrying ancient star charts");
+    // A card with no personality and no system_prompt still describes itself:
+    // its description reaches the model through the main system prompt's own
+    // section.
+    expect(sysMsg.content).toContain("A mysterious cartographer carrying ancient star charts");
   });
 
   test("CHOICE_SYSTEM_PROMPT and choicePrompt mandate agency, condition assessment and no disguised NPC control", () => {

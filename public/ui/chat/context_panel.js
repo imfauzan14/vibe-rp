@@ -166,6 +166,19 @@ export function renderContextPanel({ request, usage = null, windowLearned = fals
     if (usage.overhead > 0) provider.push(addedByProvider(usage.overhead));
     if (usage.cachedTokens > 0) {
       provider.push(row("Served from cache", percent(usage.cacheHitRate), "cached input is billed at a lower rate"));
+    } else if (usage.cachedTokens === 0 && (usage.billedInput || 0) >= 2000) {
+      // A measured zero on a prompt long enough to have been cacheable. The app
+      // cannot say *why* — the prompt may have changed since the last message,
+      // the provider's copy may have expired, or the provider may not cache at
+      // all — so it reports what it measured and leaves the cause open rather
+      // than asserting one.
+      provider.push(
+        row(
+          "Served from cache",
+          "none",
+          "none of this prompt was reused, so all of it was billed at the full rate. That usually means it changed since your last message, or your provider's copy expired."
+        )
+      );
     }
     if (usage.reasoningTokens) {
       provider.push(row("Thinking tokens", percent(usage.reasoningShare), "internal reasoning, billed as output"));

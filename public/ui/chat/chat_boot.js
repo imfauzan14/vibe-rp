@@ -404,7 +404,14 @@
     async function requestChoices({ isRegenerate = false } = {}) {
       if (mode !== "choice") return;
       renderChoices(); // paints `generating` immediately
-      await controller.requestChoices({ isRegenerate, onState: () => renderChoices() });
+      await controller.requestChoices({
+        isRegenerate,
+        onState: () => renderChoices(),
+        // A re-fit means the provider's real window was smaller than the one
+        // configured. That is worth saying rather than absorbing silently: it
+        // explains why the menu is suddenly smaller than the turn it follows.
+        onNotice: (msg) => showToast(msg, "info"),
+      });
       renderChoices();
     }
 

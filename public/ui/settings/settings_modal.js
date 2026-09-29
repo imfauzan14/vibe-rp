@@ -50,7 +50,7 @@ const PARAM_FIELDS = [
   sliderRow({ id: "popup-slider-tokens", valueId: "popup-val-tokens", label: "Max response tokens", hint: "The longest reply the model may write each turn. 1200 leaves room for a full reply plus the model's own thinking.", min: 200, max: 4096, step: 50, value: 1200 }),
   sliderRow({ id: "popup-slider-freq", valueId: "popup-val-freq", label: "Frequency penalty", hint: "Higher values reduce repetitive verbal tics. 0 sends the provider default.", min: -2, max: 2, step: 0.05, value: 0 }),
   sliderRow({ id: "popup-slider-pres", valueId: "popup-val-pres", label: "Presence penalty", hint: "Encourages new topics and vocabulary. 0 sends the provider default.", min: -2, max: 2, step: 0.05, value: 0 }),
-  sliderRow({ id: "popup-slider-context", valueId: "popup-val-context", label: "Context window", hint: "How much the model can hold at once. Match your model's real window; older turns are summarized into a recap once this fills.", min: 2048, max: 131072, step: 2048, value: 65536 }),
+  sliderRow({ id: "popup-slider-context", valueId: "popup-val-context", label: "Context window", hint: "How much the model can hold at once. Match your model's real window; older turns are summarized into a recap once this fills. Lowering it mid-chat makes the model re-read the whole conversation once.", min: 2048, max: 131072, step: 2048, value: 65536 }),
 ];
 
 const TABS = [
@@ -122,7 +122,7 @@ export function openSettingsModal(options = {}) {
         el("option", { value: "medium", text: "Medium" }),
         el("option", { value: "high", text: "High" }),
       ]),
-      el("p", { class: "rp-help", text: "Sent as reasoning_effort to models that support it, and dropped automatically when a provider rejects it. Leave on the provider default for non-reasoning models." }),
+      el("p", { class: "rp-help", text: "Sent as reasoning_effort to models that support it, and dropped automatically when a provider rejects it. Leave on the provider default for non-reasoning models. Changing it mid-chat makes the model re-read the whole conversation once." }),
     ]),
     el("div", { class: "rp-field" }, [
       el("label", { class: "rp-label", for: "popup-choice-deliberation", text: "Choice deliberation" }),
