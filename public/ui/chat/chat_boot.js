@@ -14,6 +14,7 @@
     import { createChoicePanel } from "./choice_panel.js";
     import { createTurnMachine } from "./turn_machine.js";
     import { createSearch } from "./search.js";
+    import { renderContextPanel } from "./context_panel.js";
     import { compressImage } from "../image.js";
     import { openSettingsModal } from "../settings/settings_modal.js";
 
@@ -449,10 +450,11 @@
     });
     const { streamTurn, submitTurn, rerollLastTurn, retryUnansweredTurn, stopTurn } = turns;
 
-    // Context stats and ledger calculation.
+    // Context panel. The rendering is a pure function of the measured request
+    // (see ui/chat/context_panel.js); this only supplies it the live session and
+    // the one fact the request cannot carry — whether the window it was planned
+    // against is the reader's own setting or one the provider named.
     const contextLedger = $("ledger-context");
-
-    const formatK = (n) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 
     function updateContextStats() {
       const sess = controller.activeSession;
@@ -463,62 +465,12 @@
         persona: controller.currentPersona,
         agentsContract: controller.currentDirective ? (controller.currentDirective.content ?? "") : (controller.settings.agentsContract ?? ""),
       });
-      const b = request.breakdown;
-      const window = request.contextWindow;
-      const used = request.totalTokens;
-      const pct = Math.min(100, Math.round((used / Math.max(1, window)) * 100));
-      const row = (key, value) =>
-        `<div class="rp-ledger__row"><span class="rp-ledger__key">${key}</span><span class="rp-ledger__value">${value}</span></div>`;
-      const excluded = request.excludedSections
-        .map((id) => (id === "examples" ? "dialogue examples" : id === "constantLore" ? "constant world lore" : id))
-        .join(", ");
-      // What the provider actually billed last turn, when it reported. The
-      // estimate above describes the request the app assembled; these rows
-      // describe the one the provider received, which is the number the reader
-      // is paying for. A hidden preamble and an ignored output ceiling are both
-      // invisible in every other figure on this panel.
-      const usage = sess && sess.lastUsageReport;
-      const percent = (n) => `${Math.round(n * 100)}%`;
-      const measured = [];
-      if (usage && usage.reported) {
-        if (usage.overhead) {
-          measured.push(row("Measured overhead", `+${formatK(usage.overhead)} tokens per request (provider preamble)`));
-        }
-        if (usage.billedInput !== null && usage.billedInput !== undefined) {
-          measured.push(row("Billed input", `${formatK(usage.billedInput)} tokens (last turn)`));
-        }
-        if (usage.cachedTokens !== null && usage.cachedTokens !== undefined && usage.cachedTokens > 0) {
-          measured.push(row("Prompt cache", `${percent(usage.cacheHitRate ?? 0)} of input served from cache`));
-        }
-        if (usage.reasoningTokens) {
-          // The row only renders when a reasoning count arrived, so the share is
-          // a number here — an unreported count is not a zero, and the engine
-          // reports it as null rather than 0.
-          measured.push(row("Reasoning share", `${percent(usage.reasoningShare)} of generated tokens are internal`));
-        }
-        if (usage.ceilingIgnored) {
-          measured.push(row("Output ceiling", "the provider ignored the requested maximum"));
-        }
-      } else if (request.overheadTokens) {
-        measured.push(row("Measured overhead", `+${formatK(request.overheadTokens)} tokens per request (provider preamble)`));
-      }
-      contextLedger.innerHTML = `
-        ${row("Effective context", `${formatK(window)} tokens`)}
-        ${row("Required static", `${formatK(b.requiredStatic)} tokens`)}
-        ${row("Optional static", `${formatK(b.optionalStatic)} tokens`)}
-        ${row("Persona", `${formatK(b.persona)} tokens`)}
-        ${row("Lore / guidance", `${formatK(b.lore)} tokens`)}
-        ${row("Continuity ledger", `${formatK(b.ledger)} tokens${request.ledgerCondensed ? " (condensed)" : ""}`)}
-        ${row("History", `${formatK(b.history)} tokens`)}
-        ${row("Current input", `${formatK(b.currentInput)} tokens`)}
-        ${row("Output allowance", `${formatK(b.output)} tokens`)}
-        ${row("Safety margin", `${formatK(b.safetyMargin)} tokens`)}
-        <div class="rp-chat__ledger-meter"><div class="rp-ledger__meter"><span style="width:${pct}%"></span></div></div>
-        ${row("Used", `${formatK(used)} of ${formatK(window)} tokens`)}
-        ${row("Remaining", `${formatK(b.remaining)} tokens`)}
-        ${row("Excluded / degraded", excluded || "none")}
-        ${measured.join("")}
-        ${request.impossible ? row("Status", "request exceeds the window: raise the context window or shrink the preset") : ""}`;
+      const configuredWindow = BrowserChatEngine.resolveBudgets(controller.settings).contextWindow;
+      contextLedger.innerHTML = renderContextPanel({
+        request,
+        usage: sess ? sess.lastUsageReport : null,
+        windowLearned: request.contextWindow < configuredWindow,
+      });
     }
 
     // Ledger sheet controls.

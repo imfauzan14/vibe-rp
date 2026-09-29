@@ -1632,6 +1632,14 @@ dialog.rp-dialog:not([open]) {
   max-width: var(--measure);
   display: flex;
   flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* The headline: the answer before the itemisation. A reader who knows nothing
+   about tokens should be able to stop after this block. */
+.rp-ledger__summary {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   border: var(--border-width) solid var(--border-hairline);
@@ -1639,31 +1647,97 @@ dialog.rp-dialog:not([open]) {
   background-color: var(--surface);
 }
 
-.rp-ledger__row {
+.rp-ledger__summary-head {
   display: flex;
   align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.rp-ledger__summary-used {
+  font-family: var(--font-prose);
+  font-size: var(--text-lg);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.rp-ledger__summary-of {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+}
+
+.rp-ledger__summary-note {
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+  line-height: var(--leading-ui);
+}
+
+.rp-ledger__summary-note--quiet {
+  color: var(--ink-faint);
+}
+
+.rp-ledger__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  background-color: var(--surface);
+}
+
+.rp-ledger__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
   gap: var(--space-3);
   font-size: var(--text-xs);
 }
 
 .rp-ledger__key {
-  flex: none;
-  width: 20ch;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  color: var(--ink);
+}
+
+/* One plain sentence under a label whose meaning is not self-evident. */
+.rp-ledger__hint {
   color: var(--ink-faint);
+  line-height: var(--leading-ui);
+}
+
+/* A full-width sentence for information that is not a measurement — a status,
+   or a list of what was dropped. A long value in the value column would squeeze
+   the label it belongs to. */
+.rp-ledger__note {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+  line-height: var(--leading-ui);
 }
 
 .rp-ledger__value {
   color: var(--ink);
   font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
-/* Context and budget live here, not permanently in the composer. */
+/* Context and budget live here, not permanently in the composer. The track is
+   a lifted surface rather than a hairline, because a 4px hairline on a panel is
+   invisible at the one moment the reader needs it. */
+.rp-ledger__meter-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .rp-ledger__meter {
   position: relative;
   flex: 1;
-  height: 4px;
+  height: 6px;
   border-radius: var(--radius-full);
-  background-color: var(--border-hairline);
+  background-color: var(--surface-hover);
   overflow: hidden;
 }
 
@@ -1674,8 +1748,32 @@ dialog.rp-dialog:not([open]) {
   border-radius: var(--radius-full);
 }
 
-/* The sheet's group carries a title and one plain sentence so the terse
-   rows below are legible without a manual. */
+.rp-ledger__meter-pct {
+  flex: none;
+  font-size: var(--text-2xs);
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The meter is the one thing that says "you are running out", so it changes
+   colour before the reader has to read a number. Over-window is the only state
+   that is an error rather than a warning. */
+.rp-ledger__summary[data-status="filling"] .rp-ledger__meter > span {
+  background-color: var(--warn);
+}
+
+.rp-ledger__summary[data-status="full"] .rp-ledger__meter > span,
+.rp-ledger__summary[data-status="over"] .rp-ledger__meter > span {
+  background-color: var(--danger);
+}
+
+.rp-ledger__summary[data-status="full"] .rp-ledger__summary-used,
+.rp-ledger__summary[data-status="over"] .rp-ledger__summary-used {
+  color: var(--danger);
+}
+
+/* The sheet's groups carry a plain title so the terse rows below are legible
+   without a manual. */
 .rp-ledger__group {
   display: flex;
   flex-direction: column;
@@ -1687,12 +1785,6 @@ dialog.rp-dialog:not([open]) {
   font-weight: 600;
   color: var(--ink-muted);
   letter-spacing: var(--tracking-wide);
-}
-
-.rp-ledger__group-help {
-  font-size: var(--text-xs);
-  color: var(--ink-faint);
-  line-height: var(--leading-ui);
 }
 
 .rp-flag {

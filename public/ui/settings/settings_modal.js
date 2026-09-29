@@ -47,10 +47,10 @@ const PARAM_FIELDS = [
   sliderRow({ id: "popup-slider-temp", valueId: "popup-val-temp", label: "Temperature", hint: "Lower is focused and deterministic; higher is creative and descriptive.", min: 0.1, max: 2, step: 0.05, value: 0.95 }),
   sliderRow({ id: "popup-slider-topp", valueId: "popup-val-topp", label: "Top P", hint: "Nucleus sampling: considers only the top P probability mass. 1 sends the provider default.", min: 0.1, max: 1, step: 0.05, value: 1 }),
   sliderRow({ id: "popup-slider-minp", valueId: "popup-val-minp", label: "Min P", hint: "Trims low-probability noise without truncating creative tails. 0 sends the provider default.", min: 0, max: 0.5, step: 0.01, value: 0 }),
-  sliderRow({ id: "popup-slider-tokens", valueId: "popup-val-tokens", label: "Max response tokens", hint: "Token ceiling per turn. 1200 tokens leaves room for reasoning plus a full reply.", min: 200, max: 4096, step: 50, value: 1200 }),
+  sliderRow({ id: "popup-slider-tokens", valueId: "popup-val-tokens", label: "Max response tokens", hint: "The longest reply the model may write each turn. 1200 leaves room for a full reply plus the model's own thinking.", min: 200, max: 4096, step: 50, value: 1200 }),
   sliderRow({ id: "popup-slider-freq", valueId: "popup-val-freq", label: "Frequency penalty", hint: "Higher values reduce repetitive verbal tics. 0 sends the provider default.", min: -2, max: 2, step: 0.05, value: 0 }),
   sliderRow({ id: "popup-slider-pres", valueId: "popup-val-pres", label: "Presence penalty", hint: "Encourages new topics and vocabulary. 0 sends the provider default.", min: -2, max: 2, step: 0.05, value: 0 }),
-  sliderRow({ id: "popup-slider-context", valueId: "popup-val-context", label: "Max context budget", hint: "Folds the continuity ledger when history approaches this budget.", min: 2048, max: 131072, step: 2048, value: 65536 }),
+  sliderRow({ id: "popup-slider-context", valueId: "popup-val-context", label: "Context window", hint: "How much the model can hold at once. Match your model's real window; older turns are summarized into a recap once this fills.", min: 2048, max: 131072, step: 2048, value: 65536 }),
 ];
 
 const TABS = [
@@ -110,9 +110,9 @@ export function openSettingsModal(options = {}) {
       el("p", { class: "rp-help", text: "Dedicated model for generating Choice Mode options. Defaults to main model." }),
     ]),
     el("div", { class: "rp-field" }, [
-      el("label", { class: "rp-label", for: "popup-summary-model-select", text: "Continuity summariser model" }),
+      el("label", { class: "rp-label", for: "popup-summary-model-select", text: "Recap model" }),
       el("select", { id: "popup-summary-model-select", class: "rp-select" }),
-      el("p", { class: "rp-help", text: "Writes the rolling continuity ledger when older history is folded away. It reads and merges rather than writing prose, so a cheaper model usually does it well. Defaults to main model." }),
+      el("p", { class: "rp-help", text: "Writes the recap that older turns are summarized into. It reads and merges rather than writing prose, so a cheaper model usually does it well. Defaults to main model." }),
     ]),
     el("div", { class: "rp-field" }, [
       el("label", { class: "rp-label", for: "popup-reasoning-effort", text: "Reasoning effort" }),
@@ -176,7 +176,7 @@ export function openSettingsModal(options = {}) {
       "Balance creative unpredictability against narrative coherence. Every value here is sent with the next request the moment you let go of the control."
     ),
     ...PARAM_FIELDS,
-    el("p", { class: "rp-help", text: "Max response tokens is a ceiling on one reply, taken out of the window before history is sized. Max context budget is the whole request window; the continuity ledger folds when history approaches it." }),
+    el("p", { class: "rp-help", text: "Max response tokens caps a single reply, and is taken out of the window before the story is sized. Context window is the whole request window; older turns are summarized into a recap once the story approaches it." }),
   ]);
 
   // Personas panel.
