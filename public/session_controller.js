@@ -11,6 +11,7 @@
 import { LocalDb } from "./local_db.js";
 import { BrowserChatEngine } from "./browser_engine.js";
 import { applyFold, resetLedger, captureLedgerState, restoreLedgerState } from "./session_state.js";
+import { recordUsageSample, scopeKeyOf } from "./usage_history.js";
 
 const GREETING_FALLBACK = "The door closes behind you. Silence settles into the corridor.";
 const INITIAL_TITLE = "Chapter 1: The Initial Approach";
@@ -207,6 +208,25 @@ export class SessionController {
     return { persona: this.currentPersona, directive: this.currentDirective };
   }
 
+  /**
+   * The identity of the prompt prefix a turn is measured against.
+   *
+   * Cache reuse is only comparable between turns that sent the same static
+   * prefix, and every part of that prefix can change between two turns of one
+   * chat — the persona, the system prompt, the model, even the card. The usage
+   * history is keyed on all of it, so a trend can never average across a change
+   * and report a collapse that was really a rebuild.
+   */
+  usageScope() {
+    return scopeKeyOf({
+      endpoint: this.settings?.apiEndpoint,
+      model: this.settings?.model,
+      cardId: this.activeCard?.id,
+      personaId: this.currentPersona?.id,
+      directiveId: this.currentDirective?.id,
+    });
+  }
+
   // Modal state machine
 
   openModal(name, payload = null) {
@@ -386,6 +406,13 @@ export class SessionController {
     this.#activeTurn = turn;
     const signal = mergeSignals(externalSignal, turn);
     const targetSession = this.activeSession;
+    // Captured before the first await: the prefix a turn is measured against is
+    // the one it was sent under, and the reader can change the preset while the
+    // reply is still streaming. Reading it afterwards would file the sample
+    // under a setup that never produced it.
+    const scope = this.usageScope();
+    const usageBefore = targetSession ? targetSession.lastUsageReport || null : null;
+    const consumedBefore = targetSession ? Math.max(1, Number(targetSession.consumed) || 1) : 1;
     let assistantMsg = null;
     try {
       // Crash-safety checkpoint before the network call (defect 5). Kept inside
@@ -460,6 +487,27 @@ export class SessionController {
       throw new Error("The model returned an empty reply. Retry, or check the endpoint and max output tokens for this model.");
     }
     if (targetSession) {
+      // One sample per completed turn, recorded here because this is the single
+      // seam every turn path takes: a typed turn, a chosen one, a reroll and a
+      // retry all arrive through `streamResponse`, and a turn that threw never
+      // reaches this line at all — so the history holds measurements, not
+      // attempts.
+      //
+      // The report is compared by reference. `noteUsageReport` stores a fresh
+      // object each turn and only when the provider actually sent usage, so an
+      // unchanged reference means this turn reported nothing. That is recorded
+      // as an unreported sample, never as a miss: "the provider said nothing"
+      // and "the provider reused nothing" are different facts, and a trend that
+      // conflated them would show a collapse that never happened.
+      const usageAfter = targetSession.lastUsageReport || null;
+      recordUsageSample(targetSession, {
+        report: usageAfter !== usageBefore ? usageAfter : null,
+        scope,
+        at: Date.now(),
+        // The recap was rebuilt during this turn, so this reply's prompt was new
+        // even though the reader changed nothing.
+        folded: Math.max(1, Number(targetSession.consumed) || 1) !== consumedBefore,
+      });
       targetSession.updatedAt = Date.now();
       await this.db.saveSession(targetSession);
     }

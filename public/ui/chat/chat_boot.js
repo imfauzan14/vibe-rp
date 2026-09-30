@@ -474,6 +474,28 @@
     // against is the reader's own setting or one the provider named.
     const contextLedger = $("ledger-context");
 
+    /**
+     * The setup a trend belongs to, in the reader's own words.
+     *
+     * Only the controller can turn preset ids into names, and the panel must
+     * never print an id — so the label is resolved here and the panel is handed
+     * the result. A part with no name is left out rather than shown blank, and a
+     * setup with nothing nameable falls back to `null`, which the panel reads as
+     * "this chat" with no further claim.
+     *
+     * The label is deliberately coarser than the scope key: the key also carries
+     * the endpoint, because a cache belongs to one endpoint, but a URL is not a
+     * thing to put in a sentence. When the key is finer than the label, the
+     * trend's own note says the earlier replies ran under a different setup and
+     * were set aside — so a reset is always disclosed rather than silent.
+     */
+    function scopeLabelOf() {
+      const parts = [controller.currentPersona?.name, controller.currentDirective?.name, controller.settings?.model]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean);
+      return parts.length ? parts.join(" · ") : null;
+    }
+
     function updateContextStats() {
       const sess = controller.activeSession;
       const request = BrowserChatEngine.describeRequest({
@@ -488,6 +510,13 @@
         request,
         usage: sess ? sess.lastUsageReport : null,
         windowLearned: request.contextWindow < configuredWindow,
+        // The history this chat has accumulated, and the setup the trend should
+        // be scoped to. Both come from the controller because it is the only
+        // thing that knows which preset is in force right now.
+        samples: sess ? sess.usageHistory : null,
+        scope: controller.usageScope(),
+        scopeLabel: scopeLabelOf(),
+        pruned: sess ? sess.usagePruned : null,
       });
     }
 

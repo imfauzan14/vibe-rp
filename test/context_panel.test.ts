@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { BrowserChatEngine } from "../public/browser_engine.js";
 import { DEFAULT_SETTINGS } from "../public/local_db.js";
 import { renderContextPanel, contextSummary, formatTokens } from "../public/ui/chat/context_panel.js";
+import { recordUsageSample, scopeKeyOf } from "../public/usage_history.js";
 
 const ROOT = join(import.meta.dir, "..");
 const filler = (words: number) => "word ".repeat(words).trim();
@@ -240,3 +241,164 @@ describe("The cache row reports a measurement, never a guess", () => {
     expect(html).not.toContain("none of this prompt was reused");
   });
 });
+
+// The one part of the sheet that is a history rather than a snapshot. It exists
+// because a single hit rate cannot be acted on: the first reply after anything
+// changes is cold by definition, so one number cannot tell a prompt that is
+// never reused from one that was rebuilt a moment ago.
+describe("Cache reuse over time is scoped, and says so", () => {
+  const SCOPE = scopeKeyOf({
+    endpoint: "https://x.test/v1",
+    model: "m",
+    cardId: "c",
+    personaId: "persona_default",
+    directiveId: "directive_default",
+  });
+  const OTHER = scopeKeyOf({
+    endpoint: "https://x.test/v1",
+    model: "m",
+    cardId: "c",
+    personaId: "persona_other",
+    directiveId: "directive_default",
+  });
+  const LABEL = "Rin · Author's Craft Directive";
+
+  /** A session holding one measured sample per rate; `null` is "no report". */
+  function history(rates: (number | null)[], { scope = SCOPE, folded = [] as number[] } = {}) {
+    const sess: Record<string, unknown> = {};
+    rates.forEach((rate, i) => {
+      recordUsageSample(sess, {
+        report: rate === null ? null : { reported: true, billedInput: 1000, cachedTokens: Math.round(rate * 1000), estimatedInput: 900 },
+        scope,
+        at: 100 + i,
+        folded: folded.includes(i),
+      });
+    });
+    return sess;
+  }
+
+  const panel = (sess: Record<string, unknown>, over: Record<string, unknown> = {}) =>
+    renderContextPanel({
+      request: request(20),
+      usage: null,
+      samples: sess.usageHistory as unknown[],
+      scope: SCOPE,
+      scopeLabel: LABEL,
+      pruned: sess.usagePruned,
+      ...over,
+    });
+
+  test("a chat with no measured history says nothing about caching", () => {
+    // Every existing caller passes no samples at all. The sheet has to be
+    // exactly what it was before this section existed.
+    const html = renderContextPanel({ request: request(20), usage: null });
+    expect(html).not.toContain("Cache reuse over time");
+    expect(html).not.toContain("rp-ledger__trend");
+  });
+
+  test("the trend shows the series, the reading and the scope it belongs to", () => {
+    const html = panel(history([0, 0.5, 0.7, 0.8]));
+    expect(html).toContain("Cache reuse over time");
+    expect(html).toContain(LABEL);
+    // Four replies, four bars.
+    expect((html.match(/rp-ledger__trend-bar/g) || []).length).toBe(4);
+    // The reading is the median with the shape of the series.
+    expect(html).toContain("Reused 60% of the prompt on average across 4 replies, and it is rising.");
+    expect(html).toContain("1 of them reused nothing");
+    // And the accessible equivalent carries every point, because a two-pixel
+    // bar is not readable.
+    expect(html).toContain("oldest first: 0%, 50%, 70%, 80%");
+  });
+
+  test("a provider that reported nothing is a gap, not a run of misses", () => {
+    const html = panel(history([0.5, null, null]));
+    // Two of the three bars are the "no figure" state, not the cold one.
+    expect((html.match(/data-state="unknown"/g) || []).length).toBe(2);
+    expect((html.match(/data-state="cold"/g) || []).length).toBe(0);
+    expect(html).toContain("1 of 3 replies reported a cache figure");
+    expect(html).not.toContain("reused nothing");
+  });
+
+  test("a scope where nothing was ever reported has no chart to misread", () => {
+    const html = panel(history([null, null]));
+    expect(html).toContain("has not reported a cache figure");
+    expect(html).not.toContain("rp-ledger__trend");
+  });
+
+  test("history under another setup is counted and kept out of the figures", () => {
+    const sess = history([0.2, 0.2]);
+    recordUsageSample(sess, { report: { reported: true, billedInput: 1000, cachedTokens: 900 }, scope: OTHER, at: 500 });
+    recordUsageSample(sess, { report: { reported: true, billedInput: 1000, cachedTokens: 900 }, scope: OTHER, at: 501 });
+    recordUsageSample(sess, { report: { reported: true, billedInput: 1000, cachedTokens: 900 }, scope: OTHER, at: 502 });
+
+    const html = panel(sess);
+    // The reading is this scope's 20%, not a blend of all five samples — which
+    // is the whole reason the section is scoped.
+    expect(html).toContain("Reused 20% of the prompt on average across 2 replies.");
+    expect(html).not.toContain("72%");
+    expect(html).not.toContain("90%");
+    expect((html.match(/rp-ledger__trend-bar/g) || []).length).toBe(2);
+    expect(html).toContain("3 earlier replies in this chat ran under a different setup and are not counted here.");
+  });
+
+  test("one reply is described in the singular, never as \"all 1 replies\"", () => {
+    const html = panel(history([0.2]));
+    expect(html).toContain("The one reply reported a cache figure.");
+    expect(html).not.toContain("All 1 replies");
+    expect(html).toContain("Cache reuse for the one reply under this setup");
+  });
+
+  test("a chat that has not run under this setup yet says so instead of borrowing", () => {
+    const sess = history([0.9], { scope: OTHER });
+    const html = panel(sess);
+    expect(html).toContain("No reply has run under this setup yet.");
+    expect(html).not.toContain("rp-ledger__trend");
+    expect(html).toContain("1 earlier reply in this chat ran under a different setup and is not counted here.");
+  });
+
+  test("a single reply is not dressed up as a trend", () => {
+    const html = panel(history([0.46]));
+    expect(html).toContain("One reply reused 46% of its prompt.");
+    expect(html).toContain("A single reply cannot show a trend");
+  });
+
+  test("a reply whose prompt was rebuilt is marked, and the mark is explained", () => {
+    const html = panel(history([0.1, 0.6], { folded: [1] }));
+    expect((html.match(/data-folded="true"/g) || []).length).toBe(1);
+    expect(html).toContain("A tick marks a reply whose prompt had just been rebuilt");
+    // The dip is expected, not a change in behaviour — otherwise the mark
+    // explains a fact and leaves the reader to draw the wrong conclusion.
+    expect(html).toContain("a dip there is expected");
+  });
+
+  test("a run of identical rates is not described as a trend", () => {
+    const html = panel(history([0, 0, 0, 0]));
+    expect(html).toContain("Reused 0% of the prompt on average across 4 replies.");
+    expect(html).not.toContain("and it is steady");
+  });
+
+  test("a pruned history says what it is showing rather than passing a window off as the whole story", () => {
+    const sess: Record<string, unknown> = {};
+    for (let i = 0; i < 40; i += 1) {
+      recordUsageSample(sess, { report: { reported: true, billedInput: 1000, cachedTokens: 700 }, scope: SCOPE, at: i });
+    }
+    const html = panel(sess);
+    expect(html).toContain("Showing the 30 most recent replies under this setup.");
+  });
+
+  test("no identifier from the scope key ever reaches the page", () => {
+    // The key is built from ids. It exists to group samples, never to be read.
+    const html = panel(history([0.5, 0.6]));
+    expect(html).not.toContain(SCOPE);
+    expect(html).not.toContain("persona_default");
+    expect(html).not.toContain("directive_default");
+    expect(html).not.toContain("x.test");
+  });
+
+  test("a setup with nothing nameable falls back to the chat alone", () => {
+    const html = panel(history([0.5, 0.6]), { scopeLabel: null });
+    expect(html).toContain("For this chat.");
+    expect(html).not.toContain("For this chat, under");
+  });
+});
+

@@ -251,3 +251,128 @@ describe("SessionController - ensemble greeting", () => {
     expect(ctl.activeSession.messages[0].content).toBe("Aria draws her blade. Vex steps back. Marlow freezes.");
   });
 });
+
+// The usage history is written here rather than in the engine, because this is
+// the single seam every turn path takes — a typed turn, a chosen one, a reroll
+// and a retry all arrive through `streamResponse`. These tests hold the write
+// to the two rules the panel depends on: a turn is recorded once, and it is
+// filed under the setup it was actually sent under.
+describe("SessionController - the usage history is recorded per turn, per scope", () => {
+  const report = (over: Record<string, unknown> = {}) => ({
+    reported: true,
+    billedInput: 10000,
+    cachedTokens: 6000,
+    estimatedInput: 9000,
+    reasoningTokens: null,
+    ceilingIgnored: false,
+    ...over,
+  });
+
+  const historyOf = (ctl: { activeSession: unknown }) => (ctl.activeSession as Record<string, unknown>).usageHistory as Array<Record<string, unknown>>;
+
+  test("a measured turn is recorded once, under the setup in force", async () => {
+    const engine = makeEngine({
+      onStream: async (args) => {
+        (args.session as Record<string, unknown>).lastUsageReport = report();
+        args.onChunk("hi");
+        return "hi";
+      },
+    });
+    const { ctl } = await makeController({ engine });
+    await ctl.send("go");
+    const history = historyOf(ctl);
+    expect(history.length).toBe(1);
+    expect(history[0].scope).toBe(ctl.usageScope());
+    expect(history[0].cached).toBe(6000);
+    expect(history[0].billed).toBe(10000);
+  });
+
+  test("a provider that reported nothing is recorded as unreported, never as a miss", async () => {
+    // The distinction the whole trend turns on. If a silent endpoint produced a
+    // sample with `cached: 0`, every reader on such an endpoint would be shown a
+    // collapse in cache reuse that never happened.
+    const { ctl } = await makeController();
+    await ctl.send("go");
+    const history = historyOf(ctl);
+    expect(history.length).toBe(1);
+    expect(history[0].cached).toBeNull();
+    expect(history[0].billed).toBeNull();
+  });
+
+  test("a failed turn leaves no sample, because nothing was measured", async () => {
+    const engine = makeEngine({ streamError: new Error("boom") });
+    const { ctl } = await makeController({ engine });
+    await expect(ctl.send("go")).rejects.toThrow();
+    expect(historyOf(ctl) ?? []).toEqual([]);
+  });
+
+  test("two turns under different presets do not share a scope", async () => {
+    const engine = makeEngine({
+      onStream: async (args) => {
+        (args.session as Record<string, unknown>).lastUsageReport = report();
+        args.onChunk("hi");
+        return "hi";
+      },
+    });
+    const { ctl } = await makeController({ engine });
+    await ctl.send("one");
+    const firstScope = ctl.usageScope();
+    (ctl as unknown as Record<string, unknown>).currentPersona = { id: "persona_other", name: "Other" };
+    await ctl.send("two");
+
+    const history = historyOf(ctl);
+    expect(history.length).toBe(2);
+    expect(history[0].scope).toBe(firstScope);
+    // A different persona is a different prefix, so a different scope: the two
+    // samples are never averaged together.
+    expect(history[1].scope).not.toBe(firstScope);
+  });
+
+  test("the scope is read before the first await, so a mid-stream preset change cannot refile it", async () => {
+    let expected = "";
+    const engine = makeEngine({
+      onStream: async (args) => {
+        (args.session as Record<string, unknown>).lastUsageReport = report();
+        // The reader opens Settings and switches preset while the reply streams.
+        (ctl as unknown as Record<string, unknown>).currentPersona = { id: "persona_switched", name: "Switched" };
+        args.onChunk("hi");
+        return "hi";
+      },
+    });
+    const { ctl } = await makeController({ engine });
+    expected = ctl.usageScope();
+    await ctl.send("go");
+    const sample = historyOf(ctl)[0];
+    expect(sample.scope).toBe(expected);
+    expect(sample.scope).not.toBe(ctl.usageScope());
+  });
+
+  test("a recap rebuilt during the turn is marked on the sample", async () => {
+    const engine = makeEngine({
+      onStream: async (args) => {
+        const session = args.session as Record<string, unknown>;
+        session.lastUsageReport = report();
+        session.consumed = 14; // the fold ran, so this reply's prompt was new
+        args.onChunk("hi");
+        return "hi";
+      },
+    });
+    const { ctl } = await makeController({ engine });
+    await ctl.send("go");
+    expect(historyOf(ctl)[0].folded).toBe(true);
+  });
+
+  test("the sample is persisted with the session, so it survives a reload", async () => {
+    const engine = makeEngine({
+      onStream: async (args) => {
+        (args.session as Record<string, unknown>).lastUsageReport = report();
+        args.onChunk("hi");
+        return "hi";
+      },
+    });
+    const { ctl, db } = await makeController({ engine });
+    await ctl.send("go");
+    const saved = (db as { savedSessions: Array<Record<string, unknown>> }).savedSessions.at(-1);
+    expect((saved?.usageHistory as Array<unknown>).length).toBe(1);
+  });
+});

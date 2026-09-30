@@ -89,7 +89,22 @@ outlines, the focus indicator).
 | `--border-control` on `--canvas` | 3.30 | 3.0 | field outline against the ground |
 | `--focus-ring` on `--canvas` | 5.94 | 3.0 | focus indicator |
 
-**All 60 pairs pass.** The two tightest are noted above so a future change to
+### The cache-reuse chart
+
+Bars are graphical objects, so they are held to 3:1 rather than 4.5:1. A bar's
+height carries the rate and its colour carries the state, so the two states that
+are not "reused" have to be tellable apart at a glance — and the third one, a
+gap where the provider reported nothing, was originally drawn in
+`--border-hairline`, which measures **1.31:1** here. A marker nobody can see is
+not a gap in the series, so it uses the control-outline token instead.
+
+| Pair | Marginalia | Paper | Need | State |
+| --- | --- | --- | --- | --- |
+| `--accent-annotation` on `--surface` | 8.70 | 6.09 | 3.0 | a reply whose prompt was reused |
+| `--ink-faint` on `--surface` | 5.05 | 5.83 | 3.0 | a reply that reused nothing |
+| `--border-control` on `--surface` | 3.49 | 3.61 | 3.0 | a reply the provider reported nothing for |
+
+**All 66 pairs pass.** The two tightest are noted above so a future change to
 `--ink-faint` or `--border-control` knows exactly what it is trading against.
 Paper's `--ink-faint` is deliberately darker than the dark theme's faint value:
 it has to clear 4.5:1 on the reading well, which is the lowest-contrast surface it

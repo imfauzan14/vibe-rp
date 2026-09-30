@@ -1,15 +1,20 @@
 // Context panel — what the next request carries, said in plain language.
 //
 // Contract
-//   - `renderContextPanel({ request, usage, windowLearned })` returns the inner
-//     HTML for the Context sheet. It is a pure function of its arguments, so the
-//     panel can be tested and rendered without a live session and cannot drift
-//     from the numbers `planRequest` measured.
+//   - `renderContextPanel({ request, usage, windowLearned, samples, scope,
+//     scopeLabel, pruned })` returns the inner HTML for the Context sheet. It is
+//     a pure function of its arguments, so the panel can be tested and rendered
+//     without a live session and cannot drift from the numbers `planRequest`
+//     measured.
 //   - `request` is a `BrowserChatEngine.describeRequest` result: the exact
 //     payload that will be sent, measured. `usage` is `session.lastUsageReport`,
 //     or null when the provider has reported nothing. `windowLearned` says
 //     whether the window came from the provider or from the reader's own
 //     setting.
+//   - `samples` is `session.usageHistory` and `scope` is the prefix key the
+//     current setup would produce. The panel shows the trend for that scope
+//     only; history under any other setup is reported as a count and never
+//     folded into the figures.
 //   - **A row is omitted when it is empty.** The shipped defaults leave several
 //     of these at zero for every session — the continuity recap only exists once
 //     the window fills, which at 65,536 tokens is never — and "Continuity recap:
@@ -22,11 +27,16 @@
 //     they actually have ("how much room is left, and what happens when it
 //     runs out") and every term that is not self-evident carries one plain
 //     sentence.
+//   - **No raw identifier reaches a reader.** `scope` is an internal key built
+//     from ids; the panel is handed a `scopeLabel` the caller resolved from
+//     names, and prints that instead.
 //
 // Exports
 //   renderContextPanel(args) -> string
 //   contextSummary(request)  -> { window, used, free, pct, status, note }
 //   formatTokens(n)          -> string
+
+import { usageTrend } from "../../usage_history.js";
 
 const THOUSAND = 1000;
 const MILLION = 1000 * THOUSAND;
@@ -118,11 +128,145 @@ function group(title, rows) {
   );
 }
 
-export function renderContextPanel({ request, usage = null, windowLearned = false } = {}) {
+const pctOf = (rate) => `${Math.round((Number(rate) || 0) * 100)}%`;
+
+/**
+ * One bar per reply, oldest on the left, height = the share of the prompt the
+ * provider served from its cache.
+ *
+ * The chart is `role="img"` with the whole series in its label, because a
+ * two-pixel bar is not readable and a reader using a screen reader would
+ * otherwise get nothing at all. The numbers it carries are restated in the
+ * sentence below it, so the chart is the shape and the sentence is the value.
+ */
+function trendChart(trend) {
+  const bars = trend.series
+    .map((point, index) => {
+      const state = point.rate === null ? "unknown" : point.rate === 0 ? "cold" : "warm";
+      const height = point.rate === null ? "0" : point.rate.toFixed(3);
+      const what = point.rate === null ? "your provider reported no figure" : `${pctOf(point.rate)} reused`;
+      return (
+        `<span class="rp-ledger__trend-bar" data-state="${state}"` +
+        (point.folded ? ` data-folded="true"` : "") +
+        ` style="--h:${height}"` +
+        ` title="Reply ${index + 1}: ${what}"></span>`
+      );
+    })
+    .join("");
+  const series = trend.series.map((p) => (p.rate === null ? "no figure" : pctOf(p.rate))).join(", ");
+  // Singular, because "each of the 1 replies" is the kind of sentence that makes
+  // a reader distrust everything else on the sheet.
+  const subject = trend.total === 1 ? "the one reply" : `each of the ${trend.total} replies`;
+  return (
+    // `--bars` lets the stylesheet size the track to the series: two replies get
+    // a two-bar chart, thirty fill the column.
+    `<div class="rp-ledger__trend" role="img" style="--bars:${trend.total}" ` +
+    `aria-label="Cache reuse for ${subject} under this setup, oldest first: ${series}">` +
+    bars +
+    `</div>`
+  );
+}
+
+/** What the chart holds, in words: how many replies, and how many were measured. */
+function coverageSentence(trend) {
+  if (!trend.total) return "No reply has run under this setup yet.";
+  if (!trend.measured) {
+    const subject = trend.total === 1 ? "the one reply here" : `any of the ${trend.total} replies here`;
+    return `Your provider has not reported a cache figure for ${subject}, so there is nothing to compare.`;
+  }
+  if (trend.total === 1) return "The one reply reported a cache figure.";
+  if (!trend.unreported) return `All ${trend.total} replies reported a cache figure.`;
+  return `${trend.measured} of ${trend.total} replies reported a cache figure.`;
+}
+
+/** The reading: the average, which way it is going, and what stands out in it. */
+function readingSentence(trend) {
+  if (trend.measured === 1) {
+    return (
+      `One reply reused ${pctOf(trend.median)} of its prompt. A single reply cannot show a trend — ` +
+      `the next one will, and the first reply after any change in the setup is always cold.`
+    );
+  }
+  const shape =
+    trend.direction === "warming"
+      ? ", and it is rising"
+      : trend.direction === "cooling"
+        ? ", and it is falling"
+        : trend.direction === "steady"
+          ? ", and it is steady"
+          : "";
+  let text = `Reused ${pctOf(trend.median)} of the prompt on average across ${trend.measured} replies${shape}.`;
+  if (trend.cold) {
+    text += ` ${trend.cold} of them reused nothing.`;
+    text += " A reply right after anything changes is cold by definition, so a run of zeros means the prompt is not being reused at all.";
+  }
+  if (trend.series.some((p) => p.folded)) {
+    text += " A tick marks a reply whose prompt had just been rebuilt from the recap, so a dip there is expected rather than a change in how reuse is going.";
+  }
+  return text;
+}
+
+/** History this chat holds under another setup — counted, never merged in. */
+function otherSetupSentence(trend) {
+  const replies = trend.otherSamples === 1 ? "reply" : "replies";
+  const verb = trend.otherSamples === 1 ? "is" : "are";
+  if (trend.otherScopes === 1) {
+    return `${trend.otherSamples} earlier ${replies} in this chat ran under a different setup and ${verb} not counted here.`;
+  }
+  return `${trend.otherSamples} earlier ${replies} in this chat ran under ${trend.otherScopes} other setups and ${verb} not counted here.`;
+}
+
+/**
+ * Cache reuse over time — the one part of the sheet that is a history rather
+ * than a snapshot.
+ *
+ * It earns its place because a single hit rate cannot be acted on: the first
+ * reply after anything changes is cold by definition, so one number cannot
+ * distinguish a prompt that is never reused from one that was rebuilt a moment
+ * ago. The trend can, and it is scoped to the setup that produced it — a reply
+ * measured against a different prefix says nothing about this one, so it is
+ * counted and set aside rather than averaged in.
+ */
+function trendSection(trend, { scopeLabel = null, dropped = 0 } = {}) {
+  // Nothing measured here and nothing measured anywhere else in this chat: the
+  // sheet stays quiet about caching rather than printing a zero the reader
+  // would have to read as a failure.
+  if (!trend.total && !trend.otherSamples) return "";
+
+  const where = scopeLabel ? `For this chat, under ${scopeLabel}.` : "For this chat.";
+  const body = [note(`${where} ${coverageSentence(trend)}`)];
+  if (trend.measured) {
+    body.push(trendChart(trend));
+    body.push(note(readingSentence(trend)));
+  }
+  if (trend.otherSamples) body.push(note(otherSetupSentence(trend)));
+  if (dropped > 0) {
+    body.push(note(`Showing the ${trend.total} most recent replies under this setup.`));
+  }
+  return (
+    `<section class="rp-ledger__group">` +
+    `<h3 class="rp-ledger__group-title">Cache reuse over time</h3>` +
+    body.join("") +
+    `</section>`
+  );
+}
+
+export function renderContextPanel({
+  request,
+  usage = null,
+  windowLearned = false,
+  samples = [],
+  scope = "",
+  scopeLabel = null,
+  pruned = null,
+} = {}) {
   if (!request) return "";
   const b = request.breakdown || {};
   const summary = contextSummary(request);
   const percent = (n) => `${Math.round((Number(n) || 0) * 100)}%`;
+  // The trend for the setup in force right now. History under any other setup is
+  // reported by the section itself and never mixed into these figures.
+  const trend = usageTrend(samples, scope, { dropped: pruned ? pruned[scope] : 0 });
 
   const story = [
     row("Story so far", formatTokens(b.history), "the conversation up to now"),
@@ -206,6 +350,10 @@ export function renderContextPanel({ request, usage = null, windowLearned = fals
       : `<span class="rp-ledger__summary-used">${formatCount(summary.used)}</span>` +
         `<span class="rp-ledger__summary-of">tokens of ${formatCount(summary.window)} used</span>`;
 
+  // The group is named for what it is: the last reply, not the next request.
+  // Everything else on the sheet is a forecast; these rows are the only
+  // measurement, and the trend below them is what turns one measurement into
+  // something a reader can act on.
   return (
     `<div class="rp-ledger__summary" data-status="${summary.status}">` +
     `<div class="rp-ledger__summary-head">${headline}</div>` +
@@ -220,6 +368,7 @@ export function renderContextPanel({ request, usage = null, windowLearned = fals
     group("The story", story) +
     group("Character and setup", setup) +
     group("Reserved for the reply", reserved) +
-    group("From your provider", provider)
+    group("From your provider — your last reply", provider) +
+    trendSection(trend, { scopeLabel, dropped: trend.dropped })
   );
 }

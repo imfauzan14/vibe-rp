@@ -1787,6 +1787,72 @@ dialog.rp-dialog:not([open]) {
   letter-spacing: var(--tracking-wide);
 }
 
+/* -- cache reuse over time: one bar per reply, oldest on the left ---------- */
+
+/* The track owns the geometry and the panel owns the measurement: the panel
+   writes a bare fraction into `--h`, so a bar's height is the rate and the
+   stylesheet never has to know what a cache is.
+
+   The width hugs the bars. A chat with two replies draws a two-bar chart rather
+   than two bars in a mostly-empty box, which reads as a chart that failed to
+   render; a chat with thirty fills the column and the bars narrow. `--bars` is
+   the count, written by the panel. */
+.rp-ledger__trend {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 56px;
+  max-width: calc(var(--bars, 30) * 18px + (var(--bars, 30) - 1) * 2px + 2 * var(--space-4));
+  padding: var(--space-2) var(--space-4);
+  border: var(--border-width) solid var(--border-hairline);
+  border-radius: var(--radius-md);
+  background-color: var(--surface);
+}
+
+.rp-ledger__trend-bar {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 2px;
+  max-width: 18px;
+  height: calc(var(--h, 0) * 100%);
+  /* A reply that reused nothing still happened, so it keeps a visible stub
+     rather than collapsing into the baseline. */
+  min-height: 3px;
+  border-radius: var(--radius-xs);
+  background-color: var(--accent-annotation);
+}
+
+/* Measured, and nothing was reused. Muted, so a cold run reads as a run of
+   near-nothing rather than as a row of short bars. */
+.rp-ledger__trend-bar[data-state="cold"] {
+  background-color: var(--ink-faint);
+}
+
+/* The provider reported no cache figure at all — a different fact from a
+   measured zero, and drawn as one: a hairline rather than a stub. It uses the
+   control-outline token because `--border-hairline` measures 1.31:1 against this
+   surface, far under the 3:1 a graphical object needs, and a marker nobody can
+   see is not a gap in the series. `--border-control` measures 3.49:1 here. */
+.rp-ledger__trend-bar[data-state="unknown"] {
+  height: 2px;
+  min-height: 0;
+  background-color: var(--border-control);
+}
+
+/* The prompt was rebuilt from the recap during this reply, so it started cold
+   for a reason the reader did not choose. Ticked above the bar; the sentence
+   under the chart says what the tick means. */
+.rp-ledger__trend-bar[data-folded="true"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -6px;
+  height: 2px;
+  border-radius: var(--radius-xs);
+  background-color: var(--ink-muted);
+}
+
 .rp-flag {
   display: inline-flex;
   align-items: center;
