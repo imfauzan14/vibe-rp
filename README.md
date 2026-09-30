@@ -13,10 +13,11 @@ Vibe RP is a browser-first roleplay client for importing character cards, managi
 - Fork a conversation from any turn into a new session, leaving the original untouched
 - Edit a message as a new draft: the prior text is retained on the message, never overwritten
 - In-chat search (Ctrl/Cmd+F), library sort (recent or name), and tag filtering
-- Complete browser data backup & restore (IndexedDB cards and sessions, localStorage presets, settings, and cookies) plus granular storage resets
+- Complete browser data backup & restore (IndexedDB cards and sessions, localStorage presets and settings, and the sign-in cookies) plus granular storage resets
 - Undoable destructive actions in place of blocking `confirm()` dialogs
 - Pure formatting pipeline for model output (markdown subset, code-block protection, em-dash suppression)
 - **Choice Mode**: the model proposes 3-5 player choices after each reply; picking one becomes an ordinary user turn, and the normal pipeline runs unchanged. Switch with the chip in the composer; the preference persists per browser.
+- **Context sheet**: a live account of what the next request carries — how full the window is, where every token goes, what the provider billed for the last reply, and a cache-reuse trend over the recent replies, scoped to the setup that produced them so a preset change never mixes two histories together.
 
 ## Themes
 
@@ -25,7 +26,7 @@ Two themes ship, both driven by the `data-theme` attribute on `<html>` and defin
 - **Marginalia** (dark) is the default. It is expressed by the *absence* of the attribute.
 - **Paper** (light) sets `data-theme="paper"`.
 
-The choice persists in localStorage (`vibe_rp_theme`) and falls back to the operating system preference. A small pre-paint script in `index.html` applies the stored theme before first paint so there is no flash of the wrong ground.
+The choice persists in localStorage (`vibe_rp_theme`) and falls back to the operating system preference. `theme-boot.js` is loaded ahead of the app modules and applies the stored theme before first paint, so there is no flash of the wrong ground.
 
 ## Quickstart
 
@@ -91,6 +92,12 @@ The engine does not think in terms of "how much history fits in an internal prom
 
 A large preset consumes real context and reduces history; it is a budgeting condition, not a failure. A small preset leaves room for more history. A larger configured window buys more usable content. There is no hardcoded "64K mode".
 
+### What the Context sheet reports
+
+The sheet is the reader's window into all of the above: a live breakdown of what the next request will carry, and — for the replies already sent — what the provider actually billed for them.
+
+Cache reuse is the one figure that is meaningless on its own, because the first reply after anything changes is cold by definition. It is therefore shown as a trend over the recent replies rather than as a single number, and the trend is **scoped to the setup that produced it**: the endpoint, the model, the card, the persona and the system prompt. Change any of those and the next reply starts cold, so samples measured under one setup are counted and set aside rather than averaged into another. A provider that reports no cache figure at all yields a *gap* in the series, never a zero: "nothing was reported" and "nothing was reused" are different facts, and the sheet says which it has.
+
 ## Choice Mode
 
 Choice Mode changes *how the reader picks the next turn*, never how the conversation is stored or generated. It is a mode, not a second engine.
@@ -126,25 +133,32 @@ assistant reply
 ```text
 public/
   browser_engine.js     BrowserChatEngine: prompt assembly, context rules, compaction, SSE streaming
+  context_plan.js       Pure planning: token estimation, the summary budgets, and the one allocator
   session_controller.js SessionController: modal state machine, message transitions, send/stream flow (zero DOM)
+  session_state.js      The session-write seam: the engine decides when, this owns how
+  usage_history.js      Per-chat usage history: the scope key, the per-scope caps, the cache trend (leaf)
   local_db.js           LocalDb: IndexedDB (cards, sessions) + localStorage (personas, directives, settings)
   safe_html.js          Canonical escapeHtml/escapeAttr: escapes & < > " ' (the single XSS fix point)
+  text.js               The dependency-free leaf for shared text rules (placeholders, thought blocks, inline fields)
   message_format.js     Pure formatting: formatProse and formatMessages view models (zero DOM)
+  choice_format.js      The Choice Mode prompt and the resilient parser for untrusted model output (zero DOM)
   card_parse.js         Character-card parsing helpers: JSONC strip, normalize, PNG/WebP chara extraction
   remote_import.js      URL import: character-page API mapping + direct card-file fetch (zero DOM)
   session_refresh.js    Keeps an imported session alive: refresh-token exchange, single-flight, proactive refresh (zero DOM)
   sw.js                 Service worker: offline shell cache (never caches cross-origin or non-GET)
-  index.html            Character library shell (92 lines, markup only)
-  chat.html             Conversation shell (189 lines, markup only; bootstrap is ui/chat/chat_boot.js)
+  index.html            Character library shell (91 lines, markup only)
+  chat.html             Conversation shell (188 lines, markup only; bootstrap is ui/chat/chat_boot.js)
   ui/                   UI modules: shared (toast, modal, tabs, confirm, dom, theme, image),
                         library (library_page/_controller/_view, character_card, detail_modal, import_flow),
                         settings/** (the ONE settings surface both pages mount), editors/**, and chat/** for the conversation view
-  design/               Design system: DESIGN.md, tokens.css (all colour values), components.css (rp- classes)
+  design/               Design system: DESIGN.md (the class and contrast contract), tokens.css (all colour values), components.css (rp- classes)
   design/fonts/         Self-hosted design-system webfonts
   fonts/                Self-hosted prose webfonts (Newsreader, JetBrains Mono)
   icons/                PWA icons (192/512/maskable/apple-touch PNG)
   404.html              Branded not-found page, served with status 404
   manifest.webmanifest  PWA manifest
+tools/                  prompt_eval.mjs (bun run eval) and story_eval.mjs, the prompt and story harnesses
+docs/                   adr/ (architecture decision records) and witness_mode_design.md (a proposal, not implemented)
 serve.js                Bun static server: SPA routing plus the security-header layer
 vercel.json             Deployment config mirroring serve.js routing, rewrites, and headers
 test/                   Bun test suite (34 files)

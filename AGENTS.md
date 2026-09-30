@@ -65,36 +65,35 @@ The dependency direction is one-way: UI modules depend on controllers, controlle
 
 Top-level logic (all zero DOM unless noted):
 
-- **`public/browser_engine.js`** (~2358 lines): `BrowserChatEngine`. Prompt assembly, the four context rules, ledger folding, SSE streaming, the universal allocator, and auxiliary choice generation. Re-exports the pure planning helpers from `context_plan.js` and the session-write accessors from `session_state.js` so callers keep one import surface.
-- **`public/context_plan.js`** (~220 lines): pure planning. Token estimation, `cleanPromptText`, the summary budgets, and `allocateContext`. Owns the ledger-framing cost (`LEDGER_OPEN`/`LEDGER_CLOSE`, `ledgerFramingTokens()`) so every charge site reads one value.
-- **`public/session_state.js`** (~70 lines): the session-write seam (`applyFold`, `resetLedger`, `noteUsage`, `markLedgerTruncated`, `setOverflowReported`, `setCondensedReported`). The engine decides *when*; this module owns *how* the controller's session is mutated, so the fold returns a value and one place applies it. `resetLedger` handles explicit ledger clears (user transcript edits).
-- **`public/session_controller.js`** (~766 lines): `SessionController`. Session lifecycle, modal state machine, message transitions, send/stream flow, retry of an unanswered turn, and the Choice Mode state machine. Accepts `options.signal` and exposes `cancel()`.
-- **`public/local_db.js`** (~789 lines): `LocalDb` plus its two backends. `IdbStore` owns IndexedDB (cards, sessions); `LocalStore` owns localStorage (personas, directives, settings). `LocalDb` is a facade: an instance drives its own stores and accepts injected ones, while the statics delegate to a default instance. `DB_VERSION` is 2.
-- **`public/text.js`** (~60 lines): the cycle-free leaf every other pure module may import. `utf8Decoder`, `substitutePlaceholders`, `stripThoughtBlocks`, `renderInlineField`.
-- **`public/safe_html.js`** (~40 lines): `escapeHtml` and `escapeAttr`. The single escaping point for the whole app.
-- **`public/message_format.js`** (~160 lines): pure `formatProse` and `formatMessages` view models.
-- **`public/choice_format.js`** (~328 lines): the Choice Mode prompt and the resilient parser for untrusted model output (zero DOM).
+- **`public/browser_engine.js`** (2829 lines): `BrowserChatEngine`. Prompt assembly, the four context rules, ledger folding, SSE streaming, the universal allocator, and auxiliary choice generation. Re-exports the pure planning helpers from `context_plan.js` and the session-write accessors from `session_state.js` so callers keep one import surface.
+- **`public/context_plan.js`** (228 lines): pure planning. Token estimation, `cleanPromptText`, the summary budgets, and `allocateContext` — the one allocator. Owns the ledger-framing cost (`LEDGER_OPEN`/`LEDGER_CLOSE`, `ledgerFramingTokens()`) so every charge site reads one value. `browser_engine.js` re-exports `allocateContext` as a thin wrapper, so the engine's own calls and a page's calls go through the same decision.
+- **`public/session_state.js`** (112 lines): the session-write seam (`applyFold`, `resetLedger`, `captureLedgerState`, `restoreLedgerState`, `noteUsage`, `noteUsageReport`, `markLedgerTruncated`, `setOverflowReported`, `setCondensedReported`). The engine decides *when*; this module owns *how* the controller's session is mutated, so the fold returns a value and one place applies it. `resetLedger` handles explicit ledger clears (user transcript edits); the capture/restore pair makes a deletion undoable.
+- **`public/usage_history.js`** (235 lines): the per-chat usage history — the sample shape, the scope key that decides what is comparable, the per-scope caps, and the trend derivation. A leaf module: it imports nothing, reads no store and holds no clock. `session_controller.js` writes the samples; `ui/chat/context_panel.js` renders the trend.
+- **`public/session_controller.js`** (858 lines): `SessionController`. Session lifecycle, modal state machine, message transitions, send/stream flow, retry of an unanswered turn, the Choice Mode state machine, and the one place a usage sample is recorded. Accepts `options.signal` and exposes `cancel()`.
+- **`public/local_db.js`** (907 lines): `LocalDb` plus its two backends. `IdbStore` owns IndexedDB (cards, sessions); `LocalStore` owns localStorage (personas, directives, settings). `LocalDb` is a facade: an instance drives its own stores and accepts injected ones, while the statics delegate to a default instance. `DB_VERSION` is 2.
+- **`public/text.js`** (61 lines): the cycle-free leaf every other pure module may import. `utf8Decoder`, `substitutePlaceholders`, `stripThoughtBlocks`, `renderInlineField`.
+- **`public/safe_html.js`** (37 lines): `escapeHtml` and `escapeAttr`. The single escaping point for the whole app.
+- **`public/message_format.js`** (159 lines): pure `formatProse` and `formatMessages` view models. `formatProse` is the one the app uses; `formatMessages` is consumed only by tests.
+- **`public/choice_format.js`** (328 lines): the Choice Mode prompt and the resilient parser for untrusted model output (zero DOM).
 - **`public/card_parse.js`** (348 lines): character-card parsing (JSONC strip, normalize, PNG/WebP `chara` extraction).
-- **`public/remote_import.js`** (266 lines): URL import, character-page API mapping, direct card-file fetch.
+- **`public/remote_import.js`** (265 lines): URL import, character-page API mapping, direct card-file fetch.
 - **`public/session_refresh.js`** (336 lines): refresh-token exchange, single-flight, proactive refresh.
 - **`public/sw.js`** (447 lines): offline shell cache. Never caches cross-origin or non-GET requests.
 
 Page shells (markup plus a thin bootstrap only):
 
-- **`public/index.html`** (92 lines): character library shell. Imports `ui/library_page.js`.
-- **`public/chat.html`** (192 lines): conversation shell. Loads `ui/chat/chat_boot.js` with `<script src>`.
+- **`public/index.html`** (91 lines): character library shell. Imports `ui/library_page.js`.
+- **`public/chat.html`** (188 lines): conversation shell. Loads `ui/chat/chat_boot.js` with `<script src>`.
 
-Shared UI modules (**`public/ui/`**, 30 modules, ~7000 lines). Reuse these instead of re-implementing:
+Shared UI modules (**`public/ui/`**, 31 modules, 7920 lines). Reuse these instead of re-implementing:
 
 - Shared: `dom.js`, `toast.js`, `modal.js`, `tabs.js`, `confirm.js`, `theme.js`, `image.js`, `data_transfer.js`
 - Library: `library_page.js`, `library_controller.js`, `library_view.js`, `character_card.js`, `detail_modal.js`, `import_flow.js`
 - Library subfolders: `settings/**` (modal, persona/directive lists, params, engine, and data panels), `editors/**` (persona and directive editors)
-- Chat: `ui/chat/**` — `message_feed.js`, `composer.js`, `choice_panel.js`, `search.js`, `turn_machine.js`, and the `chat_boot.js` composition root. The turn lifecycle (start, chunk piping, settle, stop, failure classification, retry) lives in `turn_machine.js` as `createTurnMachine({ controller, composer, feed, ... })`; the boot supplies the DOM objects and the callbacks that paint. It has no `document`/`window` at module scope.
-- Both pages mount the SAME settings surface: `ui/settings/settings_modal.js` (plus `ui/editors/**` and `ui/settings/data_panel.js`). There is no chat-only settings panel; the library-only session-import block is rendered only when the caller passes `saveSession`.
-- Chat: `ui/chat/**` (feed, composer, search, confirm)
+- Chat: `ui/chat/**` — `message_feed.js`, `composer.js`, `choice_panel.js`, `search.js`, `context_panel.js`, `turn_machine.js`, and the `chat_boot.js` composition root. The turn lifecycle (start, chunk piping, settle, stop, failure classification, retry) lives in `turn_machine.js` as `createTurnMachine({ controller, composer, feed, ... })`; the boot supplies the DOM objects and the callbacks that paint. It has no `document`/`window` at module scope. `context_panel.js` renders the Context sheet and is a pure function of its arguments.
 - Both pages mount the SAME settings surface: `ui/settings/settings_modal.js` (plus `ui/editors/**` and `ui/settings/data_panel.js`). There is no chat-only settings panel; the library-only session-import block is rendered only when the caller passes `saveSession`.
 
-Design system (**`public/design/`**): `DESIGN.md` (the contract), `tokens.css` (every colour value), `components.css` (the `rp-` classes), `fonts/`.
+Design system (**`public/design/`**): `DESIGN.md` is the contract — the token table, the measured contrast table (§4, generated from `contrast_audit.mjs`), the `rp-` class contract, the interaction rules and the anti-tells. `tokens.css` owns every colour value, `components.css` holds the shared classes, `fonts/` holds the self-hosted webfonts.
 
 ### Four-Rule Context Management
 
@@ -107,12 +106,12 @@ The engine enforces cache-friendly context assembly:
 
 ### Universal Context Allocation
 
-One allocator (`allocateContext` in `browser_engine.js`) owns the whole request
-budget. `planRequest` builds every candidate, classifies it, measures it, runs
-the allocation, plans history against the granted capacity, assembles the
-payload, and measures the *final* request. `streamTurn` calls `planRequest` to
-send; `describeRequest` calls it to power the context inspector, so the two can
-never disagree.
+One allocator (`allocateContext` in `context_plan.js`, re-exported by the engine)
+owns the whole request budget. `planRequest` builds every candidate, classifies
+it, measures it, runs the allocation, plans history against the granted
+capacity, assembles the payload, and measures the *final* request. `streamTurn`
+calls `planRequest` to send; `describeRequest` calls it to power the context
+inspector, so the two can never disagree.
 
 Content is classified by semantics, not by an arbitrary number:
 
@@ -142,14 +141,20 @@ trailing unanswered user turn, so recovery survives an expired toast and a
 reload. A new turn supersedes any turn still in flight, so two generations never
 run concurrently.
 
+## Repository layout
+
 - **`public/`**: All frontend code, served statically
 - **`public/ui/`**: UI modules. The only place DOM work belongs
-- **`public/design/`**: Design system. `tokens.css` owns every colour value
+- **`public/design/`**: Design system. `DESIGN.md` is the class and contrast contract; `tokens.css` owns every colour value
 - **`test/`**: Bun test suite (`*.test.ts`)
-- **`CONTEXT.md`**: the domain model — core concepts and the modules/seams that own them. Read this before an architecture change.
-- **`docs/adr/`**: Architecture Decision Records. Read before proposing a refactor that touches a recorded seam.
+- **`tools/`**: `prompt_eval.mjs` (`bun run eval`) gates the prompts; `story_eval.mjs` is the longitudinal story-development evaluation, whose own header warns that its metrics are lexical proxies over one sample per arm and are a prompt to read the transcript rather than a result
+- **`docs/adr/`**: Architecture Decision Records. Read before proposing a refactor that touches a recorded seam
+- **`docs/witness_mode_design.md`**: a design proposal, explicitly not implemented
+- **`CONTEXT.md`**: the domain model — core concepts and the modules/seams that own them. Read this before an architecture change
 - **`serve.js`**: Dev server, SPA routing, security headers
 - **`vercel.json`**: Deployment routing, rewrites, and headers
+- **`bunfig.toml`**: sets the test root to `test`
+- **`.gitattributes`**: normalises the index to LF, which is what keeps a CSP-pinned file's served bytes equal to the reviewed bytes
 
 ## Development Commands
 
@@ -295,7 +300,7 @@ bun test test/
 
 ### Stats
 
-616 tests, 10972 expect() calls, 30 files (measured with `bun test`).
+746 tests, 11372 expect() calls, 34 files (measured with `bun test`).
 
 ### Existing Test Files
 
@@ -307,13 +312,15 @@ bun test test/
 - `test/compaction.test.ts`: long-run compaction, adaptive summary budget, and fold boundary/stress invariants
 - `test/context.test.ts`: context planning, allocation, Inspector alignment, large presets, and seams
 - `test/context_longrun.test.ts`: long-run context compaction monotonicity
+- `test/context_panel.test.ts`: the Context sheet's rendering (an empty row is omitted rather than shown as a zero, the window's source is named, provider figures appear only when the provider reported them, and the cache-reuse trend reads one scope while counting the rest)
 - `test/context_property.test.ts`: randomized allocator properties and invariants through the engine seam
 - `test/core_hardening.test.ts`: null-chunk suppression, degraded-fold notices, provider errors in a 200 body
-- `test/data_management.test.ts`: export/import lifecycle, persona/directive data operations
+- `test/data_management.test.ts`: export/import lifecycle, persona/directive data operations, and the uniform destructive-confirm invariant
 - `test/detail_modal_close.test.ts`: detail modal close behavior and cleanup
 - `test/engine_interface.test.ts`: engine interface contract
 - `test/library_card_actions.test.ts`: library card interactions and action dispatch
 - `test/local_db_hardening.test.ts`: v1 to v2 upgrade, transactional delete, typed errors
+- `test/local_db_seam.test.ts`: the LocalDb instance seam (injected IDB/local backends, default-instance delegation)
 - `test/message_format.test.ts`: formatting
 - `test/modal_dismissal.test.ts`: backdrop and keyboard dismissal contracts
 - `test/no_inline_scripts.test.ts`: CSP script-src verification (no inline scripts)
@@ -321,14 +328,16 @@ bun test test/
 - `test/presets_store.test.ts`: preset stores
 - `test/remote_import.test.ts`: URL import against a mocked `globalThis.fetch`
 - `test/responsive_layout.test.ts`: phone-width CSS guards (library filter bar stays inline, preset-row badge atomicity, message speaker truncation)
-- `test/session_controller.test.ts`: controller behavior against injected fakes (no DOM)
+- `test/session_controller.test.ts`: controller behavior against injected fakes (no DOM), and the usage-history write (one sample per completed turn, filed under the prefix it was sent under)
 - `test/session_refresh.test.ts`: JWT decode, expiry skew, rotation, single-flight, no token leak
+- `test/session_state.test.ts`: the session-write accessors (fold application, ledger reset, usage, notice latches)
 - `test/settings_unification.test.ts`: one settings surface for both pages (shared modal import, cache-key read/write, session-import gating, no chat-only panel or markup)
 - `test/stream_robustness.test.ts`: the OpenAI-compatible streaming contract (delta/message content, `data:` framing, non-streaming bodies, max_tokens forwarding)
-- `test/unified_modules.test.ts`: single escapeHtml/toast/theme/thought-strip/field-render implementations, sw.js shell hygiene
+- `test/telemetry.test.ts`: measured provider telemetry (`describeUsage` reconciliation, the learned per-request overhead and its median guard, capability persistence across reloads, the learned context window, cache-breakpoint placement)
 - `test/turn_machine.test.ts`: the chat turn lifecycle against collaborator fakes (chunk piping, settle, stop silence, failure toast, all four entries)
-- `test/local_db_seam.test.ts`: the LocalDb instance seam (injected IDB/local backends, default-instance delegation)
-- `test/session_state.test.ts`: the session-write accessors (fold application, ledger reset, usage, notice latches)
+- `test/ui_hardening.test.ts`: the single reduced-motion-aware scroll path, search reading the transcript rather than the rendered window, the settle order that lets a reply be announced, the editor error alert, the gated sample seeding, and the 404 belonging to the token set
+- `test/unified_modules.test.ts`: single escapeHtml/toast/theme/thought-strip/field-render implementations, sw.js shell hygiene
+- `test/usage_history.test.ts`: the per-chat usage history (the scope key decides what is comparable, an unreported reply is a gap rather than a miss, pruning is per scope, and the trend reads one scope while counting the rest)
 
 ### When to Add Tests
 

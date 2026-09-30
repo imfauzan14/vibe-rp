@@ -82,8 +82,28 @@ register rules come from measured corpus frequency rather than taste.
 ### Session
 
 One conversation against one card: `{ id, cardId, messages[], ledger,
-lastUsage, ... }`. Messages are append-only; an edit forks a new revision with
-the same id and keeps the superseded text in `msg.forks[]`.
+lastUsage, lastUsageReport, usageHistory[], ... }`. Messages are append-only; an
+edit forks a new revision with the same id and keeps the superseded text in
+`msg.forks[]`.
+
+### Usage history
+
+What the provider actually reported, one sample per completed turn, appended to
+the session and pruned per scope. A sample is only comparable with another
+measured against the same **scope** — `endpoint|model|cardId|personaId|
+directiveId` — because each of those independently resets a provider's cache.
+The persona and the directive live on the *card*, not the session, so changing a
+preset changes the prefix for every chat of that card; the history is grouped by
+scope so a trend never averages across the change.
+
+Two facts that must stay apart: an endpoint that reported no cache figure yields
+`cached: null`, counted as a *gap*, while a measured miss is `cached: 0`. The
+scope key is internal and never reaches a reader — the Context sheet is handed a
+label the caller resolved from names.
+
+`usage_history.js` owns the sample shape, the caps and the trend derivation;
+`session_controller.js` writes the samples at the one seam every turn path takes;
+`ui/chat/context_panel.js` renders them.
 
 ### Ledger
 
@@ -118,8 +138,9 @@ written back to the session. See ADR-0001.
 | --- | --- | --- |
 | Card normalisation | `character_card.js` | pure functions, no DOM/storage |
 | Prompt assembly, context rules | `browser_engine.js` | `BrowserChatEngine`, statics |
-| Token budget, allocation, framing cost | `context_plan.js` | pure functions |
+| Token budget, allocation, framing cost | `context_plan.js` | pure functions, incl. `allocateContext` |
 | Session writes (fold, usage, notices) | `session_state.js` | accessor functions |
+| Usage history, cache trend | `usage_history.js` | pure functions, leaf |
 | Turn lifecycle | `ui/chat/turn_machine.js` | `createTurnMachine({ collaborators })` |
 | Persistence | `local_db.js` | `LocalDb` facade over `IdbStore` + `LocalStore` |
 | Shared text rules | `text.js` | leaf module, no imports |

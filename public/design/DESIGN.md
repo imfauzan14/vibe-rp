@@ -53,7 +53,9 @@ gold and, more importantly, a rule for what may not.
 
 One token set drives both themes. `:root` is Marginalia (dark, default).
 `[data-theme="paper"]` overrides colour, elevation and grain only; type,
-space, radius, motion and z-index are identical in both.
+space, radius, motion and z-index are identical in both. `theme-boot.js` applies
+the stored theme before first paint, so there is no flash of the wrong ground;
+`ui/theme.js` owns the same contract at runtime.
 
 ### 3.1 Ground and elevation
 
@@ -113,10 +115,10 @@ deliberately not a terracotta or clay.
 
 | Token | Marginalia | Paper | Role |
 |---|---|---|---|
-| `--shadow-sm` | `0 1px 2px rgba(0,0,0,.45)` | `0 1px 2px rgba(31,34,38,.07)` | Resting panels |
-| `--shadow-md` | `0 6px 18px rgba(0,0,0,.5)` | `0 4px 12px rgba(31,34,38,.09)` | Popovers, tooltips |
-| `--shadow-lg` | `0 18px 44px rgba(0,0,0,.6)` | `0 12px 30px rgba(31,34,38,.12)` | Drawers, toasts |
-| `--shadow-xl` | `0 30px 70px rgba(0,0,0,.68)` | `0 22px 54px rgba(31,34,38,.16)` | Dialogs, sheets |
+| `--shadow-sm` | `0 1px 2px rgba(0, 0, 0, 0.45)` | `0 1px 2px rgba(31, 34, 38, 0.07)` | Resting panels |
+| `--shadow-md` | `0 6px 18px rgba(0, 0, 0, 0.5)` | `0 4px 12px rgba(31, 34, 38, 0.09)` | Popovers, tooltips |
+| `--shadow-lg` | `0 18px 44px rgba(0, 0, 0, 0.6)` | `0 12px 30px rgba(31, 34, 38, 0.12)` | Drawers, toasts |
+| `--shadow-xl` | `0 30px 70px rgba(0, 0, 0, 0.68)` | `0 22px 54px rgba(31, 34, 38, 0.16)` | Dialogs, sheets |
 | `--grain-layer` | generated SVG noise tile | same tile | Paper stock texture inside the reading well |
 | `--grain-opacity` | `0.028` | `0.05` | |
 | `--grain-blend` | `screen` | `multiply` | |
@@ -188,89 +190,111 @@ the chrome may set type wider than it.
 
 ## 4. Measured contrast
 
-Computed with the WCAG 2.2 sRGB relative-luminance formula. Script:
-`C:/tmp/vibe-verify/contrast.py` (throwaway, outside the repo). Both themes:
-**59 of 59 pairs pass**, 4.5:1 for text and 3:1 for UI boundaries and the
-focus indicator.
+Computed with the WCAG 2.2 sRGB relative-luminance formula. **Regenerate with**
+`bun run .workbuddy-ai/analysis/contrast_audit.mjs`: it reads the token blocks out
+of `tokens.css`, computes every pair the components actually render, in both
+themes, and reports each against the minimum that applies to it. Do not edit the
+tables below by hand.
 
-The annotation, user, danger and success washes are solid hex values
-computed by compositing the accent over the surface at 14 percent, so every
-ratio below is a real measurement rather than a guess about alpha.
+Pairs are named by token rather than by hex. `tokens.css` owns every colour value,
+and a second copy of one is a second place for it to be wrong.
 
-### Marginalia
+**66 of 66 pairs pass** — 4.5:1 for text, 3:1 for non-text UI (control outlines,
+the focus indicator, and the cache chart's bars).
 
-| Pair | Foreground | Background | Ratio | Required |
-|---|---|---|---|---|
-| body prose on canvas | `#E9E7E2` | `#0E1113` | 15.33:1 | 4.5:1 |
-| body prose on page surface | `#E9E7E2` | `#161A1D` | 14.17:1 | 4.5:1 |
-| body prose on raised surface | `#E9E7E2` | `#1D2226` | 12.98:1 | 4.5:1 |
-| secondary text on canvas | `#A6ADB1` | `#0E1113` | 8.33:1 | 4.5:1 |
-| secondary text on surface | `#A6ADB1` | `#161A1D` | 7.70:1 | 4.5:1 |
-| metadata text on canvas | `#838B90` | `#0E1113` | 5.47:1 | 4.5:1 |
-| metadata text on surface | `#838B90` | `#161A1D` | 5.05:1 | 4.5:1 |
-| placeholder in input | `#838B90` | `#1A2126` | 4.70:1 | 4.5:1 |
-| annotation accent on canvas | `#D3B36C` | `#0E1113` | 9.42:1 | 4.5:1 |
-| annotation accent on surface | `#D3B36C` | `#161A1D` | 8.70:1 | 4.5:1 |
-| annotation on annotation wash | `#D3B36C` | `#302F28` | 6.68:1 | 4.5:1 |
-| user-hand accent on canvas | `#8FB6DE` | `#0E1113` | 8.95:1 | 4.5:1 |
-| user-hand accent on surface | `#8FB6DE` | `#161A1D` | 8.26:1 | 4.5:1 |
-| user hand on user wash | `#8FB6DE` | `#273038` | 6.33:1 | 4.5:1 |
-| danger text on canvas | `#EE8A7C` | `#0E1113` | 7.73:1 | 4.5:1 |
-| danger text on danger wash | `#EE8A7C` | `#342A2A` | 5.67:1 | 4.5:1 |
-| success text on canvas | `#86C7A3` | `#0E1113` | 9.67:1 | 4.5:1 |
-| success text on success wash | `#86C7A3` | `#263230` | 6.77:1 | 4.5:1 |
-| primary button label | `#12161A` | `#E9E7E2` | 14.71:1 | 4.5:1 |
-| secondary button label | `#E9E7E2` | `#1D2226` | 12.98:1 | 4.5:1 |
-| ghost button label on canvas | `#A6ADB1` | `#0E1113` | 8.33:1 | 4.5:1 |
-| danger button label | `#0E1113` | `#EE8A7C` | 7.73:1 | 4.5:1 |
-| chip label on chip fill | `#A6ADB1` | `#1D2226` | 7.05:1 | 4.5:1 |
-| chip label on hairline fill | `#A6ADB1` | `#272A2D` | 6.34:1 | 4.5:1 |
-| badge count on gold fill | `#12161A` | `#D3B36C` | 9.03:1 | 4.5:1 |
-| focus ring vs canvas | `#D3B36C` | `#0E1113` | 9.42:1 | 3.0:1 |
-| focus ring vs surface | `#D3B36C` | `#161A1D` | 8.70:1 | 3.0:1 |
-| control border vs surface | `#68707A` | `#161A1D` | 3.49:1 | 3.0:1 |
-| control border vs canvas | `#68707A` | `#0E1113` | 3.78:1 | 3.0:1 |
-| control border vs input field | `#68707A` | `#1A2126` | 3.25:1 | 3.0:1 |
-| input field vs reading well | `#1A2126` | `#0A0C0E` | 1.20:1 | — |
+The annotation, user, danger and success washes are solid hex values computed by
+compositing the accent over the surface at 14 percent, so every ratio below is a
+real measurement rather than a guess about alpha.
 
-### Paper
+### 4.1 Marginalia
 
-| Pair | Foreground | Background | Ratio | Required |
-|---|---|---|---|---|
-| body prose on canvas | `#191A1C` | `#F1F0EB` | 15.26:1 | 4.5:1 |
-| body prose on page surface | `#191A1C` | `#FBFAF7` | 16.68:1 | 4.5:1 |
-| body prose on raised surface | `#191A1C` | `#F5F4EF` | 15.81:1 | 4.5:1 |
-| secondary text on canvas | `#4A4F54` | `#F1F0EB` | 7.25:1 | 4.5:1 |
-| secondary text on surface | `#4A4F54` | `#FBFAF7` | 7.93:1 | 4.5:1 |
-| metadata text on reading well | `#5D6368` | `#E7E5DE` | 4.83:1 | 4.5:1 |
-| metadata text on canvas | `#5D6368` | `#F1F0EB` | 5.33:1 | 4.5:1 |
-| metadata text on surface | `#5D6368` | `#FBFAF7` | 5.83:1 | 4.5:1 |
-| placeholder in input | `#5D6368` | `#FCFBF8` | 5.88:1 | 4.5:1 |
-| annotation accent on canvas | `#7A5A16` | `#F1F0EB` | 5.57:1 | 4.5:1 |
-| annotation accent on surface | `#7A5A16` | `#FBFAF7` | 6.09:1 | 4.5:1 |
-| annotation on annotation wash | `#7A5A16` | `#E9E4D8` | 5.01:1 | 4.5:1 |
-| user-hand accent on canvas | `#2E5E8C` | `#F1F0EB` | 5.94:1 | 4.5:1 |
-| user-hand accent on surface | `#2E5E8C` | `#FBFAF7` | 6.50:1 | 4.5:1 |
-| user hand on user wash | `#2E5E8C` | `#DEE4E8` | 5.29:1 | 4.5:1 |
-| danger text on canvas | `#A3372B` | `#F1F0EB` | 5.86:1 | 4.5:1 |
-| danger text on danger wash | `#A3372B` | `#EFDFDA` | 5.17:1 | 4.5:1 |
-| success text on canvas | `#2F6B4F` | `#F1F0EB` | 5.52:1 | 4.5:1 |
-| success text on success wash | `#2F6B4F` | `#DEE6DF` | 4.94:1 | 4.5:1 |
-| primary button label | `#FFFFFF` | `#191A1C` | 17.41:1 | 4.5:1 |
-| secondary button label | `#191A1C` | `#F5F4EF` | 15.81:1 | 4.5:1 |
-| ghost button label on canvas | `#4A4F54` | `#F1F0EB` | 7.25:1 | 4.5:1 |
-| danger button label | `#FFFFFF` | `#A3372B` | 6.69:1 | 4.5:1 |
-| chip label on chip fill | `#4A4F54` | `#F5F4EF` | 7.51:1 | 4.5:1 |
-| chip label on hairline fill | `#4A4F54` | `#E9E8E5` | 6.75:1 | 4.5:1 |
-| badge count on gold fill | `#FFFFFF` | `#7A5A16` | 6.36:1 | 4.5:1 |
-| focus ring vs canvas | `#2E5E8C` | `#F1F0EB` | 5.94:1 | 3.0:1 |
-| focus ring vs surface | `#2E5E8C` | `#FBFAF7` | 6.50:1 | 3.0:1 |
-| control border vs surface | `#7F848A` | `#FBFAF7` | 3.61:1 | 3.0:1 |
-| control border vs canvas | `#7F848A` | `#F1F0EB` | 3.30:1 | 3.0:1 |
+| Pair | Ratio | Need | Role |
+|---|---|---|---|
+| `--ink` on `--canvas` | 15.33:1 | 4.5 | body text on the page ground |
+| `--ink` on `--surface` | 14.17:1 | 4.5 | prose in a card, sheet or dialog |
+| `--ink` on `--canvas-sunken` | 15.85:1 | 4.5 | prose in the reading well |
+| `--ink` on `--surface-raised` | 12.98:1 | 4.5 | prose in a tray or popover |
+| `--ink` on `--input-bg` | 13.18:1 | 4.5 | typed text in a field |
+| `--ink-muted` on `--canvas` | 8.33:1 | 4.5 | secondary copy on the ground |
+| `--ink-muted` on `--surface` | 7.70:1 | 4.5 | control labels in a dialog |
+| `--ink-muted` on `--surface-raised` | 7.05:1 | 4.5 | labels in a tray |
+| `--ink-faint` on `--canvas` | 5.47:1 | 4.5 | timestamps on the ground |
+| `--ink-faint` on `--surface` | 5.05:1 | 4.5 | metadata in a card |
+| `--ink-faint` on `--canvas-sunken` | 5.65:1 | 4.5 | message metadata in the reading well |
+| `--ink-faint` on `--input-bg` | **4.70:1** | 4.5 | the placeholder — the tightest text pair in this theme |
+| `--accent-annotation` on `--surface` | 8.70:1 | 4.5 | the character's name, continuity marks |
+| `--accent-annotation` on `--canvas` | 9.42:1 | 4.5 | annotation ink on the ground |
+| `--accent-annotation` on `--annotation-subtle` | 6.68:1 | 4.5 | annotation on its own wash |
+| `--accent-user` on `--surface` | 8.26:1 | 4.5 | the reader's own name and hand |
+| `--accent-user` on `--canvas` | 8.95:1 | 4.5 | the reader's ink on the ground |
+| `--danger` on `--surface` | 7.14:1 | 4.5 | danger text in a dialog |
+| `--danger` on `--canvas` | 7.73:1 | 4.5 | danger text on the ground |
+| `--danger` on `--danger-subtle` | 5.67:1 | 4.5 | danger on its own wash |
+| `--success` on `--surface` | 8.93:1 | 4.5 | success text |
+| `--warn` on `--surface` | 8.70:1 | 4.5 | continuity flag |
+| `--on-danger` on `--danger` | 7.73:1 | 4.5 | label on a filled danger button |
+| `--ink-inverse` on `--accent-annotation` | 9.03:1 | 4.5 | label on a filled annotation badge |
+| `--border-control` on `--input-bg` | 3.25:1 | 3.0 | field outline against its fill |
+| `--border-control` on `--canvas` | 3.78:1 | 3.0 | field outline against the ground |
+| `--border-control` on `--surface` | 3.49:1 | 3.0 | field outline in a dialog |
+| `--focus-ring` on `--canvas` | 9.42:1 | 3.0 | focus indicator on the ground |
+| `--focus-ring` on `--surface` | 8.70:1 | 3.0 | focus indicator in a dialog |
+| `--focus-ring` on `--input-bg` | 8.09:1 | 3.0 | focus indicator on a field |
+| `--accent-annotation` on `--surface` | 8.70:1 | 3.0 | a reused bar on the cache chart |
+| `--ink-faint` on `--surface` | 5.05:1 | 3.0 | a cold bar on the cache chart |
+| `--border-control` on `--surface` | 3.49:1 | 3.0 | the no-figure hairline on the cache chart |
 
-Two values sit deliberately close to their floor and should not be tuned
-downward: Paper metadata text (4.87:1) and Paper control border on canvas
-(3.30:1, after an initial 2.97:1 failure was corrected).
+### 4.2 Paper
+
+| Pair | Ratio | Need | Role |
+|---|---|---|---|
+| `--ink` on `--canvas` | 15.26:1 | 4.5 | body text on the page ground |
+| `--ink` on `--surface` | 16.68:1 | 4.5 | prose in a card, sheet or dialog |
+| `--ink` on `--canvas-sunken` | 13.82:1 | 4.5 | prose in the reading well |
+| `--ink` on `--surface-raised` | 15.81:1 | 4.5 | prose in a tray or popover |
+| `--ink` on `--input-bg` | 16.83:1 | 4.5 | typed text in a field |
+| `--ink-muted` on `--canvas` | 7.25:1 | 4.5 | secondary copy on the ground |
+| `--ink-muted` on `--surface` | 7.93:1 | 4.5 | control labels in a dialog |
+| `--ink-muted` on `--surface-raised` | 7.51:1 | 4.5 | labels in a tray |
+| `--ink-faint` on `--canvas` | 5.33:1 | 4.5 | timestamps on the ground |
+| `--ink-faint` on `--surface` | 5.83:1 | 4.5 | metadata in a card |
+| `--ink-faint` on `--canvas-sunken` | **4.83:1** | 4.5 | message metadata — the tightest text pair in this theme |
+| `--ink-faint` on `--input-bg` | 5.88:1 | 4.5 | the placeholder in a field |
+| `--accent-annotation` on `--surface` | 6.09:1 | 4.5 | the character's name, continuity marks |
+| `--accent-annotation` on `--canvas` | 5.57:1 | 4.5 | annotation ink on the ground |
+| `--accent-annotation` on `--annotation-subtle` | 5.01:1 | 4.5 | annotation on its own wash |
+| `--accent-user` on `--surface` | 6.50:1 | 4.5 | the reader's own name and hand |
+| `--accent-user` on `--canvas` | 5.94:1 | 4.5 | the reader's ink on the ground |
+| `--danger` on `--surface` | 6.41:1 | 4.5 | danger text in a dialog |
+| `--danger` on `--canvas` | 5.86:1 | 4.5 | danger text on the ground |
+| `--danger` on `--danger-subtle` | 5.17:1 | 4.5 | danger on its own wash |
+| `--success` on `--surface` | 6.03:1 | 4.5 | success text |
+| `--warn` on `--surface` | 6.09:1 | 4.5 | continuity flag |
+| `--on-danger` on `--danger` | 6.69:1 | 4.5 | label on a filled danger button |
+| `--ink-inverse` on `--accent-annotation` | 6.36:1 | 4.5 | label on a filled annotation badge |
+| `--border-control` on `--input-bg` | 3.64:1 | 3.0 | field outline against its fill |
+| `--border-control` on `--canvas` | 3.30:1 | 3.0 | field outline against the ground |
+| `--border-control` on `--surface` | 3.61:1 | 3.0 | field outline in a dialog |
+| `--focus-ring` on `--canvas` | 5.94:1 | 3.0 | focus indicator on the ground |
+| `--focus-ring` on `--surface` | 6.50:1 | 3.0 | focus indicator in a dialog |
+| `--focus-ring` on `--input-bg` | 6.55:1 | 3.0 | focus indicator on a field |
+| `--accent-annotation` on `--surface` | 6.09:1 | 3.0 | a reused bar on the cache chart |
+| `--ink-faint` on `--surface` | 5.83:1 | 3.0 | a cold bar on the cache chart |
+| `--border-control` on `--surface` | 3.61:1 | 3.0 | the no-figure hairline on the cache chart |
+
+### 4.3 Values deliberately close to their floor
+
+Do not tune these downward without re-running the audit.
+
+- Paper `--ink-faint` on `--canvas-sunken`, **4.83:1** against a 4.5 floor. Paper's
+  faint ink is deliberately darker than Marginalia's for this reason: the reading
+  well is the lowest-contrast surface it sits on.
+- Paper `--border-control` on `--canvas`, **3.30:1** against a 3.0 floor. It
+  measured 2.97:1 once and was corrected.
+- The cache chart's no-figure hairline, **3.49:1** (Marginalia) and **3.61:1**
+  (Paper). It was originally drawn in `--border-hairline`, which measures **1.31:1**
+  against the panel surface — a marker nobody can see is not a gap in a series, so
+  it uses the control-outline token instead.
 
 ## 5. Typography
 
@@ -563,9 +587,20 @@ with `.rp-error-state__title` and `.rp-error-state__body`.
 | `.rp-message__prose` | The reading surface. Serif, 68ch, 1.72 leading. |
 | `.rp-message__tray` | Hidden until hover, focus-within, or `data-open="true"`. |
 | `.rp-thought`, `.rp-thought__summary` | Annotated thought block, gold. |
-| `.rp-ledger`, `.rp-ledger__row`, `__key`, `__value`, `__meter` | Continuity and context panel. |
 | `.rp-flag` | Continuity flag chip. |
 | `.rp-composer`, `.rp-composer__box`, `__input`, `__actions`, `__actions--end` | The composer dock. |
+
+The continuity and context panel is `.rp-ledger`, a flex column of blocks. Every
+block is a bordered `.rp-surface` card so a reader can see where one ends:
+
+| Class | Use |
+|---|---|
+| `.rp-ledger__summary`, `__summary-head`, `__summary-used`, `__summary-of`, `__summary-note` | The headline: how full the window is, and what that means. `data-status` on the summary (`room`, `filling`, `full`, `over`) drives the meter colour and the figure colour together. |
+| `.rp-ledger__meter-row`, `.rp-ledger__meter`, `__meter-pct` | The window meter. The fill is a `<span>` with an inline `width`, because a runtime-computed proportion cannot be covered by a hash. |
+| `.rp-ledger__group`, `__group-title`, `__rows` | One titled block of rows. A group with no rows renders as nothing at all. |
+| `.rp-ledger__row`, `__key`, `__hint`, `__value` | One label-and-figure line. The value column is tabular so figures do not reflow. |
+| `.rp-ledger__note` | A full-width sentence for information that is not a measurement. |
+| `.rp-ledger__trend`, `.rp-ledger__trend-bar` | Cache reuse over time: one bar per reply, oldest first. The bar's height is `--h`, a bare fraction the panel writes, so the stylesheet never has to know what a cache is. `data-state` is `warm`, `cold` or `unknown`; `data-folded="true"` adds the tick that marks a reply whose prompt was just rebuilt. The track's width is driven by `--bars`, the reply count, so a two-reply history draws a two-bar chart instead of two bars in an empty box. |
 
 ### 7.10 Tooltip
 
@@ -600,6 +635,13 @@ reinforcement.
 7. **State is never colour alone.** Selected tabs carry a rule, errors
    carry a marker and words, badges carry their count, flags carry a
    border and label.
+8. **Programmatic scrolling resolves the preference at the call site.** A
+   stylesheet cannot do this one: an explicit
+   `scrollIntoView({ behavior: "smooth" })` outranks a `scroll-behavior` rule, so
+   the reduced-motion block above does not suppress it. Every programmatic scroll
+   goes through `scrollIntoViewRespectingMotion` in `ui/dom.js`, which reads the
+   preference and downgrades the behaviour. A test asserts no call site bypasses
+   it.
 
 ## 9. Anti-tells
 
@@ -701,7 +743,22 @@ of pretending to have depth.
 - **No motion beyond state changes.** No scroll reveals, no staggered
   entry, no parallax. The product is read for hours; entry animation on
   every section is the generic default and actively annoying here.
-- **No committed test suite for CSS.** The verification is a browser probe
-  and a contrast script, both outside the repo. A CSS regression test would
-  pin implementation rather than behaviour, which the project's own testing
-  standard rejects.
+- **No committed test suite for CSS.** The verification is a set of harnesses
+  under `.workbuddy-ai/analysis/`: `contrast_audit.mjs` produces every ratio in
+  §4, and browser probes cover layout, target sizes and interaction behaviour.
+  They live outside the tracked source. A CSS regression test would pin
+  implementation rather than behaviour, which the project's own testing standard
+  rejects.
+
+## 13. Adding to the system
+
+1. **A new value goes in `tokens.css`** — in both themes, or with a documented
+   reason it is shared. Nothing else may introduce a colour.
+2. **Run `contrast_audit.mjs`.** A pair that is not in its `PAIRS` list is not
+   checked, so a new combination has to be added there too. Then update §4 from
+   its output; do not edit those tables by hand.
+3. **A new component goes in `components.css`** as an `rp-` class, and gets a row
+   in §7. A page stylesheet may compose tokens and set layout; it may not define a
+   colour or re-declare a shared class.
+4. **A new motion gets a token duration** and an entry in §8. If it is a
+   programmatic scroll, it goes through `scrollIntoViewRespectingMotion`.

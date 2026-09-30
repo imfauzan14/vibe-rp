@@ -39,3 +39,12 @@ plain marker without changing a transition, while the reported-latches return
   the reason for one.
 - `test/session_state.test.ts` covers the accessors; `test/choice_ui.test.ts`
   keeps its no-write guard on the choice path.
+
+## Amendments
+
+- **2026-09-30.** The module has since grown three accessors, all inside the same
+  decision: `noteUsageReport` (the derived reading of the provider's usage
+  document, as distinct from the raw `noteUsage`), and `captureLedgerState` /
+  `restoreLedgerState`, which let a deletion be undone without leaving the ledger
+  describing a turn the reader removed. The seam itself is unchanged — the engine
+  still decides *when*, and this module still owns *how*.
