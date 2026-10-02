@@ -65,7 +65,7 @@ The dependency direction is one-way: UI modules depend on controllers, controlle
 
 Top-level logic (all zero DOM unless noted):
 
-- **`public/browser_engine.js`** (2829 lines): `BrowserChatEngine`. Prompt assembly, the four context rules, ledger folding, SSE streaming, the universal allocator, and auxiliary choice generation. Re-exports the pure planning helpers from `context_plan.js` and the session-write accessors from `session_state.js` so callers keep one import surface.
+- **`public/browser_engine.js`** (2828 lines): `BrowserChatEngine`. Prompt assembly, the four context rules, ledger folding, SSE streaming, the universal allocator, and auxiliary choice generation. Re-exports the pure planning helpers from `context_plan.js` and the session-write accessors from `session_state.js` so callers keep one import surface.
 - **`public/context_plan.js`** (228 lines): pure planning. Token estimation, `cleanPromptText`, the summary budgets, and `allocateContext` — the one allocator. Owns the ledger-framing cost (`LEDGER_OPEN`/`LEDGER_CLOSE`, `ledgerFramingTokens()`) so every charge site reads one value. `browser_engine.js` re-exports `allocateContext` as a thin wrapper, so the engine's own calls and a page's calls go through the same decision.
 - **`public/session_state.js`** (112 lines): the session-write seam (`applyFold`, `resetLedger`, `captureLedgerState`, `restoreLedgerState`, `noteUsage`, `noteUsageReport`, `markLedgerTruncated`, `setOverflowReported`, `setCondensedReported`). The engine decides *when*; this module owns *how* the controller's session is mutated, so the fold returns a value and one place applies it. `resetLedger` handles explicit ledger clears (user transcript edits); the capture/restore pair makes a deletion undoable.
 - **`public/usage_history.js`** (235 lines): the per-chat usage history — the sample shape, the scope key that decides what is comparable, the per-scope caps, and the trend derivation. A leaf module: it imports nothing, reads no store and holds no clock. `session_controller.js` writes the samples; `ui/chat/context_panel.js` renders the trend.
@@ -85,7 +85,7 @@ Page shells (markup plus a thin bootstrap only):
 - **`public/index.html`** (91 lines): character library shell. Imports `ui/library_page.js`.
 - **`public/chat.html`** (188 lines): conversation shell. Loads `ui/chat/chat_boot.js` with `<script src>`.
 
-Shared UI modules (**`public/ui/`**, 31 modules, 7920 lines). Reuse these instead of re-implementing:
+Shared UI modules (**`public/ui/`**, 31 modules, 7923 lines). Reuse these instead of re-implementing:
 
 - Shared: `dom.js`, `toast.js`, `modal.js`, `tabs.js`, `confirm.js`, `theme.js`, `image.js`, `data_transfer.js`
 - Library: `library_page.js`, `library_controller.js`, `library_view.js`, `character_card.js`, `detail_modal.js`, `import_flow.js`
@@ -300,7 +300,7 @@ bun test test/
 
 ### Stats
 
-746 tests, 11372 expect() calls, 34 files (measured with `bun test`).
+755 tests, 11420 expect() calls, 35 files (measured with `bun test`).
 
 ### Existing Test Files
 
@@ -326,6 +326,7 @@ bun test test/
 - `test/no_inline_scripts.test.ts`: CSP script-src verification (no inline scripts)
 - `test/presets_resolution.test.ts`: settings resolution
 - `test/presets_store.test.ts`: preset stores
+- `test/prompt_eval_gate.test.ts`: the structural prompt evaluator as a regression gate (a clean report passes, each failure class — single-definition, contract-layer, bilingual parity, framing — makes the CLI exit nonzero, and a malformed report never passes vacuously)
 - `test/remote_import.test.ts`: URL import against a mocked `globalThis.fetch`
 - `test/responsive_layout.test.ts`: phone-width CSS guards (library filter bar stays inline, preset-row badge atomicity, message speaker truncation)
 - `test/session_controller.test.ts`: controller behavior against injected fakes (no DOM), and the usage-history write (one sample per completed turn, filed under the prefix it was sent under)

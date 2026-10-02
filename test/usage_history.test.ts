@@ -78,6 +78,12 @@ describe("A sample records what was measured", () => {
     expect(rateOf(usageSampleFrom({ report: report({ cachedTokens: 0 }), scope: "k", at: 6 }))).toBe(0);
   });
 
+  test("a total-volume report takes precedence over the legacy input alias", () => {
+    const s = usageSampleFrom({ report: report({ totalInput: 2000, billedInput: 1000, cachedTokens: 900 }), scope: "k" });
+    expect(s.billed).toBe(2000);
+    expect(rateOf(s)).toBe(0.45);
+  });
+
   test("a rate is derived, and a nonsense one is clamped rather than shown", () => {
     expect(rateOf(usageSampleFrom({ report: report({ billedInput: 1000, cachedTokens: 250 }), scope: "k" }))).toBe(0.25);
     // A provider that reports more cached tokens than billed ones is describing

@@ -303,14 +303,17 @@ export function renderContextPanel({
   const provider = [];
   const addedByProvider = (tokens) =>
     row("Added by your provider", `+${formatTokens(tokens)}`, "a fixed extra added to every request, which the app never sends and cannot see");
+  // A report saved before the total-volume rename carries `billedInput` only.
+  // Both names mean the same figure, so an older chat keeps showing it.
+  const reportedInput = typeof usage?.totalInput === "number" ? usage.totalInput : usage?.billedInput;
   if (usage && usage.reported) {
-    if (typeof usage.billedInput === "number") {
-      provider.push(row("Input billed", formatTokens(usage.billedInput), "what your provider charged for the last message"));
+    if (typeof reportedInput === "number") {
+      provider.push(row("Input reported", formatTokens(reportedInput), "total input tokens the provider reported for the last reply; cache reads and writes can have different prices"));
     }
     if (usage.overhead > 0) provider.push(addedByProvider(usage.overhead));
     if (usage.cachedTokens > 0) {
-      provider.push(row("Served from cache", percent(usage.cacheHitRate), "cached input is billed at a lower rate"));
-    } else if (usage.cachedTokens === 0 && (usage.billedInput || 0) >= 2000) {
+      provider.push(row("Served from cache", percent(usage.cacheHitRate), "share of reported input read from cache; pricing depends on your provider"));
+    } else if (usage.cachedTokens === 0 && (reportedInput || 0) >= 2000) {
       // A measured zero on a prompt long enough to have been cacheable. The app
       // cannot say *why* — the prompt may have changed since the last message,
       // the provider's copy may have expired, or the provider may not cache at
@@ -320,7 +323,7 @@ export function renderContextPanel({
         row(
           "Served from cache",
           "none",
-          "none of this prompt was reused, so all of it was billed at the full rate. That usually means it changed since your last message, or your provider's copy expired."
+          "the provider reported no cache reads for this reply; the prompt may have changed, its cached copy may have expired, or caching may be unavailable"
         )
       );
     }

@@ -1847,20 +1847,14 @@ export class BrowserChatEngine {
     );
   }
 
-  /**
-   * Prompt tokens the provider actually billed, when it reports usage.
-   *
-   * `prompt_tokens` is the OpenAI-compatible field; Anthropic reports
-   * `input_tokens` and bills cached reads separately, so the fallback sums the
-   * three parts to reconstruct what the request really cost.
-   */
+  /** Total provider-reported input volume, regardless of cache pricing. */
   static #reportedPromptTokens(usage) {
     if (!usage) return null;
+    // OpenAI-compatible prompt_tokens already includes cache reads.
     if (typeof usage.prompt_tokens === "number") return usage.prompt_tokens;
-    if (typeof usage.input_tokens === "number") return usage.input_tokens;
-    // Anthropic reports `input_tokens` for the uncached part only and bills the
-    // cached and freshly-written parts beside it, so the two sum to the bill.
-    const parts = [usage.cache_read_input_tokens, usage.cache_creation_input_tokens].filter(
+    // Anthropic reports disjoint categories; cache_creation's 5m/1h fields
+    // break down cache_creation_input_tokens and must not be added again.
+    const parts = [usage.input_tokens, usage.cache_read_input_tokens, usage.cache_creation_input_tokens].filter(
       (n) => typeof n === "number"
     );
     return parts.length ? parts.reduce((a, b) => a + b, 0) : null;
@@ -1886,13 +1880,11 @@ export class BrowserChatEngine {
   }
 
   /**
-   * Reconciles what the app predicted against what the provider billed.
+   * Reconciles the app's estimated input volume against the provider's total.
    *
-   * The app's estimator is a byte/4 heuristic and its budget is whatever the
-   * user configured, so the two numbers differ for three separate reasons: the
-   * estimator's error, a hidden preamble the provider adds, and a cache serving
-   * part of the prefix cheaply. Reporting only one of them would hide the other
-   * two, so this returns all of them and lets the caller decide what to say.
+   * The estimator is a byte/4 heuristic; the delta may reflect tokenization or
+   * a hidden provider preamble. Cache reads/writes are separate pricing classes,
+   * not a discount to subtract from the input volume.
    *
    * Pure: it reads no state and writes none. The caller applies the learnings.
    *
@@ -1902,7 +1894,11 @@ export class BrowserChatEngine {
    */
   static describeUsage({ usage, payload = [], outputCeiling = null } = {}) {
     const estimatedInput = countMessages(payload);
-    const billedInput = this.#reportedPromptTokens(usage);
+    const totalInput = this.#reportedPromptTokens(usage);
+    const uncachedInput = typeof usage?.input_tokens === "number" && typeof usage?.prompt_tokens !== "number"
+      ? usage.input_tokens : null;
+    const cacheWriteTokens = typeof usage?.cache_creation_input_tokens === "number" && typeof usage?.prompt_tokens !== "number"
+      ? usage.cache_creation_input_tokens : null;
     const cachedTokens = this.#reportedCachedTokens(usage);
     const completionTokens = typeof usage?.completion_tokens === "number" ? usage.completion_tokens : null;
     const reasoningTokens = this.#reportedReasoningTokens(usage);
@@ -1923,10 +1919,13 @@ export class BrowserChatEngine {
       completionTokens > Math.max(outputCeiling * 1.05, outputCeiling + 8);
     return {
       estimatedInput,
-      billedInput,
-      overhead: billedInput === null ? null : billedInput - estimatedInput,
+      totalInput,
+      billedInput: totalInput, // compatibility with existing per-chat usage samples
+      uncachedInput,
+      cacheWriteTokens,
+      overhead: totalInput === null ? null : totalInput - estimatedInput,
       cachedTokens,
-      cacheHitRate: billedInput && cachedTokens !== null ? cachedTokens / billedInput : null,
+      cacheHitRate: totalInput > 0 && cachedTokens !== null ? cachedTokens / totalInput : null,
       completionTokens,
       reasoningTokens,
       reasoningShare,
@@ -2372,7 +2371,7 @@ export class BrowserChatEngine {
       outputCeiling: ceilingSent,
     });
     if (usageReport.reported) {
-      notePromptOverhead(activeSettings.apiEndpoint, activeSettings.model, usageReport.billedInput, usageReport.estimatedInput);
+      notePromptOverhead(activeSettings.apiEndpoint, activeSettings.model, usageReport.totalInput, usageReport.estimatedInput);
       const learned = {};
       if (usageReport.ceilingIgnored) learned.ignoresMaxTokens = true;
       if (usageReport.cachedTokens !== null && usageReport.cachedTokens > 0) learned.observedCaching = true;

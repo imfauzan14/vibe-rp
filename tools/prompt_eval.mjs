@@ -8,7 +8,10 @@
 //   structural (offline, no endpoint)  — measures the assembled payloads:
 //     instruction cost, the instruction-to-content ratio, prohibition density,
 //     which degradable sections survive, and instruction pairs that co-occur.
-//     This is deterministic, so it is a real regression gate.
+//     This is deterministic, so it is a real regression gate: the four checked
+//     failure classes (single-definition, contract-layer, bilingual parity,
+//     framing) set a nonzero exit status. Co-occurrence pairs and window fit
+//     are printed as diagnostics and never fail the run.
 //
 //   live (--live, needs an endpoint)   — generates against the configured
 //     endpoint and scores the output with deterministic detectors reused from
@@ -19,7 +22,11 @@
 //   bun run tools/prompt_eval.mjs                      # structural only
 //   bun run tools/prompt_eval.mjs --json report.json    # save a run
 //   bun run tools/prompt_eval.mjs --compare old.json    # diff against a run
+//   bun run tools/prompt_eval.mjs --check-report r.json # gate a saved report
 //   bun run tools/prompt_eval.mjs --live --runs 3       # score real output
+//
+// `--check-report <path|->` re-checks an already-produced structural report and
+// exits nonzero on a violation, so a stored run can gate CI without re-planning.
 //
 // Live configuration (never read from the app's localStorage — this is a
 // separate process): --endpoint, --key, --model, or the env vars
@@ -585,6 +592,20 @@ async function abContract(runs, baselinePath) {
 
 // ───────────────────────── report ─────────────────────────
 
+/** Only configured structural failures are gates; co-occurrence and fit are diagnostics. */
+export function structuralViolations(r) {
+  if (!r || !Array.isArray(r.rows) || !Array.isArray(r.contractChecks) ||
+      !Array.isArray(r.parityGaps) || !Array.isArray(r.framingGaps)) {
+    throw new TypeError("expected a structural report with all four check groups");
+  }
+  return [
+    ...(r.rows || []).flatMap((row) => (row.singleDef || []).map((gap) => `single-definition ${row.scenario}: ${gap.id}`)),
+    ...(r.contractChecks || []).map((gap) => `contract-layer ${gap.id}`),
+    ...(r.parityGaps || []).map((gap) => `bilingual-parity ${gap.rule}`),
+    ...(r.framingGaps || []).map((gap) => `instruction-framing ${gap.id}`),
+  ];
+}
+
 function printStructural(r) {
   console.log("\nSTRUCTURAL — assembled payloads");
   console.log("  scenario                  in    out  sys  guid  hist   neg/line  conflicts  fits");
@@ -699,28 +720,55 @@ function compare(current, baseline) {
   console.log(`  compaction tokens   : ${baseline.tokenCosts.compactionTotal} -> ${current.tokenCosts.compactionTotal}`);
 }
 
-const structuralReport = structural();
-printStructural(structuralReport);
-
-const liveRows = flag("live") ? await live(Number(opt("runs", "3"))) : null;
-printLive(liveRows);
-
-const abPath = opt("ab-contract");
-if (abPath) await abContract(Number(opt("runs", "1")), abPath);
-
-const baselinePath = opt("compare");
-if (baselinePath) {
-  try {
-    compare(structuralReport, JSON.parse(readFileSync(baselinePath, "utf8")));
-  } catch (err) {
-    console.error(`\n  could not read baseline ${baselinePath}: ${err.message}`);
+async function main() {
+  // Recheck a saved or piped structural report without an endpoint or fixture
+  // mutation. Used by negative controls to prove a failing check exits nonzero.
+  const checkPath = opt("check-report");
+  if (checkPath) {
+    try {
+      const violations = structuralViolations(JSON.parse(readFileSync(checkPath === "-" ? 0 : checkPath, "utf8")));
+      if (violations.length) {
+        for (const violation of violations) console.error(`  ${violation}`);
+        process.exitCode = 1;
+      } else {
+        console.log("  structural checks passed");
+      }
+    } catch (err) {
+      console.error(`  could not check report: ${err.message}`);
+      process.exitCode = 2;
+    }
+    return;
   }
+
+  const structuralReport = structural();
+  printStructural(structuralReport);
+  const violations = structuralViolations(structuralReport);
+  if (violations.length) {
+    console.error(`\n  ${violations.length} structural violation(s): ${violations.join(", ")}`);
+    process.exitCode = 1;
+  }
+
+  const liveRows = flag("live") ? await live(Number(opt("runs", "3"))) : null;
+  printLive(liveRows);
+
+  const abPath = opt("ab-contract");
+  if (abPath) await abContract(Number(opt("runs", "1")), abPath);
+
+  const baselinePath = opt("compare");
+  if (baselinePath) {
+    try {
+      compare(structuralReport, JSON.parse(readFileSync(baselinePath, "utf8")));
+    } catch (err) {
+      console.error(`\n  could not read baseline ${baselinePath}: ${err.message}`);
+    }
+  }
+
+  const outPath = opt("json");
+  if (outPath) {
+    writeFileSync(outPath, JSON.stringify({ ...structuralReport, live: liveRows, at: new Date().toISOString() }, null, 2));
+    console.log(`\n  report written to ${outPath}`);
+  }
+  console.log("");
 }
 
-const outPath = opt("json");
-if (outPath) {
-  writeFileSync(outPath, JSON.stringify({ ...structuralReport, live: liveRows, at: new Date().toISOString() }, null, 2));
-  console.log(`\n  report written to ${outPath}`);
-}
-
-console.log("");
+if (import.meta.main) await main();

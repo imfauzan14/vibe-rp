@@ -1,7 +1,7 @@
 // Per-chat usage history — what the provider actually reported, over time.
 //
 // Why this exists. The Context sheet can show one reconciliation: what the
-// provider billed for the last reply, how much of that prompt it served from
+// provider reported as input for the last reply, how much it served from
 // its cache, how much the model spent thinking. One sample cannot show a trend,
 // and for cache reuse a single number is close to meaningless. The first reply
 // after anything changes in the setup is necessarily cold and the second is
@@ -72,7 +72,7 @@ export function usageSampleFrom({ report = null, scope = "", at = 0, folded = fa
     // The rate is derived from these two rather than stored beside them, so the
     // panel can show the rate *and* the size of the prompt it came from: 90% of
     // a 200-token prompt and 90% of a 60,000-token one are not the same fact.
-    billed: report ? finite(report.billedInput) : null,
+    billed: report ? finite(report.totalInput ?? report.billedInput) : null, // legacy storage key: total input volume, not currency
     cached: report ? finite(report.cachedTokens) : null,
     estimated: report ? finite(report.estimatedInput) : null,
     reasoning: report ? finite(report.reasoningTokens) : null,
@@ -87,10 +87,10 @@ export function usageSampleFrom({ report = null, scope = "", at = 0, folded = fa
 }
 
 /**
- * The share of the billed prompt the provider served from its cache, or null
- * when it reported no cache figure. Clamped, because a provider that reports
- * more cached tokens than billed ones is describing something the app cannot
- * read as a share.
+ * The share of total reported input served from cache, or null when no cache
+ * figure was reported. `billed` is the legacy field name for total input volume.
+ * Clamped, because a provider reporting more cached tokens than total input is
+ * describing something the app cannot interpret as a share.
  */
 export function rateOf(sample) {
   if (!sample || typeof sample.billed !== "number" || typeof sample.cached !== "number") return null;

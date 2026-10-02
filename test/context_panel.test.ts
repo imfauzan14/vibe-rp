@@ -101,7 +101,7 @@ describe("Context panel", () => {
 
   test("provider figures appear only when the provider reported them", () => {
     const silent = renderContextPanel({ request: request(30), usage: null });
-    expect(labels(silent)).not.toContain("Input billed");
+    expect(labels(silent)).not.toContain("Input reported");
     expect(labels(silent)).not.toContain("Served from cache");
     expect(labels(silent)).not.toContain("Thinking tokens");
 
@@ -109,7 +109,7 @@ describe("Context panel", () => {
       request: request(30),
       usage: {
         reported: true,
-        billedInput: 5934,
+        totalInput: 5934,
         overhead: 2150,
         cachedTokens: 4100,
         cacheHitRate: 0.69,
@@ -119,7 +119,8 @@ describe("Context panel", () => {
         ceilingIgnored: true,
       },
     });
-    expect(labels(reported)).toContain("Input billed");
+    expect(labels(reported)).toContain("Input reported");
+    expect(reported).toContain("different prices");
     expect(labels(reported)).toContain("Served from cache");
     expect(labels(reported)).toContain("Thinking tokens");
     expect(reported).toContain("69%");
@@ -203,7 +204,7 @@ describe("Context panel", () => {
 describe("The cache row reports a measurement, never a guess", () => {
   const usage = (over: Record<string, unknown> = {}) => ({
     reported: true,
-    billedInput: 6000,
+    totalInput: 6000,
     overhead: 0,
     cachedTokens: 0,
     cacheHitRate: 0,
@@ -214,13 +215,21 @@ describe("The cache row reports a measurement, never a guess", () => {
     ...over,
   });
 
+  test("a legacy report saved under the old field name still shows its input", () => {
+    // Sessions persisted before the total-volume rename carry `billedInput`
+    // alone. It is the same figure, so the panel must keep reading it.
+    const html = renderContextPanel({ request: request(30), usage: { ...usage(), totalInput: undefined, billedInput: 5934 } });
+    expect(labels(html)).toContain("Input reported");
+    expect(html).toContain("5.9k tokens");
+  });
+
   test("a measured zero on a prompt long enough to have been cached is shown", () => {
     const html = renderContextPanel({ request: request(20), usage: usage() });
     expect(labels(html)).toContain("Served from cache");
-    expect(html).toContain("none of this prompt was reused");
+    expect(html).toContain("no cache reads");
     // It must not name a cause it cannot know.
     expect(html).not.toMatch(/because the prompt changed/);
-    expect(html).toMatch(/usually means/);
+    expect(html).toContain("may have changed");
   });
 
   test("a provider that reported no cache count gets no cache row at all", () => {
@@ -231,7 +240,7 @@ describe("The cache row reports a measurement, never a guess", () => {
   test("a measured zero on a prompt too short to cache is left out", () => {
     // Below the length any provider would cache, a zero says nothing about the
     // prefix and would only alarm the reader.
-    const html = renderContextPanel({ request: request(0), usage: usage({ billedInput: 900 }) });
+    const html = renderContextPanel({ request: request(0), usage: usage({ totalInput: 900 }) });
     expect(labels(html)).not.toContain("Served from cache");
   });
 

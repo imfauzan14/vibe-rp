@@ -344,14 +344,64 @@ describe("describeUsage reconciles the estimate against the bill", () => {
       usage: { prompt_tokens: 1000, prompt_tokens_details: { cached_tokens: 800 } },
       payload,
     });
+    expect(openai.totalInput).toBe(1000);
     expect(openai.cachedTokens).toBe(800);
     expect(openai.cacheHitRate).toBeCloseTo(0.8, 5);
 
     const anthropic = BrowserChatEngine.describeUsage({
-      usage: { input_tokens: 1000, cache_read_input_tokens: 900 },
+      usage: {
+        input_tokens: 1000,
+        cache_read_input_tokens: 900,
+        cache_creation_input_tokens: 100,
+        cache_creation: { ephemeral_5m_input_tokens: 40, ephemeral_1h_input_tokens: 60 },
+      },
       payload,
     });
+    expect(anthropic.totalInput).toBe(2000);
+    expect(anthropic.billedInput).toBe(2000); // legacy alias for existing usage history
+    expect(anthropic.uncachedInput).toBe(1000);
+    expect(anthropic.cacheWriteTokens).toBe(100);
     expect(anthropic.cachedTokens).toBe(900);
+    expect(anthropic.cacheHitRate).toBeCloseTo(0.45, 5);
+    expect(anthropic.overhead).toBe(2000 - anthropic.estimatedInput);
+  });
+
+  test("Anthropic optional categories are additive, including explicit zero and cached-only usage", () => {
+    const uncached = BrowserChatEngine.describeUsage({ usage: { input_tokens: 42 }, payload });
+    expect(uncached.totalInput).toBe(42);
+    expect(uncached.cachedTokens).toBeNull();
+    expect(uncached.cacheWriteTokens).toBeNull();
+    expect(uncached.cacheHitRate).toBeNull();
+
+    const zero = BrowserChatEngine.describeUsage({
+      usage: { input_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, payload,
+    });
+    expect(zero.totalInput).toBe(0);
+    expect(zero.cachedTokens).toBe(0);
+    expect(zero.cacheWriteTokens).toBe(0);
+    expect(zero.cacheHitRate).toBeNull(); // zero total has no denominator
+
+    const cachedOnly = BrowserChatEngine.describeUsage({ usage: { cache_read_input_tokens: 900 }, payload });
+    expect(cachedOnly.totalInput).toBe(900);
+    expect(cachedOnly.uncachedInput).toBeNull();
+    expect(cachedOnly.cacheHitRate).toBe(1);
+
+    // A cache-write-only turn: the first request after the prefix changed. The
+    // uncached part and the fresh write are both real volume, and a parser that
+    // returns `input_tokens` alone silently drops the write.
+    const writeOnly = BrowserChatEngine.describeUsage({
+      usage: { input_tokens: 1200, cache_creation_input_tokens: 8000, cache_read_input_tokens: 0 }, payload,
+    });
+    expect(writeOnly.totalInput).toBe(9200);
+    expect(writeOnly.uncachedInput).toBe(1200);
+    expect(writeOnly.cacheWriteTokens).toBe(8000);
+    expect(writeOnly.cachedTokens).toBe(0);
+    expect(writeOnly.cacheHitRate).toBe(0);
+
+    const unknown = BrowserChatEngine.describeUsage({ usage: {}, payload });
+    expect(unknown.totalInput).toBeNull();
+    expect(unknown.cachedTokens).toBeNull();
+    expect(unknown.cacheHitRate).toBeNull();
   });
 
   test("reasoning share counts what the reader never sees, not just the reply", () => {
