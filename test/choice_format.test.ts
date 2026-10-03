@@ -387,6 +387,29 @@ describe("generateChoices - auxiliary request behaviour", () => {
     expect(choices).toEqual([]);
   });
 
+  // The contract reaches this entry point through the settings, exactly as it
+  // does for the main turn. It used to default the argument to "", which folded
+  // an *empty* contract over whatever the settings carried — so a caller that
+  // omitted it built the menu under no craft contract while the reply beside it
+  // was written under one.
+  test("a caller that passes no contract keeps the one the settings carry", async () => {
+    let sent = null;
+    globalThis.fetch = async (_url, init) => {
+      sent = JSON.parse(init.body);
+      return new Response(JSON.stringify({ choices: [{ message: { content: '{"choices":[{"text":"A."}]}' } }] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+    await BrowserChatEngine.generateChoices({
+      card: { data: { name: "Vance", description: "Cold." } },
+      session,
+      settings: { ...settings, agentsContract: "Directives: keep the register clipped." },
+      persona: null,
+    });
+    expect(sent.messages[0].content).toContain("Directives: keep the register clipped.");
+  });
+
   test("a provider error inside a 200 body is surfaced", async () => {
     globalThis.fetch = async () => new Response(
       JSON.stringify({ error: { message: "model overloaded" } }),

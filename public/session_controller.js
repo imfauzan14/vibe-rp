@@ -216,14 +216,33 @@ export class SessionController {
    * chat — the persona, the system prompt, the model, even the card. The usage
    * history is keyed on all of it, so a trend can never average across a change
    * and report a collapse that was really a rebuild.
+   *
+   * The ids name the presets; the text is the prefix, and both are needed. An
+   * id survives an edit, and an edited persona, contract or card is a cold
+   * prefix — with ids alone the trend would average two unrelated prompts and
+   * report that rebuild as a collapse. The text is hashed rather than stored,
+   * because the key is written into every sample. Only the fields that reach
+   * the system prompt are read, so a card's avatar (a base64 data URL, tens of
+   * kilobytes) never enters the key.
    */
   usageScope() {
+    const card = this.activeCard;
+    const data = card?.data || card || {};
     return scopeKeyOf({
       endpoint: this.settings?.apiEndpoint,
       model: this.settings?.model,
-      cardId: this.activeCard?.id,
+      cardId: card?.id,
       personaId: this.currentPersona?.id,
       directiveId: this.currentDirective?.id,
+      cardText: [data.name, data.description, data.personality, data.scenario, data.system_prompt]
+        .filter(Boolean)
+        .join("\u0000"),
+      personaText: this.currentPersona
+        ? [this.currentPersona.name, this.currentPersona.description, this.currentPersona.template]
+            .filter(Boolean)
+            .join("\u0000")
+        : "",
+      directiveText: this.currentDirective?.content || this.settings?.agentsContract || "",
     });
   }
 

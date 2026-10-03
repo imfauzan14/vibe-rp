@@ -580,6 +580,15 @@ export function selectLorebookEntries(card, { budget = 1000, constantOnly = fals
 /**
  * Extracts a concise summary phrase of the character's identity/personality
  * for adaptive steering re-injection (e.g. "Stay Elena: <identity>").
+ *
+ * The phrase is read as a sentence by the model and it is injected at the
+ * recency position, where this module's own note says the lines nearest the
+ * generation head weigh most, so a broken fragment there is worse than no line
+ * at all. A hard slice at N characters produced exactly that: cards commonly
+ * leave `personality` empty, the description then leads, and a measured card
+ * yielded "**She was your lover, the one you thought you'll spend your life
+ * with and yet, She humiliated you in front of the kingdo" — cut mid-word, with
+ * the card's markdown intact, asserted as the thing that is "unchanged".
  */
 export function characterIdentity(card, persona = null) {
   if (!card) return "";
@@ -590,10 +599,42 @@ export function characterIdentity(card, persona = null) {
   ].filter(Boolean);
   if (!rawParts.length) return "";
   const clean = substituteCardPlaceholders(rawParts.join(" "), card, persona)
+    // Emphasis markers are the card's formatting, not part of who the character
+    // is, and they survive into the instruction as stray asterisks.
+    .replace(/[*`#]+/g, "")
     .replace(/\s+/g, " ")
     .trim();
   if (!clean) return "";
-  return renderInlineField(clean, 120);
+  return clampIdentity(clean);
+}
+
+/** Shortest identity worth stating on its own; below this, a fragment. */
+const IDENTITY_MIN_CHARS = 24;
+/** Within this length an identity is already one phrase and is left alone. */
+const IDENTITY_SOFT_CHARS = 120;
+/** How far to look for the end of the opening sentence before giving up. */
+const IDENTITY_HARD_CHARS = 240;
+
+/**
+ * Clamps an identity phrase without cutting a word in half.
+ *
+ * Preference order: the whole phrase when it is already short; the opening
+ * sentence when one completes inside the hard limit; otherwise the last whole
+ * word before the soft limit plus an ellipsis, so the cut reads as deliberate
+ * abbreviation rather than as a typo.
+ *
+ * A trailing full stop is dropped: this is a phrase, and its only consumer
+ * embeds it in a sentence, so keeping the stop produced "…over you.. Their
+ * state has moved".
+ */
+function clampIdentity(text) {
+  const trimStop = (value) => value.replace(/\.$/, "");
+  if (text.length <= IDENTITY_SOFT_CHARS) return trimStop(text);
+  const hard = text.slice(0, IDENTITY_HARD_CHARS);
+  const end = hard.search(/[.!?\u2026](?:\s|$)/);
+  if (end >= 0 && end + 1 >= IDENTITY_MIN_CHARS) return trimStop(hard.slice(0, end + 1).trim());
+  const soft = text.slice(0, IDENTITY_SOFT_CHARS).replace(/\s+\S*$/, "").trim();
+  return soft ? `${soft}\u2026` : renderInlineField(text, IDENTITY_SOFT_CHARS);
 }
 
 /**
@@ -2485,7 +2526,12 @@ export class BrowserChatEngine {
     session = null,
     settings = {},
     persona = null,
-    agentsContract = "",
+    // No default. `undefined` is what tells `planRequest` to keep the contract
+    // already in `settings`, and the main turn resolves the same value the same
+    // way. Defaulting this to "" folded an *empty* contract over whatever the
+    // settings carried, so a caller that omitted the argument got a menu built
+    // under no craft contract at all — silently, and only for this entry point.
+    agentsContract,
     count = CHOICE_COUNT_DEFAULT,
     charName = "",
     playerName = "",

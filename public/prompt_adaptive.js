@@ -175,7 +175,11 @@ export const PROSE_TICS = [
     threshold: 1,
     note: "Vary paragraph lengths: sharp lines for pivotal beats, expansive passages for immersion. The last replies ran at one uniform length.",
     count: (_text, replies) => {
-      for (const reply of replies.slice(0, 3)) {
+      // The newest replies, matching the note and every other detector here.
+      // This read the *oldest* three of the analysis window, so the correction
+      // it produced described replies the model had already moved past and the
+      // note said "the last replies" about text that was no longer last.
+      for (const reply of replies.slice(-3)) {
         const lengths = reply.split(/\n{2,}/).map((p) => countWords(p)).filter((n) => n > 0);
         if (lengths.length < 3) continue;
         const mean = lengths.reduce((a, b) => a + b, 0) / lengths.length;
@@ -216,9 +220,12 @@ const SLOP_RE = new RegExp(
  * Deliberately conservative. Quoted speech is stripped first (it carries the
  * character's voice, not the narrator's), a claim needs several hits *and* a
  * clear margin over the runner-up, the newest replies must agree in the
- * majority, and a non-Latin story yields no reading at all. When the call is
- * ambiguous nothing is emitted: a wrong narrative lock is worse than none,
- * because the model obeys it.
+ * majority, and a non-Latin story yields no reading at all. The tense claim
+ * additionally requires the POV claim, because its patterns are English
+ * morphology rather than a phrase list and Latin script is not evidence of
+ * English — see the note in the body. When the call is ambiguous nothing is
+ * emitted: a wrong narrative lock is worse than none, because the model obeys
+ * it.
  */
 export function detectNarration(messages, { window = 3 } = {}) {
   const replies = (messages || [])
@@ -239,18 +246,33 @@ export function detectNarration(messages, { window = 3 } = {}) {
   }
   const pov = majorityOf(votes, votes.length >= 2);
 
-  const past = countMatches(
-    joined,
-    /\b(?:was|were|had|did|could|would|said|took|felt|went|came|saw|knew|thought|turned|looked|\w{4,}ed)\b/gi
-  );
-  const present = countMatches(
-    joined,
-    /\b(?:is|are|has|does|am|looks|feels|says|takes|goes|comes|sees|knows|turns|\w{4,}s)\b/gi
-  );
+  // The tense reading rides on the same evidence as the POV reading, and only
+  // when that reading exists. The two patterns below are English *morphology*,
+  // not a phrase list: `\w{4,}s` matches any word of five letters or more that
+  // ends in "s", which in a Latin-script language that is not English is a
+  // large fraction of the vocabulary — `keras`, `napas`, `tulus`, `haus`. A
+  // measured Indonesian session scored 10 present against 0 past on a language
+  // with no grammatical tense at all, so every turn of it carried
+  // "the scene runs in present tense" as a narrative lock at the recency
+  // position. That is the failure this module's own doc warns about — a wrong
+  // lock is worse than none, because the model obeys it — and the POV vote is
+  // the module's existing evidence that the narration is English prose: it
+  // requires English pronouns, several of them, with a clear margin. No tense
+  // is claimed without it.
   let tense = null;
-  if (Math.max(past, present) >= 4) {
-    if (past >= present * 1.3) tense = "past";
-    else if (present >= past * 1.3) tense = "present";
+  if (pov) {
+    const past = countMatches(
+      joined,
+      /\b(?:was|were|had|did|could|would|said|took|felt|went|came|saw|knew|thought|turned|looked|\w{4,}ed)\b/gi
+    );
+    const present = countMatches(
+      joined,
+      /\b(?:is|are|has|does|am|looks|feels|says|takes|goes|comes|sees|knows|turns|\w{4,}s)\b/gi
+    );
+    if (Math.max(past, present) >= 4) {
+      if (past >= present * 1.3) tense = "past";
+      else if (present >= past * 1.3) tense = "present";
+    }
   }
   return { pov, tense };
 }
@@ -367,12 +389,20 @@ export function analyzeTurnState({
  * The instruction block for one turn, or an empty string when there is nothing
  * worth saying beyond the always-on scope line.
  *
- * Order is deliberate. The unconditional lines (canon, scope, re-injection,
- * narrative lock) come first; the behavior-specific corrections follow in
- * ascending priority, so the most urgent one sits last — nearest the generation
- * head, where recency weight is greatest. When the allowance is tight the
- * lowest-priority entry is dropped first, which is why the measured
- * behavior-specific corrections outlive the generic lines.
+ * Order is deliberate, and it is the order of the calls in the body — there is
+ * no sort. The lane statement and the two generic drift anchors come first; the
+ * measured behavior-specific corrections follow in ascending priority, so the
+ * most urgent one sits last — nearest the generation head, where recency weight
+ * is greatest. A correction therefore has to be emitted after the anchors to
+ * reach the position its measured gain was measured at.
+ *
+ * Survival is a separate question from order, decided by `keep`. The two
+ * currently disagree with the tier research above: the corrections carry the
+ * lowest `keep` values (30-70) and the generic lines the highest (83-100), so a
+ * tight allowance drops the measured, specific corrections before the generic
+ * reminders — the opposite of what that research found the specific tier is
+ * worth. Left as found rather than re-ranked here, because re-ranking is a
+ * product decision about small windows and this module cannot validate it.
  *
  * `identity` is a compact restatement of who the character is, built by the
  * engine from the card (this module never reads a card). `notes` lists every
@@ -425,15 +455,74 @@ export function buildSceneGuidance(signals, { maxTokens = GUIDANCE_MAX_TOKENS, i
   // the state, which the story may move; an earlier anchor here ("never soften
   // into bland compliance") was removed for pinning a character to their
   // opening state, and this line must not reintroduce that trap.
+  //
+  // Two lanes the contract states but the model was measurably not taking, both
+  // named here because this is the only entry present on the opening turn and
+  // the entry nearest the generation head on every turn after it:
+  //
+  //   - *Where the turn opens.* The contract forbids re-narrating the reader's
+  //     beat; every reply in a measured 15-turn session still opened by
+  //     restating it, from the character's point of view, because the reply has
+  //     to start somewhere and the reader's action is the newest thing in the
+  //     prompt. Stated as the lane — open on the character — rather than as the
+  //     prohibition, which is what "turn scope as a lane" means.
+  //   - *How far perception reaches.* "Observable cues" bounds the *kind* of
+  //     cue, not the distance. Read alone it licenses a character behind a
+  //     locked door, at the top of a stair, in the dark, noticing a hand inside
+  //     a pocket — which is what the same session produced, and what a reader
+  //     experiences as a character who can see everything about them. Bounding
+  //     it to sight and hearing *at the character's own position* is the
+  //     missing half, and it subsumes the kind rule rather than replacing it:
+  //     no language, no card and no persona is assumed by it.
+  //
+  // The line is kept under the smallest allowance the block can be given (the
+  // 80-token floor a small window produces), because it is the one entry that
+  // must survive — see `buildSceneGuidance`. That is why it does not restate
+  // the observable-cue rule a third time: the contract and the epistemic
+  // boundary both carry it, and a line that is dropped whole for being 4 tokens
+  // too long carries nothing at all.
   add(
     "scope",
     96,
-    `- Turn scope: write ${who} and the immediate environmental consequence. Perceive ${player} through observable cues only, and answer as ${who} — the card sets the stance, not the cues alone.`
+    `- Turn scope: write ${who} and the immediate consequence, opening on ${who} rather than on a restatement of what ${player} just did. Perceive ${player} only where ${who} is there to see or hear it. Answer as ${who}: the card sets the stance, not the cues alone.`
   );
 
-  // Prose corrections, least urgent first. They are the measured
-  // behavior-specific tier: the correction names what the model is doing, so it
-  // can stop doing it.
+  // The drift anchors. Both are generic — a persona reminder and a register
+  // reminder — and both are emitted *before* the measured corrections below,
+  // because the ordering this block follows is recency weight and the last line
+  // is the one the model is likeliest to obey. The measured, specific tier goes
+  // last; see the corrections block.
+  //
+  // This anchor used to end "Never soften into bland compliance", which is the
+  // emotional-rigidity trap: it pins the character to their opening state for
+  // the whole story, so a guarded person stays guarded through an ordeal that
+  // should have marked them. The anchor now separates the core, which holds,
+  // from the state, which is allowed to have moved — the same distinction the
+  // ledger's Cast entries carry.
+  const dueForReinject = s.assistantTurns > 0 && s.assistantTurns % REINJECT_EVERY_TURNS === 0;
+  if (identity && (dueForReinject || s.folded)) add("reinject", 83, `- Persona anchor: ${who}'s core is unchanged — ${identity}. Their state has moved; let what happened show in how they carry themselves, without substituting a different person.`);
+
+  const { pov, tense } = s.narration || {};
+  if ((pov || tense) && s.assistantTurns >= 2) {
+    const bits = [
+      pov === "first" ? "first-person" : pov === "second" ? "second-person" : pov === "third" ? "third-person" : "",
+      tense ? `${tense} tense` : "",
+    ].filter(Boolean);
+    add(
+      "lock",
+      85,
+      `- Narrative lock: the scene runs in ${bits.join(", ")}. Keep it, and keep the same separation between narration and speech.`
+    );
+  }
+
+  // Prose corrections, least urgent first, so the most urgent one sits last —
+  // nearest the generation head, where recency weight is greatest. They are the
+  // measured behavior-specific tier: the correction names what the model is
+  // doing, so it can stop doing it, and the measured gain for this tier is
+  // several times the gain for a generic reminder. Emitting them *after* the
+  // anchors above is what makes that gain reach the position it was measured
+  // at; the reverse order left the lock — the generic tier — as the last thing
+  // the model read on every turn a correction fired.
   const corrections = (s.tics || []).slice().sort((a, b) => a.priority - b.priority);
   if ((s.absentCast || []).length >= 2 && !s.folded) {
     corrections.push({
@@ -458,32 +547,9 @@ export function buildSceneGuidance(signals, { maxTokens = GUIDANCE_MAX_TOKENS, i
     add(correction.id, correction.keep ?? correction.priority, `- ${correction.note.replace(/^\s*-\s*/, "")}`);
   }
 
-  // The drift anchors sit closest to the head: re-injection is the measured
-  // generic-reminder tier (35-38%), the lock keeps the narrative register from
-  // sliding, and the lane statement is the last thing the model reads.
-  //
-  // This anchor used to end "Never soften into bland compliance", which is the
-  // emotional-rigidity trap: it pins the character to their opening state for
-  // the whole story, so a guarded person stays guarded through an ordeal that
-  // should have marked them. The anchor now separates the core, which holds,
-  // from the state, which is allowed to have moved — the same distinction the
-  // ledger's Cast entries carry.
-  const dueForReinject = s.assistantTurns > 0 && s.assistantTurns % REINJECT_EVERY_TURNS === 0;
-  if (identity && (dueForReinject || s.folded)) add("reinject", 83, `- Persona anchor: ${who}'s core is unchanged — ${identity}. Their state has moved; let what happened show in how they carry themselves, without substituting a different person.`);
-
-  const { pov, tense } = s.narration || {};
-  if ((pov || tense) && s.assistantTurns >= 2) {
-    const bits = [
-      pov === "first" ? "first-person" : pov === "second" ? "second-person" : pov === "third" ? "third-person" : "",
-      tense ? `${tense} tense` : "",
-    ].filter(Boolean);
-    add(
-      "lock",
-      85,
-      `- Narrative lock: the scene runs in ${bits.join(", ")}. Keep it, and keep the same separation between narration and speech.`
-    );
-  }
-
+  // The most severe agency failure, and the last line the model reads. It is a
+  // correction by nature — gated on a measured pattern — and its priority puts
+  // it at the end of the correction tier.
   if (s.puppetBleed > 0) {
     add(
       "puppet",
@@ -492,7 +558,11 @@ export function buildSceneGuidance(signals, { maxTokens = GUIDANCE_MAX_TOKENS, i
     );
   }
 
-  let kept = entries.slice().sort((a, b) => a.priority - b.priority);
+  // No final sort. `add()` records `keep` — what survives a tight allowance —
+  // and nothing else, so a comparator here would compare `undefined` fields and
+  // return NaN for every pair: a no-op that read as if it ordered the block.
+  // The emitted order is the order of the calls above, which is the ordering.
+  const kept = entries.slice();
   let text = kept.map((entry) => entry.text).join("\n");
   while (estimateTokens(text) > maxTokens && kept.length > 0) {
     // Lowest survival rank loses first; an empty block beats an oversized one.

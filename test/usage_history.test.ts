@@ -53,6 +53,24 @@ describe("The scope key decides what is comparable", () => {
     expect(scopeKeyOf({ endpoint: "x", model: "" })).not.toBe(scopeKeyOf({ endpoint: "", model: "x" }));
   });
 
+  // The five ids name the presets; they do not describe the prefix. A persona or
+  // a contract keeps its id when its text is edited, and an edited prefix is a
+  // cold prefix — so with ids alone the trend averages two unrelated prompts and
+  // reads the rebuild as a collapse, which is the one thing this module exists
+  // to prevent. Callers that hold the text pass it, and the key carries a digest.
+  test("editing the text behind an id starts a new scope, and ids alone stay unchanged", () => {
+    const before = scopeOf({ personaText: "A frail youth, coughing.", directiveText: "Write in the scene's language." });
+    const after = scopeOf({ personaText: "A towering knight.", directiveText: "Write in the scene's language." });
+    expect(after).not.toBe(before);
+    const edited = scopeOf({ personaText: "A frail youth, coughing.", directiveText: "Write in the scene's language, briefly." });
+    expect(edited).not.toBe(before);
+    // Same text, same key — a digest of unchanged bytes is not a change.
+    expect(scopeOf({ personaText: "A frail youth, coughing.", directiveText: "Write in the scene's language." })).toBe(before);
+    // And the ids-only key is exactly what it was, so samples recorded before
+    // the digest existed still group together.
+    expect(scopeOf()).toBe("https://a.test/v1|m|card_1|persona_default|directive_default");
+  });
+
   test("each chat keeps its own array, so two chats never share a history", () => {
     // Sessions are separate histories and nothing in this module may merge them.
     // The card is in the key but the transcript is not, so two chats of one card

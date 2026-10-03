@@ -44,6 +44,24 @@ export const USAGE_SCOPE_CAP = 8;
 const part = (value) => String(value ?? "").trim();
 
 /**
+ * FNV-1a over the prefix-defining text, as eight hex digits.
+ *
+ * Not a security hash and not pretending to be one: the only question it
+ * answers is whether two prompts are the same bytes, and a collision would have
+ * to land between two prompts of one chat on one endpoint to matter at all. A
+ * cryptographic digest would be async (WebCrypto) or a dependency, and neither
+ * buys anything for a key that is persisted in every sample.
+ */
+function digest(text) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h.toString(16).padStart(8, "0");
+}
+
+/**
  * The identity of the prefix a sample was measured against.
  *
  * Five parts, because each of them independently resets a provider's cache: a
@@ -51,11 +69,21 @@ const part = (value) => String(value ?? "").trim();
  * persona or system prompt is a different prefix. Two turns share a scope only
  * when all five match, which is exactly when their hit rates are comparable.
  *
+ * The five parts are *names*, and a name outlives an edit. Renaming a persona
+ * or rewriting the contract keeps the id and changes every byte after it, so
+ * two prefixes that share nothing would still be averaged into one trend — the
+ * "collapse that was really a rebuild" this module exists to prevent. A caller
+ * that holds the text therefore passes it as well, and the key carries a digest
+ * of it. A caller that passes only ids gets the bare id key, unchanged, which
+ * is what keeps samples recorded before this existed readable.
+ *
  * The result is an internal key. It is never shown to a reader — the panel
  * receives a label the caller resolved from names.
  */
 export function scopeKeyOf(parts = {}) {
-  return [parts.endpoint, parts.model, parts.cardId, parts.personaId, parts.directiveId].map(part).join("|");
+  const base = [parts.endpoint, parts.model, parts.cardId, parts.personaId, parts.directiveId].map(part).join("|");
+  const text = [parts.cardText, parts.personaText, parts.directiveText].map(part).filter(Boolean);
+  return text.length ? `${base}|${digest(text.join("\u0000"))}` : base;
 }
 
 const finite = (value) => (typeof value === "number" && Number.isFinite(value) ? value : null);

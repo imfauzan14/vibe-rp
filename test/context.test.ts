@@ -34,6 +34,9 @@ import {
   ledgerFramingTokens,
   buildSceneGuidance,
   ensembleCast,
+  analyzeTurnState,
+  detectNarration,
+  characterIdentity,
   GUIDANCE_MAX_TOKENS,
   LEDGER_COMPRESS_PROMPT,
   SUMMARY_PROMPT,
@@ -675,8 +678,107 @@ describe("Context planners - history hygiene and lore selection", () => {
     expect(firstTurn.notes).toEqual(["scope"]);
     expect(firstTurn.text).toContain("Elena");
     expect(firstTurn.text).toContain("the card sets the stance");
-    // The perception boundary stays; the reaction reading does not.
-    expect(firstTurn.text).toContain("observable cues");
+    // Perception is bounded by where the character *is*, not only by what kind
+    // of cue it is. "Observable cues" alone licensed a character behind a
+    // locked door noticing a hand inside a pocket; a measured session produced
+    // exactly that, on every turn, which the reader experiences as a character
+    // who can see everything about them.
+    expect(firstTurn.text).toContain("only where Elena is there to see or hear it");
+    // And the turn opens on the character rather than on a re-narration of the
+    // reader's beat — the same session restated that beat in all fifteen
+    // replies while the contract forbade it from mid-context.
+    expect(firstTurn.text).toContain("opening on Elena rather than on a restatement");
+  });
+
+  // The block's ordering is the mechanism the whole module rests on: recency
+  // weight. The measured, specific corrections have to sit after the generic
+  // anchors. The emitted order is the order of the `add()` calls, and that has
+  // to stay true — a comparator over a field `add()` never sets is a no-op that
+  // reads as if it ordered the block, which is what it used to be.
+  test("the measured corrections sit nearest the generation head, after the generic anchors", () => {
+    const guidance = buildSceneGuidance(
+      {
+        charName: "Elena",
+        playerName: "Rin",
+        assistantTurns: 8,
+        folded: true,
+        slopHits: 9,
+        puppetBleed: 0,
+        absentCast: ["Mira", "Corin"],
+        narration: { pov: "third", tense: "past" },
+        tics: [{ id: "contrast", priority: 70, keep: 70, note: "State the true thing once." }],
+      },
+      { identity: "a stern inquisitor", maxTokens: 320 }
+    );
+    const notes = guidance.notes;
+    expect(notes[0]).toBe("canon");
+    expect(notes[1]).toBe("scope");
+    for (const anchor of ["reinject", "lock"]) {
+      expect(notes.indexOf(anchor)).toBeGreaterThan(1);
+      expect(notes.indexOf(anchor)).toBeLessThan(notes.indexOf("contrast"));
+    }
+    // The most urgent correction is the last line the model reads.
+    expect(notes[notes.length - 1]).toBe("contrast");
+  });
+
+  // The note says "the last replies ran at one uniform length", so the detector
+  // has to read the last replies. It read the *oldest* three of the analysis
+  // window, which described replies the model had already moved past — and the
+  // correction it produced then pointed at text that was no longer on screen.
+  test("the uniform-paragraph detector reads the newest replies, not the oldest", () => {
+    const uniform = Array.from({ length: 4 }, () => "Alpha beta gamma delta epsilon zeta eta theta iota kappa.").join("\n\n");
+    const varied = [
+      "One.",
+      "A much longer paragraph that runs on for a while and keeps going with several clauses and a good deal of extra length attached to it.",
+      "Two.",
+    ].join("\n\n");
+    const ticsOf = (list) =>
+      analyzeTurnState({ messages: list.map((content) => ({ role: "assistant", content })) }).tics.map((t) => t.id);
+    expect(ticsOf([varied, varied, varied, uniform, uniform, uniform])).toContain("uniformBlocks");
+    expect(ticsOf([uniform, uniform, uniform, varied, varied, varied])).not.toContain("uniformBlocks");
+  });
+
+  // The lane line is the one entry that has to survive every allowance, so its
+  // size is a contract, not a style preference: `buildSceneGuidance` drops a
+  // whole entry rather than clipping it, and an empty block carries nothing.
+  // The floor is the 80 tokens a small window produces.
+  test("the turn-scope line fits the smallest allowance the block is ever given", () => {
+    for (const [charName, playerName] of [["Elena", "Rin"], ["", ""]]) {
+      const guidance = buildSceneGuidance(
+        { charName, playerName, assistantTurns: 0, tics: [], absentCast: [], narration: { pov: null, tense: null } },
+        { identity: "", maxTokens: 80 }
+      );
+      expect(guidance.notes).toEqual(["scope"]);
+      expect(estimateTokens(guidance.text)).toBeLessThanOrEqual(80);
+    }
+  });
+
+  // A tense is English *morphology*, not a phrase list, and Latin script is not
+  // evidence of English: `\w{4,}s` matches `keras`, `napas`, `tulus`. A
+  // measured Indonesian session scored 10 present against 0 past on a language
+  // with no grammatical tense, so every turn carried "the scene runs in present
+  // tense" at the recency position — a lock the model obeys and that describes
+  // nothing. The claim now rides on the POV vote, which requires English
+  // pronouns with a clear margin.
+  test("a Latin-script language that is not English yields no tense lock", () => {
+    const indonesian = [
+      { role: "assistant", content: "Rishe tidak langsung menjawab. Hening yang menggantung terasa lebih dingin. Matanya terpaku pada gerakan jemari yang sibuk memilin ujung benang lepas. Bibirnya mengencang sesaat, lalu ditarik menjadi senyum tipis yang kaku dan tajam. Ia melangkah maju satu tapak, dan kain sutra merahnya berdesir menyapu lantai berdebu." },
+      { role: "assistant", content: "Ia menatap lurus ke arah pemuda yang tetap menunduk itu, mencari setitik saja amarah atau rasa sakit yang membara. Namun sikap pasrah itu hanya memantulkan kekosongan yang tidak nyaman ke arahnya. Rahangnya mengeras, lalu bibirnya ditarik menjadi garis tipis yang kaku." },
+      { role: "assistant", content: "Rishe menarik napas tajam melalui hidung, lalu menegakkan kembali bahunya dengan kaku. Tangannya yang berbalut renda melepaskan pegangan tangga besi dengan sentakan pelan. Ia berbalik di atas tumit sepatunya, dan kain sutranya menyapu lantai berdebu saat ia melangkah mantis menuju undakan batu." },
+    ];
+    const reading = detectNarration(indonesian);
+    expect(reading.tense).toBeNull();
+    // The reading is not "past" either: nothing was measured, which is the
+    // honest answer for a language this detector cannot read.
+    expect(reading.pov).toBeNull();
+
+    // The same detector still reads English, so the gate is not a blanket off.
+    const english = [
+      { role: "assistant", content: "She did not answer at once. The silence hung between them, colder than the water on the wall. Her eyes fixed on the hand that moved against the cloth, and she said nothing. He waited. She looked away." },
+      { role: "assistant", content: "He had expected anger. He found none. She turned her head and looked at the bars, and her jaw tightened until the line of it went white. He said nothing at all." },
+      { role: "assistant", content: "She walked to the stair and did not look back. The torch flickered. He listened to her steps until they stopped, and then he let out the breath he had been holding." },
+    ];
+    expect(detectNarration(english).tense).toBe("past");
   });
 
   // End to end: the binding has to reach the wire, on the path every entry
@@ -709,6 +811,43 @@ describe("Context planners - history hygiene and lore selection", () => {
     expect(guidance.text).toContain("the character");
     expect(guidance.text).toContain("the player");
     expect(guidance.text).toContain("the card sets the stance");
+  });
+
+  // The identity restatement is injected at the recency position, so it has to
+  // read as a sentence. A hard character slice cut mid-word ("...in front of
+  // the kingdo") and kept the card's markdown, on a card whose `personality` is
+  // empty — the common shape, because exporters put the biography in
+  // `description` and leave the trait field blank.
+  test("the identity restatement never cuts a word in half or keeps card markup", () => {
+    const long = {
+      data: {
+        name: "Rishe",
+        personality: "",
+        description:
+          "**She was your lover, the one you thought you'll spend your life with and yet, She humiliated you in front of the kingdom and is choosing the crown over you.**\n\n**Rishe Valebryn || 22 years || Lover**",
+      },
+    };
+    const identity = characterIdentity(long);
+    expect(identity).not.toContain("*");
+    expect(identity).not.toMatch(/kingdo\b/);
+    // The opening sentence completes inside the hard limit, so all of it is
+    // used rather than a fragment of it — and without its full stop, because
+    // the anchor line supplies the sentence it sits in.
+    expect(identity).toBe(
+      "She was your lover, the one you thought you'll spend your life with and yet, She humiliated you in front of the kingdom and is choosing the crown over you"
+    );
+
+    // A short trait field is already one phrase and is left alone.
+    expect(
+      characterIdentity({ data: { name: "Elena", personality: "Cold, calculating, contemptuous of weakness." } })
+    ).toBe("Cold, calculating, contemptuous of weakness");
+
+    // With no sentence to cut at, the cut lands on a word boundary and says so,
+    // rather than ending in the middle of a word.
+    const runOn = characterIdentity({ data: { description: "wanderer ".repeat(40).trim() } });
+    expect(runOn.endsWith("\u2026")).toBe(true);
+    expect(runOn.slice(0, -1).split(" ").every((word) => word === "wanderer")).toBe(true);
+    expect(runOn.length).toBeLessThanOrEqual(121);
   });
 
   // The engine must not name any language. It used to carry a hardcoded
