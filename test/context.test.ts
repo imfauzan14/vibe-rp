@@ -35,8 +35,13 @@ import {
   buildSceneGuidance,
   ensembleCast,
   GUIDANCE_MAX_TOKENS,
+  LEDGER_COMPRESS_PROMPT,
+  SUMMARY_PROMPT,
+  SUMMARY_UPDATE_PROMPT,
+  SUMMARY_SYSTEM_PROMPT,
 } from "../public/browser_engine.js";
 import { DEFAULT_AGENTS_CONTRACT, DEFAULT_AGENTS_CONTRACT_ID } from "../public/local_db.js";
+import { CHOICE_SYSTEM_PROMPT, CHOICE_DELIBERATION_HINT, choicePrompt } from "../public/choice_format.js";
 import { words, SSE_OK, presetOfTokens, captureGeneration, resetFetch } from "./helpers.js";
 
 afterEach(() => {
@@ -611,6 +616,79 @@ describe("Context planners - history hygiene and lore selection", () => {
     expect(line).toContain("personality");
   });
 
+  // The stance a character takes toward the reader is the card's to set, not
+  // the reader's persona's. The engine's epistemic section used to close with
+  // "…and they respond to it as anyone would", which hands the response to the
+  // average human reaction — and the persona is rendered as a catalogue of
+  // *observable* traits. A persona whose visible presentation is suffering (a
+  // chronic illness, a cowed posture, an apologetic smile) therefore drew pity
+  // from presets written to be cold or hostile, on the first message, before any
+  // event had earned it. The section now stops at what the character can
+  // perceive and makes no claim about how they answer.
+  test("no engine-authored section licenses a generic response to the reader's visible state", () => {
+    const card = { data: { name: "Elena", description: "A stern inquisitor.", scenario: "An interrogation." } };
+    const persona = { description: "A frail youth at the bottom of the hierarchy, coughing into a sleeve." };
+    for (const agentsContract of [DEFAULT_AGENTS_CONTRACT, DEFAULT_AGENTS_CONTRACT_ID]) {
+      const sections = buildSystemSections(card, persona, { agentsContract });
+      const engineAuthored = sections.filter((s) => s.id !== "contract").map((s) => s.text).join("\n");
+      expect(engineAuthored).not.toContain("as anyone would");
+      // The section survives and keeps its perception boundary; only the
+      // generic-response licence is gone.
+      expect(engineAuthored).toContain("Epistemic Boundary (Anti-Omniscience)");
+      expect(engineAuthored).toContain("and no more than that");
+    }
+  });
+
+  // The opening turn is the one turn with no transcript to re-assert the
+  // character, and it is also the turn on which the guidance block holds
+  // nothing but the scope line — every other entry is gated on turns the
+  // session has not taken yet (re-injection at turn 8, the narrative lock at
+  // turn 2). So the scope line has to carry the disposition itself, or the only
+  // instruction near the generation head is a rule about perception.
+  test("the opening turn's tail binds the answer to the character, not to what is visible", () => {
+    const firstTurn = buildSceneGuidance(
+      { charName: "Elena", playerName: "", assistantTurns: 0, tics: [], absentCast: [], narration: { pov: null, tense: null } },
+      { identity: "a stern inquisitor" }
+    );
+    expect(firstTurn.notes).toEqual(["scope"]);
+    expect(firstTurn.text).toContain("Elena");
+    expect(firstTurn.text).toContain("the card sets the stance");
+    // The perception boundary stays; the reaction reading does not.
+    expect(firstTurn.text).toContain("observable cues");
+  });
+
+  // End to end: the binding has to reach the wire, on the path every entry
+  // point (send, reroll, retry, Choice Mode) shares.
+  test("the first message's payload carries the character-bound answer at the tail", () => {
+    const card = { data: { name: "Elena", description: "A stern inquisitor who despises weakness." } };
+    const persona = { description: "A frail youth, coughing, apologetic." };
+    const plan = BrowserChatEngine.planRequest({
+      card,
+      session: { messages: [{ role: "user", content: "I step forward." }] },
+      persona,
+      settings: {},
+    });
+    const tail = plan.payload[plan.payload.length - 1];
+    expect(tail.role).toBe("user");
+    expect(tail.content).toContain("[Writing Guidance:");
+    expect(tail.content).toContain("Elena");
+    expect(tail.content).toContain("the card sets the stance");
+  });
+
+  test("the stance line still reads when the card and persona are unnamed", () => {
+    // Both names fall back. The sentence has to survive that: a nameless card
+    // with a nameless persona is the shape a user-authored persona produces,
+    // and it is exactly the case the stance line exists for.
+    const guidance = buildSceneGuidance(
+      { charName: "", playerName: "", assistantTurns: 0, tics: [], absentCast: [], narration: { pov: null, tense: null } },
+      { identity: "" }
+    );
+    expect(guidance.notes).toEqual(["scope"]);
+    expect(guidance.text).toContain("the character");
+    expect(guidance.text).toContain("the player");
+    expect(guidance.text).toContain("the card sets the stance");
+  });
+
   // The engine must not name any language. It used to carry a hardcoded
   // Indonesian function-word list so this section could track the contract's
   // language; that was one national language baked into core engine code, and it
@@ -635,6 +713,53 @@ describe("Context planners - history hygiene and lore selection", () => {
       // And the section id is no longer named after a language concern.
       expect(sections.map((s) => s.id)).not.toContain("operationalPrecedence");
       expect(sections.map((s) => s.id)).toContain("cardReading");
+    }
+  });
+
+  // English is the authoring language of every engine prompt — it is how the
+  // engine's own words are written, never a claim about the reader's language
+  // and never a branch on one. The engine states *how* the fiction behaves and
+  // lets the active contract carry the language; that split is what makes the
+  // approach universal. This pins the whole engine-authored surface at once, so
+  // a prompt that names or assumes a language cannot slip in.
+  test("every engine-authored prompt is English and names no language", () => {
+    const card = { data: { name: "Elena", description: "An alchemist.", scenario: "A storm." } };
+    const persona = { name: "Rin", description: "An engineer from a distant land." };
+    const engineAuthored = {
+      ledgerCompress: LEDGER_COMPRESS_PROMPT,
+      summarySystem: SUMMARY_SYSTEM_PROMPT,
+      summary: SUMMARY_PROMPT,
+      summaryUpdate: SUMMARY_UPDATE_PROMPT,
+      choiceSystem: CHOICE_SYSTEM_PROMPT,
+      choiceDeliberation: CHOICE_DELIBERATION_HINT,
+      choiceTask: choicePrompt(4, { charName: "Elena", playerName: "Rin" }),
+      // The engine's own sections under both contracts. The contract itself is
+      // the user's choice of language and is deliberately excluded.
+      sectionsEn: buildSystemSections(card, persona, { agentsContract: DEFAULT_AGENTS_CONTRACT })
+        .filter((s) => s.id !== "contract")
+        .map((s) => s.text)
+        .join("\n"),
+      sectionsId: buildSystemSections(card, persona, { agentsContract: DEFAULT_AGENTS_CONTRACT_ID })
+        .filter((s) => s.id !== "contract")
+        .map((s) => s.text)
+        .join("\n"),
+      guidance: buildSceneGuidance(
+        { charName: "Elena", playerName: "Rin", assistantTurns: 0, tics: [], absentCast: [], narration: { pov: null, tense: null } },
+        { identity: "an alchemist" }
+      ).text,
+    };
+
+    for (const [id, text] of Object.entries(engineAuthored)) {
+      // English means no letter outside ASCII. Accents and non-Latin scripts
+      // are the two ways a second language enters prose; the em dash and
+      // ellipsis these prompts use are punctuation, not letters.
+      const foreignLetters = [...text].filter((ch) => /\p{L}/u.test(ch) && ch.codePointAt(0) > 127);
+      expect(foreignLetters.map((ch) => `${id}:${ch}`)).toEqual([]);
+      // No language is named, so none can be special-cased. This is the rule
+      // the whole design rests on: the engine is language-blind.
+      expect(text).not.toMatch(
+        /\b(English|Indonesian|Bahasa|Japanese|Chinese|Korean|Spanish|French|German|Portuguese|Russian|Arabic|Hindi)\b/i
+      );
     }
   });
 

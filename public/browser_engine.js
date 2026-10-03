@@ -774,14 +774,21 @@ export function buildSystemSections(card, persona, settings = {}) {
     });
     sections.push({
       id: "epistemicBoundary",
+      // The section ends on the *perception* boundary and says nothing about the
+      // response. It used to close "…and they respond to it as anyone would",
+      // which is a licence to substitute the average human reaction for the
+      // character's own: a reader whose visible presentation is suffering got
+      // pity from a preset written to be cold, because "anyone" would pity them.
+      // Disposition belongs to the card and the craft contract; this section's
+      // job is only to stop the character knowing what they cannot see.
       text:
         "[Epistemic Boundary (Anti-Omniscience): the character has no telepathic or out-of-character " +
         "knowledge of the user's unintroduced name, backstory, or thoughts. Unless the scenario or " +
         "history has established a prior relationship, they meet the user as a stranger, and must NOT " +
         "know or call them by their persona name, cite their backstory, or presume unearned familiarity " +
         "before the user reveals it. The persona name above is a label for the reader, not knowledge " +
-        "the character holds. What they do perceive is the observable — demeanour, body language, " +
-        "vocal tension, hesitation — and they respond to it as anyone would.]",
+        "the character holds. What they perceive is the observable — demeanour, body language, " +
+        "vocal tension, hesitation — and no more than that.]",
       required: false,
       priority: 20,
     });

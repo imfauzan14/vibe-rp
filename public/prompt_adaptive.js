@@ -33,8 +33,9 @@
 // present (the measured re-injection tier, ~40 tokens), while every
 // behavior-specific correction is gated on a repeated, measured pattern in the
 // model's own recent output. A single stray tic is not a correction; a streak
-// is. The phrase lexicon is skipped entirely when the story is not in English,
-// because an English ban list cannot describe a Japanese sentence.
+// is. The lexical detectors are English *patterns*, so they run only on text
+// the pattern list can read — see `latinShare`. The structural detectors read
+// shape rather than words, so they run for every language alike.
 //
 // Pure and DOM-free: the result depends only on the arguments, so the same
 // session yields the same guidance in the tests, in the context inspector, and
@@ -320,7 +321,13 @@ export function analyzeTurnState({
     .filter((name) => name && !present.has(name.toLowerCase()))
     .slice(0, 4);
 
-  const english = latinShare(recent) >= 0.6;
+  // Whether the English lexical detectors can read the text at all. This is a
+  // *script* test, not a language test: the engine names no language and
+  // special-cases none. Latin script is the condition the English pattern list
+  // needs, and it is true of every Latin-script language — which is the honest
+  // limit of an English pattern list, not a claim about which language the
+  // story is in. The structural detectors below are unaffected either way.
+  const latinScript = latinShare(recent) >= 0.6;
   const userTurns = list.filter((m) => m.role === "user");
   const replyWords = replies.map(countWords);
   const sortedWords = replyWords.slice().sort((a, b) => a - b);
@@ -330,7 +337,7 @@ export function analyzeTurnState({
     medianReplyWords: sortedWords.length ? sortedWords[Math.floor(sortedWords.length / 2)] : 0,
   };
   const tics = [];
-  if (english) {
+  if (latinScript) {
     for (const tic of PROSE_TICS) {
       const hits = tic.count(recent, replies, ticContext);
       if (hits >= tic.threshold) tics.push({ id: tic.id, priority: tic.priority, note: tic.note, hits });
@@ -342,8 +349,8 @@ export function analyzeTurnState({
     analyzed: replies.length,
     replyWords,
     latestReplyWords: replyWords.length ? replyWords[replyWords.length - 1] : 0,
-    english,
-    slopHits: english ? countMatches(recent, SLOP_RE) : 0,
+    latinScript,
+    slopHits: latinScript ? countMatches(recent, SLOP_RE) : 0,
     tics,
     narration: detectNarration(list),
     puppetBleed,
@@ -402,10 +409,26 @@ export function buildSceneGuidance(signals, { maxTokens = GUIDANCE_MAX_TOKENS, i
   // repeating it here put two versions of one instruction in every request.
   // What stays is what only this block can say: the character's name, and the
   // observable-cue boundary the contract states in the abstract.
+  //
+  // The line binds the *response* to the character, not only the perception.
+  // Stated as perception alone it read as a reaction instruction, and on the
+  // opening turn this line is the whole block — every other entry below is
+  // gated on turns the session has not taken yet — so the single instruction
+  // nearest the generation head told the model to read the reader's visible
+  // state and answer it. A reader whose visible state is suffering then got
+  // pity from presets written to be cold. Naming the character as the thing
+  // that answers restores the card's stance at the position that outweighs the
+  // prefix.
+  //
+  // It says the *card* sets the stance rather than fixing a disposition on
+  // purpose. The craft contract already separates the core, which holds, from
+  // the state, which the story may move; an earlier anchor here ("never soften
+  // into bland compliance") was removed for pinning a character to their
+  // opening state, and this line must not reintroduce that trap.
   add(
     "scope",
     96,
-    `- Turn scope: write ${who} and the immediate environmental consequence. Perceive ${player} only through observable cues.`
+    `- Turn scope: write ${who} and the immediate environmental consequence. Perceive ${player} through observable cues only, and answer as ${who} — the card sets the stance, not the cues alone.`
   );
 
   // Prose corrections, least urgent first. They are the measured

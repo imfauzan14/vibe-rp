@@ -57,7 +57,7 @@ Settings. `bun run build` is a no-op — the client ships as static files, so
 deploying it means copying `public/` somewhere and pointing a static host at it.
 
 ```bash
-bun test          # 755 tests across 35 files
+bun test          # 760 tests across 35 files
 bun run eval      # the prompt gates (offline, deterministic)
 ```
 
@@ -338,7 +338,7 @@ package.json            Scripts and metadata
 
 ## Testing
 
-Bun's native test runner, 755 tests across 35 files under `test/`.
+Bun's native test runner, 760 tests across 35 files under `test/`.
 
 ```bash
 bun test test/

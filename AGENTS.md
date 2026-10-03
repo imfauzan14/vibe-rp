@@ -65,7 +65,7 @@ The dependency direction is one-way: UI modules depend on controllers, controlle
 
 Top-level logic (all zero DOM unless noted):
 
-- **`public/browser_engine.js`** (2828 lines): `BrowserChatEngine`. Prompt assembly, the four context rules, ledger folding, SSE streaming, the universal allocator, and auxiliary choice generation. Re-exports the pure planning helpers from `context_plan.js` and the session-write accessors from `session_state.js` so callers keep one import surface.
+- **`public/browser_engine.js`** (2835 lines): `BrowserChatEngine`. Prompt assembly, the four context rules, ledger folding, SSE streaming, the universal allocator, and auxiliary choice generation. Re-exports the pure planning helpers from `context_plan.js` and the session-write accessors from `session_state.js` so callers keep one import surface.
 - **`public/context_plan.js`** (228 lines): pure planning. Token estimation, `cleanPromptText`, the summary budgets, and `allocateContext` — the one allocator. Owns the ledger-framing cost (`LEDGER_OPEN`/`LEDGER_CLOSE`, `ledgerFramingTokens()`) so every charge site reads one value. `browser_engine.js` re-exports `allocateContext` as a thin wrapper, so the engine's own calls and a page's calls go through the same decision.
 - **`public/session_state.js`** (112 lines): the session-write seam (`applyFold`, `resetLedger`, `captureLedgerState`, `restoreLedgerState`, `noteUsage`, `noteUsageReport`, `markLedgerTruncated`, `setOverflowReported`, `setCondensedReported`). The engine decides *when*; this module owns *how* the controller's session is mutated, so the fold returns a value and one place applies it. `resetLedger` handles explicit ledger clears (user transcript edits); the capture/restore pair makes a deletion undoable.
 - **`public/usage_history.js`** (235 lines): the per-chat usage history — the sample shape, the scope key that decides what is comparable, the per-scope caps, and the trend derivation. A leaf module: it imports nothing, reads no store and holds no clock. `session_controller.js` writes the samples; `ui/chat/context_panel.js` renders the trend.
@@ -300,7 +300,7 @@ bun test test/
 
 ### Stats
 
-755 tests, 11420 expect() calls, 35 files (measured with `bun test`).
+760 tests, 11458 expect() calls, 35 files (measured with `bun test`).
 
 ### Existing Test Files
 
