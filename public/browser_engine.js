@@ -496,14 +496,35 @@ const LEDGER_FRAMING_TOKENS = ledgerFramingTokens();
 
 
 /**
+ * The first field that holds author-written text, or "".
+ *
+ * Card and persona data is user-supplied and arrives from exporters the app has
+ * never seen, so a field can hold anything — a number, an array, a nested
+ * object. `String(field)` turns those into "[object Object]" or "1,2,3" and
+ * puts them in the prompt as though the author had written them. Only a string
+ * is text; every other type counts as absent, so the field's own fallback
+ * applies instead of a type artefact reaching the model.
+ */
+function firstText(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value) return value;
+  }
+  return "";
+}
+
+/**
  * Substitutes card-local placeholders in user-authored card text. Thin wrapper
  * over `substitutePlaceholders` in ./text.js with Character/User
  * defaults when the card or persona name is missing.
+ *
+ * Text that is not a string is treated as absent rather than stringified, for
+ * the reason `firstText` exists: the alternative is "[object Object]" in the
+ * prompt, wearing the author's authority.
  */
 export function substituteCardPlaceholders(text, card, persona) {
-  if (!text) return "";
-  const cName = String(card ? card.data?.name || card.name || "" : "").trim();
-  const uName = String(persona?.name || "").trim();
+  if (typeof text !== "string" || !text) return "";
+  const cName = firstText(card?.data?.name, card?.name).trim();
+  const uName = firstText(persona?.name).trim();
   return substitutePlaceholders(text, { user: uName || "User", char: cName || "Character" });
 }
 
@@ -563,9 +584,9 @@ export function selectLorebookEntries(card, { budget = 1000, constantOnly = fals
 export function characterIdentity(card, persona = null) {
   if (!card) return "";
   const rawParts = [
-    card.data?.personality || card.personality || "",
-    card.data?.description || card.description || "",
-    card.data?.system_prompt || card.system_prompt || "",
+    firstText(card.data?.personality, card.personality),
+    firstText(card.data?.description, card.description),
+    firstText(card.data?.system_prompt, card.system_prompt),
   ].filter(Boolean);
   if (!rawParts.length) return "";
   const clean = substituteCardPlaceholders(rawParts.join(" "), card, persona)
@@ -604,14 +625,14 @@ export function ensembleCast(card) {
         const name = renderInlineField(member);
         return name ? { name, role: "", voice: "" } : null;
       }
-      const name = renderInlineField(String(member.name || member.char_name || member.character_name || ""));
+      const name = renderInlineField(firstText(member.name, member.char_name, member.character_name));
       if (!name) return null;
       // Every roster field shares one flatten rule; role and voice then get a
       // longer clamp than the name.
       return {
         name,
-        role: renderInlineField(String(member.role || member.description || ""), 160),
-        voice: renderInlineField(String(member.voice || member.personality || member.traits || ""), 160),
+        role: renderInlineField(firstText(member.role, member.description), 160),
+        voice: renderInlineField(firstText(member.voice, member.personality, member.traits), 160),
       };
     })
     .filter(Boolean);
@@ -646,21 +667,21 @@ export function buildSystemSections(card, persona, settings = {}) {
   // A name is interpolated into a one-line heading and a bracketed slot, so it
   // is flattened first: a newline in a card name would otherwise open a new
   // line that reads as a section heading of the model's own.
-  const cName = renderInlineField(card ? card.data?.name || card.name || "Character" : "Character");
+  const cName = renderInlineField(firstText(card?.data?.name, card?.name) || "Character");
   sections.push({ id: "character", text: `### CHARACTER IN SCENE: ${cName}`, required: true, priority: 1000 });
 
-  const cardSystemPrompt = sub(card ? card.data?.system_prompt || card.system_prompt : "");
+  const cardSystemPrompt = sub(firstText(card?.data?.system_prompt, card?.system_prompt));
   if (cardSystemPrompt) {
     sections.push({ id: "cardDirectives", text: `[Character Core Directives:\n${cardSystemPrompt}]`, required: true, priority: 950 });
   }
-  const desc = sub(card ? card.data?.description || card.description : "");
+  const desc = sub(firstText(card?.data?.description, card?.description));
   if (desc) sections.push({ id: "description", text: `[Description: ${desc}]`, required: true, priority: 950 });
-  const pers = sub(card ? card.data?.personality || card.personality : "");
+  const pers = sub(firstText(card?.data?.personality, card?.personality));
   if (pers) sections.push({ id: "personality", text: `[Personality: ${pers}]`, required: true, priority: 950 });
-  const scen = sub(card ? card.data?.scenario || card.scenario : "");
+  const scen = sub(firstText(card?.data?.scenario, card?.scenario));
   if (scen) sections.push({ id: "scenario", text: `[Scenario: ${scen}]`, required: true, priority: 950 });
 
-  const mesEx = sub(card ? card.data?.mes_example || card.mes_example : "");
+  const mesEx = sub(firstText(card?.data?.mes_example, card?.mes_example));
   if (mesEx) sections.push({ id: "examples", text: `[Dialogue Examples:\n${mesEx}]`, required: false, priority: 10 });
   // Ingest constant lorebook entries into the stable prefix (atomic, cache-friendly)
   const { loreBudget } = resolveContextBudgets(settings);
@@ -672,7 +693,7 @@ export function buildSystemSections(card, persona, settings = {}) {
   // Ensemble roster: the cast for multi-character play, read through the one
   // normaliser. The primary character may appear in the roster too; drop the
   // duplicate so the section adds only *additional* cast (case-insensitively).
-  const mainName = String(card?.data?.name || card?.name || "").trim().toLowerCase();
+  const mainName = firstText(card?.data?.name, card?.name).trim().toLowerCase();
   const ensemble = ensembleCast(card).filter((member) => member.name.toLowerCase() !== mainName);
   if (ensemble.length > 0) {
     const rosterLines = ensemble.map((m) => {
@@ -689,9 +710,9 @@ export function buildSystemSections(card, persona, settings = {}) {
     });
   }
 
-  const rawPersonaName = String(persona?.name || "").trim();
-  const rawPersonaDesc = String(persona?.description || persona?.persona || persona?.content || "").trim();
-  const rawPersonaTemplate = String(persona?.template || "").trim();
+  const rawPersonaName = firstText(persona?.name).trim();
+  const rawPersonaDesc = firstText(persona?.description, persona?.persona, persona?.content).trim();
+  const rawPersonaTemplate = firstText(persona?.template).trim();
 
   if (rawPersonaName || rawPersonaDesc || rawPersonaTemplate) {
     const pName = renderInlineField(sub(rawPersonaName || (rawPersonaDesc ? "User" : "")));
@@ -781,13 +802,23 @@ export function buildSystemSections(card, persona, settings = {}) {
       // pity from a preset written to be cold, because "anyone" would pity them.
       // Disposition belongs to the card and the craft contract; this section's
       // job is only to stop the character knowing what they cannot see.
+      //
+      // The persona clause covers the whole *section*, not just its name. The
+      // persona body is formatted exactly like the card's own fields, so the
+      // model reads it as facts it holds; a name-only disclaimer left the body
+      // — an unrevealed illness, a private history, a secret competence —
+      // available to the character as knowledge. And the clause binds
+      // *treatment*, not only citation: a rule that forbids citing the reader's
+      // backstory still permits a character whose whole manner is oriented
+      // around it, which is the leak a reader reported.
       text:
         "[Epistemic Boundary (Anti-Omniscience): the character has no telepathic or out-of-character " +
         "knowledge of the user's unintroduced name, backstory, or thoughts. Unless the scenario or " +
         "history has established a prior relationship, they meet the user as a stranger, and must NOT " +
         "know or call them by their persona name, cite their backstory, or presume unearned familiarity " +
-        "before the user reveals it. The persona name above is a label for the reader, not knowledge " +
-        "the character holds. What they perceive is the observable — demeanour, body language, " +
+        "before the user reveals it. The persona section above describes the reader for the story's " +
+        "benefit: the character knows only what the story has shown or the reader has said, and treats " +
+        "them on that basis. What they perceive is the observable — demeanour, body language, " +
         "vocal tension, hesitation — and no more than that.]",
       required: false,
       priority: 20,

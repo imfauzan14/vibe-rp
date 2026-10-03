@@ -65,13 +65,13 @@ The dependency direction is one-way: UI modules depend on controllers, controlle
 
 Top-level logic (all zero DOM unless noted):
 
-- **`public/browser_engine.js`** (2835 lines): `BrowserChatEngine`. Prompt assembly, the four context rules, ledger folding, SSE streaming, the universal allocator, and auxiliary choice generation. Re-exports the pure planning helpers from `context_plan.js` and the session-write accessors from `session_state.js` so callers keep one import surface.
+- **`public/browser_engine.js`** (2866 lines): `BrowserChatEngine`. Prompt assembly, the four context rules, ledger folding, SSE streaming, the universal allocator, and auxiliary choice generation. Re-exports the pure planning helpers from `context_plan.js` and the session-write accessors from `session_state.js` so callers keep one import surface.
 - **`public/context_plan.js`** (228 lines): pure planning. Token estimation, `cleanPromptText`, the summary budgets, and `allocateContext` — the one allocator. Owns the ledger-framing cost (`LEDGER_OPEN`/`LEDGER_CLOSE`, `ledgerFramingTokens()`) so every charge site reads one value. `browser_engine.js` re-exports `allocateContext` as a thin wrapper, so the engine's own calls and a page's calls go through the same decision.
 - **`public/session_state.js`** (112 lines): the session-write seam (`applyFold`, `resetLedger`, `captureLedgerState`, `restoreLedgerState`, `noteUsage`, `noteUsageReport`, `markLedgerTruncated`, `setOverflowReported`, `setCondensedReported`). The engine decides *when*; this module owns *how* the controller's session is mutated, so the fold returns a value and one place applies it. `resetLedger` handles explicit ledger clears (user transcript edits); the capture/restore pair makes a deletion undoable.
 - **`public/usage_history.js`** (235 lines): the per-chat usage history — the sample shape, the scope key that decides what is comparable, the per-scope caps, and the trend derivation. A leaf module: it imports nothing, reads no store and holds no clock. `session_controller.js` writes the samples; `ui/chat/context_panel.js` renders the trend.
 - **`public/session_controller.js`** (858 lines): `SessionController`. Session lifecycle, modal state machine, message transitions, send/stream flow, retry of an unanswered turn, the Choice Mode state machine, and the one place a usage sample is recorded. Accepts `options.signal` and exposes `cancel()`.
 - **`public/local_db.js`** (907 lines): `LocalDb` plus its two backends. `IdbStore` owns IndexedDB (cards, sessions); `LocalStore` owns localStorage (personas, directives, settings). `LocalDb` is a facade: an instance drives its own stores and accepts injected ones, while the statics delegate to a default instance. `DB_VERSION` is 2.
-- **`public/text.js`** (61 lines): the cycle-free leaf every other pure module may import. `utf8Decoder`, `substitutePlaceholders`, `stripThoughtBlocks`, `renderInlineField`.
+- **`public/text.js`** (72 lines): the cycle-free leaf every other pure module may import. `utf8Decoder`, `substitutePlaceholders`, `stripThoughtBlocks`, `renderInlineField`.
 - **`public/safe_html.js`** (37 lines): `escapeHtml` and `escapeAttr`. The single escaping point for the whole app.
 - **`public/message_format.js`** (159 lines): pure `formatProse` and `formatMessages` view models. `formatProse` is the one the app uses; `formatMessages` is consumed only by tests.
 - **`public/choice_format.js`** (328 lines): the Choice Mode prompt and the resilient parser for untrusted model output (zero DOM).
@@ -300,7 +300,7 @@ bun test test/
 
 ### Stats
 
-760 tests, 11458 expect() calls, 35 files (measured with `bun test`).
+768 tests, 11616 expect() calls, 36 files (measured with `bun test`).
 
 ### Existing Test Files
 
@@ -327,6 +327,7 @@ bun test test/
 - `test/presets_resolution.test.ts`: settings resolution
 - `test/presets_store.test.ts`: preset stores
 - `test/prompt_eval_gate.test.ts`: the structural prompt evaluator as a regression gate (a clean report passes, each failure class — single-definition, contract-layer, bilingual parity, framing — makes the CLI exit nonzero, and a malformed report never passes vacuously)
+- `test/prompt_robustness.test.ts`: the engine's own prompts against input it does not control (no card/persona shape is required to be well-formed, a field of the wrong type is absent rather than a `[object Object]` artefact, a degenerate transcript yields guidance that is empty or within budget, a malformed choice list still yields a usable task, an enormous persona is reported as over-window instead of thrown on, and an injection-shaped name cannot open a section heading)
 - `test/remote_import.test.ts`: URL import against a mocked `globalThis.fetch`
 - `test/responsive_layout.test.ts`: phone-width CSS guards (library filter bar stays inline, preset-row badge atomicity, message speaker truncation)
 - `test/session_controller.test.ts`: controller behavior against injected fakes (no DOM), and the usage-history write (one sample per completed turn, filed under the prefix it was sent under)

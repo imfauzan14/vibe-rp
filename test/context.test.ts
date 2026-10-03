@@ -639,6 +639,28 @@ describe("Context planners - history hygiene and lore selection", () => {
     }
   });
 
+  // The persona body is formatted exactly like the card's own fields, so the
+  // model reads it as facts it holds. The disclaimer used to cover only the
+  // persona *name*, leaving the body — an unrevealed illness, a private
+  // history, a secret competence — available to the character as knowledge.
+  // A reader reported the character answering circumstances never shown in the
+  // story. The clause now covers the section, and binds treatment as well as
+  // citation: a citation-only rule still permits a character whose whole manner
+  // is oriented around what they are not supposed to know.
+  test("the knowledge boundary covers the whole persona section, not just its name", () => {
+    const card = { data: { name: "Rishe", description: "A stern, guarded heir." } };
+    const persona = { description: "A youth who never admits the illness they carry." };
+    const boundary =
+      buildSystemSections(card, persona, { agentsContract: DEFAULT_AGENTS_CONTRACT })
+        .find((s) => s.id === "epistemicBoundary")?.text || "";
+
+    expect(boundary).toContain("The persona section above describes the reader");
+    expect(boundary).toContain("knows only what the story has shown or the reader has said");
+    expect(boundary).toContain("treats them on that basis");
+    // The name-only disclaimer is gone; it was the gap.
+    expect(boundary).not.toContain("persona name above is a label");
+  });
+
   // The opening turn is the one turn with no transcript to re-assert the
   // character, and it is also the turn on which the guidance block holds
   // nothing but the scope line — every other entry is gated on turns the
