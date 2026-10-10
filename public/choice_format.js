@@ -109,7 +109,7 @@ export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the cha
   const safePlayer = renderInlineField(playerName);
   const safeIntent = intent ? renderInlineField(intent, 120) : "";
   const intentHint = safeIntent
-    ? `\n\nPlayer Intent:\nThe player requested moves oriented around: "${safeIntent}". Propose distinct dramatic angles that execute, probe, or pivot on this direction.`
+    ? `\n\nPlayer Intent:\nAnchor all proposed moves to the player's requested direction: "${safeIntent}". Propose distinct dramatic angles that execute, probe, or advance this specific intent across different tactics (e.g. bold action, cautious probe, subtle maneuver, unexpected angle).`
     : "";
 
   let freshVariationHint = "";

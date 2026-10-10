@@ -1090,10 +1090,13 @@ export function planChoiceRequest({
   // equal and the cost case is not.
   //
   // The menu's instructions travel in the task rather than being dropped: the
-  // same words, so no behaviour depends on the move. Dropping them outright is a
-  // further ~600 tokens per menu and needs a *reliable* quality measurement
-  // before it can be called a win.
-  const taskContent = `${task}\n\n${CHOICE_SYSTEM_PROMPT}`;
+  // same words, so no behaviour depends on the move. When the player provides an
+  // explicit steering intent, we reinforce it at the generation tail so standard
+  // instruct models do not dilute the directive behind generic archetypes.
+  const steerTail = intent
+    ? `\n\nPlayer Steering Focus:\nAnchor all options to the requested direction: "${renderInlineField(intent, 120)}". Every choice should pursue this path through different tactics.`
+    : "";
+  const taskContent = `${task}\n\n${CHOICE_SYSTEM_PROMPT}${steerTail}`;
   const taskTokens = estimateTokens(taskContent) + 4;
   const baseWindow = Math.max(0, Number(windowOverride) || effectiveContextWindow(settings));
   const margin = resolveSafetyMargin(baseWindow);
