@@ -447,7 +447,7 @@ export function buildSceneGuidance(signals, { maxTokens = GUIDANCE_MAX_TOKENS, i
     add(
       "canon",
       92,
-      "- The ledger and transcript above are settled canon: they already happened. Continue from the last line, and never rewind or re-narrate an earlier beat."
+      "- The ledger and transcript above are settled canon: they already happened. Continue from the last line, advancing the story past every beat already narrated."
     );
   }
 
@@ -520,7 +520,7 @@ export function buildSceneGuidance(signals, { maxTokens = GUIDANCE_MAX_TOKENS, i
   // from the state, which is allowed to have moved — the same distinction the
   // ledger's Cast entries carry.
   const dueForReinject = s.assistantTurns > 0 && s.assistantTurns % REINJECT_EVERY_TURNS === 0;
-  if (identity && (dueForReinject || s.folded)) add("reinject", 83, `- Persona anchor: ${who}'s core is unchanged — ${identity}. Their state has moved; let what happened show in how they carry themselves, without substituting a different person.`);
+  if (identity && (dueForReinject || s.folded)) add("reinject", 83, `- Persona anchor: ${who}'s core is unchanged — ${identity}. Their state has moved; let what happened show in how they carry themselves, as the same person the story has shaped.`);
 
   const { pov, tense } = s.narration || {};
   if ((pov || tense) && s.assistantTurns >= 2) {
@@ -574,7 +574,7 @@ export function buildSceneGuidance(signals, { maxTokens = GUIDANCE_MAX_TOKENS, i
     add(
       "puppet",
       100,
-      `- Hard agency boundary: an earlier turn spoke for ${player}. Never write their dialogue, thoughts, sensations, or actions; end where their turn begins.`
+      `- Hard agency boundary: an earlier turn spoke for ${player}. Write only ${who}'s dialogue, thoughts, sensations, and actions; end where ${player}'s turn begins.`
     );
   }
 

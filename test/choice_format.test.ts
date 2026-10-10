@@ -225,22 +225,44 @@ describe("choicePrompt", () => {
     for (const line of occurrences) expect(line).toContain("]");
   });
 
-  test("includes negative variation constraints when previous choices are provided", () => {
+  test("includes fresh-angle constraints when previous choices are provided", () => {
     const prev = [
       { label: "Step closer", text: "I move toward the door." },
       { label: "Stay silent", text: "I wait in the dark." },
     ];
     const prompt = choicePrompt(4, { charName: "Elena", playerName: "Rowan", previousChoices: prev });
     expect(prompt).toContain("Fresh Dramatic Angles Required");
-    expect(prompt).toContain("Do NOT repeat or paraphrase these previous options");
+    // Phrased as the lane to take, not the one to avoid; the spent options are
+    // still listed, because naming them is what makes "fresh" checkable.
+    expect(prompt).toContain("Treat these previous options as spent");
     expect(prompt).toContain("Step closer: I move toward the door.");
     expect(prompt).toContain("Stay silent: I wait in the dark.");
   });
 
-  test("includes player intent when specified", () => {
+  test("does not carry the player's steer intent; the planner's tail block owns it", () => {
+    // The intent has one home: the block `planChoiceRequest` appends after the
+    // instructions, at the generation head. Carrying it here as well stated one
+    // rule twice in one payload, which is the redundancy the contract work
+    // removed everywhere else — so this asserts the *absence*, and the presence
+    // is asserted against the assembled payload in the case below.
     const prompt = choicePrompt(4, { charName: "Elena", playerName: "Rowan", intent: "draw dagger and feign surrender" });
-    expect(prompt).toContain("Player Intent:");
-    expect(prompt).toContain("draw dagger and feign surrender");
+    expect(prompt).not.toContain("draw dagger and feign surrender");
+    expect(prompt).not.toContain("Player Intent:");
+  });
+
+  test("the planner puts the steer intent in the payload exactly once", () => {
+    const req = planChoiceRequest({
+      card: { data: { name: "Elena" } },
+      session: { messages: [{ id: "g", role: "assistant", content: "She looked up." }], ledger: "", consumed: 1 },
+      settings: { maxContextTokens: 8192, maxTokens: 1200, model: "m", apiEndpoint: "https://x.test/v1" },
+      persona: { name: "Rowan" },
+      count: 4,
+      intent: "climb the observatory ladder",
+    });
+    const payloadText = JSON.stringify(req.payload);
+    const hits = (payloadText.match(/climb the observatory ladder/g) || []).length;
+    expect(hits).toBe(1);
+    expect(req.payload.at(-1)?.content).toContain("Player Steering Focus:");
   });
 });
 
@@ -293,6 +315,35 @@ describe("planChoiceRequest", () => {
     const req = planChoiceRequest({ card, session, settings, persona: { name: "Rowan" }, count: 4 });
     expect(req.sharedPrefix).toBe(false);
     expect(req.inputTokens).toBeLessThan(4500);
+    expect(req.inputTokens + req.outputTokens).toBeLessThanOrEqual(req.contextWindow);
+  });
+
+  test("the compact fallback reports the payload it actually assembled", () => {
+    // The fallback hardcoded `ledgerIncluded: false` and derived history from
+    // `payload.length - 2`, so it reported the recap as absent while carrying
+    // one, and counted the recap message as history. Both are now read off the
+    // assembled payload, which is the only thing that can be right.
+    const bigCard = { data: { name: "Elena", description: words(1400), personality: words(600), scenario: words(400), mes_example: words(500) } };
+    const tight = { maxContextTokens: 2048, maxTokens: 1200, model: "m", apiEndpoint: "https://x.test/v1" };
+    const withLedger = {
+      id: "s", cardId: "c",
+      messages: [
+        { id: "g", role: "assistant", content: words(60) },
+        { id: "u1", role: "user", content: words(60) },
+        { id: "a1", role: "assistant", content: words(60) },
+      ],
+      ledger: words(200),
+      consumed: 1,
+    };
+    const req = planChoiceRequest({ card: bigCard, session: withLedger, settings: tight, persona: { name: "Rowan" }, count: 4 });
+    expect(req.sharedPrefix).toBe(false);
+
+    const isLedger = (m: { content: string }) => m.content.startsWith("The story so far, in ledger form");
+    const task = req.payload.at(-1);
+    const beforeTask = req.payload.filter((m) => m !== task && m.role !== "system");
+    const recapCount = beforeTask.filter(isLedger).length;
+    expect(req.ledgerIncluded).toBe(recapCount === 1);
+    expect(req.historyIncluded).toBe(beforeTask.length - recapCount);
     expect(req.inputTokens + req.outputTokens).toBeLessThanOrEqual(req.contextWindow);
   });
 

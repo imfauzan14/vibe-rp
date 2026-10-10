@@ -101,16 +101,21 @@ export const CHOICE_DELIBERATION_HINT =
  * hardening) — a model that receives instructions inside those fields cannot
  * escape the bracketed scope into the instruction text.
  */
-export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the character", playerName = "the protagonist", previousChoices = [], deliberate = false, intent = "" } = {}) {
+export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the character", playerName = "the protagonist", previousChoices = [], deliberate = false } = {}) {
   const target = Math.max(CHOICE_COUNT_MIN, Math.min(CHOICE_COUNT_MAX, Math.floor(Number(count) || CHOICE_COUNT_DEFAULT)));
   // One-line slots: injected card text must not be able to open a new prompt
   // line and impersonate a directive. The flatten rule lives in text.js.
   const safeChar = renderInlineField(charName);
   const safePlayer = renderInlineField(playerName);
-  const safeIntent = intent ? renderInlineField(intent, 120) : "";
-  const intentHint = safeIntent
-    ? `\n\nPlayer Intent:\nAnchor all proposed moves to the player's requested direction: "${safeIntent}". Propose distinct dramatic angles that execute, probe, or advance this specific intent across different tactics (e.g. bold action, cautious probe, subtle maneuver, unexpected angle).`
-    : "";
+
+  // The player's steer intent is deliberately absent here. It is one rule with
+  // one home: the tail block `planChoiceRequest` appends after the instructions,
+  // at the generation head, where recency weight is greatest. Carrying it here
+  // as well put two copies of one instruction in one payload — the redundancy
+  // this file warns about elsewhere — and the copy nearer the head then decided
+  // the behaviour by accident rather than by design. `previousChoices` stays
+  // because it is a different rule (what to avoid), not a second statement of
+  // what to pursue.
 
   let freshVariationHint = "";
   if (Array.isArray(previousChoices) && previousChoices.length > 0) {
@@ -125,9 +130,13 @@ export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the cha
       .filter(Boolean)
       .slice(0, 6);
     if (list.length > 0) {
+      // Phrased as the lane to take rather than the one to avoid, matching the
+      // convention the rest of the authored prompts follow: state what to write.
+      // The avoided options are still listed, because knowing them is what makes
+      // "fresh" checkable on read-through.
       freshVariationHint =
         `\n\nFresh Dramatic Angles Required:\n` +
-        `The player requested fresh choices. Do NOT repeat or paraphrase these previous options:\n` +
+        `The player requested fresh choices. Treat these previous options as spent, and build this set from different ground:\n` +
         list.map((item) => `- ${item}`).join("\n") +
         `\nExplore distinctly different dramatic archetypes, unexpected tactics, physical reactions, or emotional pivots.`;
     }
@@ -145,7 +154,6 @@ export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the cha
     `- "label": the intent in 3 to 7 words, under ${CHOICE_LABEL_MAX_CHARS} characters, in [${safePlayer}]'s active language.\n` +
     `- "text": the full in-character action or dialogue to send, under ${CHOICE_TEXT_MAX_CHARS} characters, in [${safePlayer}]'s active language and point of view.\n` +
     `- "type": "action", "continuation", or "story" — or omit the key.` +
-    intentHint +
     freshVariationHint +
     (deliberate ? CHOICE_DELIBERATION_HINT : "")
   );

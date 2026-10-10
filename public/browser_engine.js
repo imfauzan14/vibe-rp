@@ -967,11 +967,6 @@ export function buildSystemSections(card, persona, settings = {}) {
 export function allocateContext(...args) {
   return rawAllocateContext(...args);
 }
-// Choice Mode output ceiling: enough for a small JSON object of four to five
-// short lines, with headroom for a reasoning model that spends tokens before
-// its visible output. It is a ceiling, not a reservation, and the allocator
-// lowers it when the window is tight.
-export const CHOICE_OUTPUT_TOKENS = 1000;
 // How much of the continuity ledger a choice request may carry. Choices only
 // need the immediately preceding scene, so the ledger is a small hint, never
 // the full continuity document.
@@ -1137,7 +1132,11 @@ export function planChoiceRequest({
   // which is the layout the menu used before it shared a prefix. Putting them in
   // the task as well would state every rule twice in one request.
   const head = [{ role: "system", content: CHOICE_SYSTEM_PROMPT }];
-  const taskOnlyTokens = estimateTokens(task) + 4;
+  // The steer tail is part of the message that will actually be sent, so it is
+  // charged here too. Leaving it out made the fallback plan a budget for a
+  // smaller request than the one it assembled, which is the same defect the
+  // main path avoids by planning against `taskContent`.
+  const taskOnlyTokens = estimateTokens(`${task}${steerTail}`) + 4;
   // The same allowances the menu carried before it shared a prefix: a recent
   // slice rather than the whole transcript, and a recap capped on its own. A
   // window that cannot hold the main prefix must not turn the menu into a second
@@ -1177,8 +1176,13 @@ export function planChoiceRequest({
     outputTokens: Math.max(MIN_OUTPUT_TOKENS, Math.min(main.outputTokens, baseWindow - inputTokens - margin)),
     contextWindow: baseWindow,
     overheadTokens: main.overheadTokens,
-    ledgerIncluded: false,
-    historyIncluded: payload.length - 2,
+    // Both figures are read off the payload that was actually assembled. They
+    // used to be hardcoded (`false`, and `payload.length - 2`), which reported a
+    // recap as absent when `recap` had pushed one, and counted the recap message
+    // as history. The main path reports both from the real plan, so the two
+    // branches now describe the same request the same way.
+    ledgerIncluded: recap.length > 0,
+    historyIncluded: tail.length,
     sharedPrefix: false,
   };
 }

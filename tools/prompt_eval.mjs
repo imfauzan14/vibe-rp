@@ -39,7 +39,7 @@ import {
 } from "../public/browser_engine.js";
 import { DEFAULT_SETTINGS, DEFAULT_AGENTS_CONTRACT, DEFAULT_AGENTS_CONTRACT_ID } from "../public/local_db.js";
 import { CHOICE_SYSTEM_PROMPT, CHOICE_DELIBERATION_HINT, choicePrompt } from "../public/choice_format.js";
-import { PROSE_TICS, SLOP_LEXICON, detectNarration } from "../public/prompt_adaptive.js";
+import { PROSE_TICS, SLOP_LEXICON, SLOP_CLUSTER_THRESHOLD, detectNarration, buildSceneGuidance } from "../public/prompt_adaptive.js";
 
 const ROOT = resolve(import.meta.dir, "..");
 const argv = process.argv.slice(2);
@@ -222,13 +222,24 @@ const SINGLE_DEFINITION = [
   // phrasing here would let it return unnoticed.
   { id: "persona-no-identity-restatement", re: /Operates with distinct agency, physical presence/g, expect: 0 },
 ];
-// The Indonesian contract carries the same obligation in Indonesian, so the
-// one English-literal check above cannot be applied to it. Keyed by contract,
-// not by scenario: what varies is which contract is loaded, and the check is a
-// property of that text.
-const SINGLE_DEFINITION_ID = [
-  { id: "interiority-boundary-in-contract", re: /inner life are theirs/g, expect: 1 },
+
+// The choice payload was outside the gate entirely: every scenario row above
+// gates the *main* turn, and the one `planChoiceRequest` call was measured only
+// for its token cost. So a rule stated twice inside the menu — the exact failure
+// this harness exists to catch — could ship green, and did: the player's steer
+// intent was carried both in the task line and in a tail block, and nothing
+// looked. These checks run against the assembled menu payload with an intent
+// present, because that is the only shape in which the duplication can occur.
+// The intent string is a literal in the fixture below, so its occurrence count
+// is the assertion.
+const CHOICE_INTENT_FIXTURE = "climb the observatory ladder";
+const CHOICE_SINGLE_DEFINITION = [
+  { id: "steer-intent-stated-once", re: /climb the observatory ladder/g, expect: 1 },
+  { id: "choice-system-stated-once", re: /You propose the player's next moves at the current beat/g, expect: 1 },
 ];
+// One contract, so one list: the per-locale variant this used to carry has no
+// counterpart left, and keeping a second copy that nothing reads is how a gate
+// grows a line that looks like coverage and is not.
 const singleDefFor = (_s) => SINGLE_DEFINITION;
 // Checking that a rule left the *contract* cannot be done against the assembled
 // payload, because the persona slot is allowed to say it and the payload cannot
@@ -240,22 +251,80 @@ const CONTRACT_SINGLE_DEFINITION = [
   { id: "authority-in-contract", re: /govern language, register, and medium/g, expect: 1 },
 ];
 
-// Strictly universal architecture: no per-language contract templates exist.
-// Universal linguistic adaptation is enforced at the model behavior and processing level.
-const BILINGUAL_PARITY = [];
+// Strictly universal architecture: no per-language contract templates exist, so
+// there is no second contract for a rule to diverge from. That is the invariant
+// worth asserting, and it is assertable: the locale alias must resolve to the
+// same single contract, so re-introducing a separate per-language copy fails
+// here instead of silently doubling every rule the user has to keep in sync.
+//
+// The earlier version of this group held an empty list and a function that
+// returned `[]`, so it printed a green "bilingual parity" line that could never
+// go red — a check that reported a comparison it never performed.
+const UNIVERSAL_CONTRACT_CHECKS = [
+  {
+    id: "single-built-in-contract",
+    ok: () => DEFAULT_AGENTS_CONTRACT_ID === DEFAULT_AGENTS_CONTRACT,
+    detail: () => `locale alias ${DEFAULT_AGENTS_CONTRACT_ID === DEFAULT_AGENTS_CONTRACT ? "resolves to the one contract" : "diverges from the one contract"}`,
+  },
+  {
+    id: "contract-is-substantial",
+    ok: () => DEFAULT_AGENTS_CONTRACT.trim().length > 500,
+    detail: () => `contract length ${DEFAULT_AGENTS_CONTRACT.trim().length} chars`,
+  },
+];
+
+function checkUniversalContract() {
+  return UNIVERSAL_CONTRACT_CHECKS
+    .filter((c) => !c.ok())
+    .map((c) => ({ rule: c.id, detail: c.detail() }));
+}
+
+// The adaptive guidance block is authored prompt text like any other, and it
+// ships on every turn once a rule fires. It was outside this gate, so its
+// framing could drift — and had: three of its lines carried "never" / "without",
+// the exact prohibition phrasing the convention above exists to prevent. The
+// fixture fires every branch (canon, scope, persona anchor, narrative lock, both
+// correction tiers, the lexicon cluster and the agency boundary), so the whole
+// block is measured rather than only the lines a healthy session would emit.
+const GUIDANCE_FRAMING_FIXTURE = buildSceneGuidance(
+  {
+    charName: "Elena",
+    playerName: "Rowan",
+    assistantTurns: 8,
+    folded: true,
+    puppetBleed: 1,
+    slopHits: SLOP_CLUSTER_THRESHOLD,
+    absentCast: ["Marek", "Idris"],
+    narration: { pov: "third", tense: "past" },
+    tics: PROSE_TICS.map((t) => ({ id: t.id, priority: t.priority, note: t.note })),
+    playerWords: 90,
+    medianReplyWords: 40,
+    latestReplyWords: 40,
+    analyzed: 6,
+    replyWords: [40, 40, 40],
+    playerTurns: 6,
+    latinScript: true,
+  },
+  { identity: "a guarded archivist" }
+).text;
 
 const FRAMING_TARGETS = [
   { id: "agentsContract", text: DEFAULT_AGENTS_CONTRACT },
   { id: "choiceSystem", text: CHOICE_SYSTEM_PROMPT },
   { id: "choiceDeliberationHint", text: CHOICE_DELIBERATION_HINT },
+  // The task line is assembled per request, and its freshness branch only
+  // appears once previous choices exist — so the fixture supplies them. Left out
+  // of this gate, that branch carried a "Do NOT" prohibition that no check read.
+  { id: "choiceTask", text: choicePrompt(4, { charName: "Elena Voss", playerName: "Rowan", previousChoices: [{ label: "Wait", text: "I wait by the door." }] }) },
   { id: "summary", text: SUMMARY_PROMPT },
   { id: "summaryUpdate", text: SUMMARY_UPDATE_PROMPT },
   { id: "summarySystem", text: SUMMARY_SYSTEM_PROMPT },
   { id: "ledgerCompress", text: LEDGER_COMPRESS_PROMPT },
+  { id: "adaptiveGuidance", text: GUIDANCE_FRAMING_FIXTURE },
 ];
 
 function checkBilingualParity() {
-  return [];
+  return checkUniversalContract();
 }
 
 function structural() {
@@ -305,6 +374,21 @@ function structural() {
     settings: settingsFor({}), persona: PERSONA, count: 4,
   });
 
+  // The menu is assembled with a steer intent, so the one rule that only exists
+  // in that shape is actually exercised. `previousChoices` is supplied too, so
+  // the freshness rule and the intent rule are checked as they co-exist.
+  const choiceWithIntent = BrowserChatEngine.planChoiceRequest({
+    card: card({ preset: 400 }), session: session({ turns: 8 }),
+    settings: settingsFor({}), persona: PERSONA, count: 4,
+    intent: CHOICE_INTENT_FIXTURE,
+    previousChoices: [{ label: "Wait", text: "I wait by the door." }],
+  });
+  const choicePayloadText = JSON.stringify(choiceWithIntent.payload);
+  const choiceSingleDef = CHOICE_SINGLE_DEFINITION
+    .map((c) => ({ id: c.id, count: (choicePayloadText.match(c.re) || []).length, expect: c.expect }))
+    .filter((c) => c.count !== c.expect)
+    .map((c) => ({ id: c.id, count: c.count, expect: c.expect }));
+
   // Contract-level checks: which layer a rule lives in is a property of the
   // authored text, not of any one assembled payload.
   const contractChecks = CONTRACT_SINGLE_DEFINITION
@@ -343,7 +427,7 @@ function structural() {
     compactionTotal: estimateTokens(SUMMARY_SYSTEM_PROMPT) + estimateTokens(SUMMARY_PROMPT) + estimateTokens(SUMMARY_UPDATE_PROMPT) + estimateTokens(LEDGER_COMPRESS_PROMPT),
   };
 
-  return { rows, prompts, tokenCosts, contractChecks, parityGaps, framingGaps, framingTotal: FRAMING_TARGETS.length, parityTotal: BILINGUAL_PARITY.length };
+  return { rows, prompts, tokenCosts, contractChecks, parityGaps, framingGaps, choiceSingleDef, framingTotal: FRAMING_TARGETS.length, parityTotal: UNIVERSAL_CONTRACT_CHECKS.length };
 }
 
 // One generation against the real engine.
@@ -555,11 +639,15 @@ export function structuralViolations(r) {
       !Array.isArray(r.parityGaps) || !Array.isArray(r.framingGaps)) {
     throw new TypeError("expected a structural report with all four check groups");
   }
+  // `choiceSingleDef` is absent on reports written before the choice payload was
+  // gated. An older stored report therefore skips that group rather than failing
+  // on a missing key; a malformed report still throws above.
   return [
     ...(r.rows || []).flatMap((row) => (row.singleDef || []).map((gap) => `single-definition ${row.scenario}: ${gap.id}`)),
     ...(r.contractChecks || []).map((gap) => `contract-layer ${gap.id}`),
     ...(r.parityGaps || []).map((gap) => `bilingual-parity ${gap.rule}`),
     ...(r.framingGaps || []).map((gap) => `instruction-framing ${gap.id}`),
+    ...(r.choiceSingleDef || []).map((gap) => `single-definition choice-payload: ${gap.id} (found ${gap.count}, expected ${gap.expect})`),
   ];
 }
 
@@ -611,6 +699,15 @@ function printStructural(r) {
     }
   }
 
+  // The menu is a payload like any other and is gated the same way. It was not,
+  // which is how a rule duplicated inside it shipped green.
+  console.log("\n  choice-payload checks (the auxiliary menu request):");
+  if (!(r.choiceSingleDef || []).length) {
+    console.log("    (none) — the steer intent and the choice instructions each appear once");
+  } else {
+    for (const c of r.choiceSingleDef) console.log(`    ${c.id}: found ${c.count}, expected ${c.expect}`);
+  }
+
   console.log("\n  contract-layer checks (which slot a rule lives in):");
   if (!(r.contractChecks || []).length) {
     console.log("    (none) — the contract holds the authority rule and no reader-identity claim");
@@ -618,15 +715,14 @@ function printStructural(r) {
     for (const c of r.contractChecks) console.log(`    ${c.id}: found ${c.count}, expected ${c.expect}`);
   }
 
-  // The two built-in contracts are alternatives, so the risk is divergence
-  // rather than duplication: a rule the English contract gained and the
-  // Indonesian one did not.
-  console.log("\n  bilingual parity (EN vs ID built-in contract):");
+  // The built-in contract is universal by construction, so the risk is not
+  // divergence between two languages but a second per-language copy reappearing.
+  console.log("\n  universal-contract checks (one contract, no locale fork):");
   if (!(r.parityGaps || []).length) {
-    console.log(`    (none) — all ${r.parityTotal} tracked obligations present in both`);
+    console.log(`    (none) — all ${r.parityTotal} obligations hold`);
   } else {
     for (const g of r.parityGaps) {
-      console.log(`    ${g.rule}: EN=${g.inEn} ID=${g.inId}`);
+      console.log(`    ${g.rule}: ${g.detail || ""}`);
     }
   }
 

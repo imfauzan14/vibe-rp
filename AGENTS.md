@@ -50,7 +50,7 @@ The dependency direction is one-way: UI modules depend on controllers, controlle
 
 Top-level logic (all zero DOM unless noted):
 
-- **`public/browser_engine.js`** (3012 lines): `BrowserChatEngine`. Prompt assembly, the four context rules, ledger folding, SSE streaming, the universal allocator, and auxiliary choice generation. Re-exports the pure planning helpers from `context_plan.js` and the session-write accessors from `session_state.js` so callers keep one import surface.
+- **`public/browser_engine.js`** (3019 lines): `BrowserChatEngine`. Prompt assembly, the four context rules, ledger folding, SSE streaming, the universal allocator, and auxiliary choice generation. Re-exports the pure planning helpers from `context_plan.js` and the session-write accessors from `session_state.js` so callers keep one import surface.
 - **`public/context_plan.js`** (236 lines): pure planning. Token estimation, `cleanPromptText`, the summary budgets, and `allocateContext` — the one allocator. Owns the ledger-framing cost (`LEDGER_OPEN`/`LEDGER_CLOSE`, `ledgerFramingTokens()`) so every charge site reads one value. `browser_engine.js` re-exports `allocateContext` as a thin wrapper, so the engine's own calls and a page's calls go through the same decision.
 - **`public/session_state.js`** (113 lines): the session-write seam (`applyFold`, `resetLedger`, `captureLedgerState`, `restoreLedgerState`, `noteUsage`, `noteUsageReport`, `markLedgerTruncated`, `setOverflowReported`, `setCondensedReported`). The engine decides *when*; this module owns *how* the controller's session is mutated, so the fold returns a value and one place applies it. `resetLedger` handles explicit ledger clears (user transcript edits); the capture/restore pair makes a deletion undoable.
 - **`public/usage_history.js`** (264 lines): the per-chat usage history — the sample shape, the scope key that decides what is comparable, the per-scope caps, and the trend derivation. A leaf module: it imports nothing, reads no store and holds no clock. `session_controller.js` writes the samples; `ui/chat/context_panel.js` renders the trend.
@@ -59,7 +59,7 @@ Top-level logic (all zero DOM unless noted):
 - **`public/text.js`** (165 lines): the cycle-free leaf every other pure module may import. `utf8Decoder`, `substitutePlaceholders`, `stripThoughtBlocks`, `renderInlineField`, `REFUSAL_RE`, and `looksLikeModelRefusal`.
 - **`public/safe_html.js`** (38 lines): `escapeHtml` and `escapeAttr`. The single escaping point for the whole app.
 - **`public/message_format.js`** (160 lines): pure `formatProse` and `formatMessages` view models. `formatProse` is the one the app uses; `formatMessages` is consumed only by tests.
-- **`public/choice_format.js`** (346 lines): the Choice Mode prompt and the resilient parser for untrusted model output (zero DOM).
+- **`public/choice_format.js`** (354 lines): the Choice Mode prompt and the resilient parser for untrusted model output (zero DOM).
 - **`public/card_parse.js`** (349 lines): character-card parsing (JSONC strip, normalize, PNG/WebP `chara` extraction).
 - **`public/remote_import.js`** (266 lines): URL import, character-page API mapping, direct card-file fetch.
 - **`public/session_refresh.js`** (337 lines): refresh-token exchange, single-flight, proactive refresh.
@@ -287,7 +287,7 @@ bun test test/
 
 ### Stats
 
-792 tests, 11700 expect() calls, 36 files (measured with `bun test`).
+794 tests, 11706 expect() calls, 36 files (measured with `bun test`).
 
 ### Existing Test Files
 
@@ -313,7 +313,7 @@ bun test test/
 - `test/no_inline_scripts.test.ts`: CSP script-src verification (no inline scripts)
 - `test/presets_resolution.test.ts`: settings resolution
 - `test/presets_store.test.ts`: preset stores
-- `test/prompt_eval_gate.test.ts`: the structural prompt evaluator as a regression gate (a clean report passes, each failure class — single-definition, contract-layer, bilingual parity, framing — makes the CLI exit nonzero, and a malformed report never passes vacuously)
+- `test/prompt_eval_gate.test.ts`: the structural prompt evaluator as a regression gate (a clean report passes, each failure class — single-definition, contract-layer, universal-contract, framing — makes the CLI exit nonzero, and a malformed report never passes vacuously)
 - `test/prompt_robustness.test.ts`: the engine's own prompts against input it does not control (no card/persona shape is required to be well-formed, a field of the wrong type is absent rather than a `[object Object]` artefact, a degenerate transcript yields guidance that is empty or within budget, a malformed choice list still yields a usable task, an enormous persona is reported as over-window instead of thrown on, and an injection-shaped name cannot open a section heading)
 - `test/remote_import.test.ts`: URL import against a mocked `globalThis.fetch`
 - `test/responsive_layout.test.ts`: phone-width CSS guards (library filter bar stays inline, preset-row badge atomicity, message speaker truncation)
