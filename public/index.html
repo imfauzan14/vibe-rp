@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Character Library</title>
+  <meta name="color-scheme" content="dark light">
+  <meta name="description" content="Import character cards, then read and write long-form narrative roleplay.">
+  <link rel="stylesheet" href="design/tokens.css">
+  <link rel="stylesheet" href="design/components.css">
+  <link rel="stylesheet" href="ui/library.css">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <script src="theme-boot.js"></script>
+</head>
+<body class="rp-app">
+
+  <a class="rp-skip-link" href="#library-main">Skip to the character library</a>
+
+  <header class="rp-topbar">
+    <a class="rp-topbar__brand" href="./" aria-label="Character library, go to the top">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17"></path>
+        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
+      </svg>
+      <span class="rp-topbar__title">Library</span>
+    </a>
+
+    <div class="rp-topbar__spacer"></div>
+
+    <button type="button" id="theme-toggle" class="rp-btn rp-btn--ghost rp-btn--icon" aria-pressed="false" aria-label="Switch to the paper theme">
+      <svg class="rp-theme-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <circle cx="12" cy="12" r="4"></circle>
+        <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path>
+      </svg>
+    </button>
+
+    <button type="button" id="import-btn" class="rp-btn rp-btn--primary rp-topbar__import" aria-haspopup="dialog" aria-label="Import character">
+      <svg class="rp-topbar__import-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <path d="M12 3v12"></path>
+        <polyline points="7 8 12 3 17 8"></polyline>
+        <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"></path>
+      </svg>
+      <span class="rp-topbar__import-label">Import character</span>
+    </button>
+
+    <button type="button" id="toggle-settings-btn" class="rp-btn rp-btn--ghost rp-btn--icon" aria-label="Open settings" aria-haspopup="dialog">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0 .33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+      </svg>
+    </button>
+  </header>
+
+  <main class="rp-container rp-library__main" id="library-main" tabindex="-1">
+    <div class="rp-library__toolbar">
+      <div class="rp-library__heading">
+        <h1 class="rp-surface-title rp-surface-title--display">Character Library</h1>
+        <p class="rp-surface-subtitle">Select a character to continue a conversation or start a new one.</p>
+      </div>
+    </div>
+
+    <div class="rp-library__filters">
+      <div class="rp-library__search">
+        <input type="search" id="library-search" class="rp-input" placeholder="Search characters" autocomplete="off" aria-label="Search characters">
+      </div>
+      <div class="rp-library__sort">
+        <label class="rp-label" for="library-sort">Sort</label>
+        <select id="library-sort" class="rp-select">
+          <option value="recent">Recently chatted</option>
+          <option value="name">Name</option>
+        </select>
+      </div>
+      <div class="rp-library__tags">
+        <select id="library-tags" class="rp-select" aria-label="Filter by tag">
+          <option value="">All tags</option>
+        </select>
+      </div>
+    </div>
+
+    <p class="rp-library__status" id="library-status" role="status"></p>
+
+    <div class="rp-library__grid" id="card-grid"></div>
+  </main>
+
+  <div class="rp-toast-region" id="toast-region" role="status" aria-live="polite" aria-atomic="false"></div>
+
+  <script type="module" src="ui/library_page.js"></script>
+</body>
+</html>

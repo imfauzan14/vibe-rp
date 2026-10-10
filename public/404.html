@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Not Found: Vibe RP</title>
+<meta name="description" content="That page does not exist. Return to the character library.">
+<meta name="theme-color" content="#0E1113">
+<!-- Absolute paths on purpose: a 404 is served for ANY unmatched path, so a
+     relative href would resolve against the missing directory and 404 too. -->
+<link rel="stylesheet" href="/design/tokens.css">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<script src="/theme-boot.js"></script>
+<style>
+  /* This page used to carry its own four-colour palette and its own font stack,
+     so the one surface a reader reaches by a broken link looked like a different
+     product and ignored the theme they had chosen. It now reads the app's own
+     tokens, which also means it cannot drift from them. */
+  body {
+    margin: 0;
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-6) var(--space-5);
+    text-align: center;
+  }
+  main {
+    max-width: 32rem;
+    width: 100%;
+  }
+  .mark {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto var(--space-6);
+    display: block;
+    border-radius: var(--radius-lg);
+  }
+  .code {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    letter-spacing: var(--tracking-micro);
+    text-transform: uppercase;
+    color: var(--accent-annotation);
+    margin: 0 0 var(--space-3);
+  }
+  h1 {
+    font-family: var(--font-prose);
+    font-size: var(--text-2xl);
+    line-height: var(--leading-tight);
+    letter-spacing: var(--tracking-tight);
+    margin: 0 0 var(--space-3);
+    text-wrap: balance;
+  }
+  p {
+    color: var(--ink-muted);
+    margin: 0 0 var(--space-6);
+    text-wrap: pretty;
+  }
+  a.return {
+    display: inline-flex;
+    align-items: center;
+    /* A real control, so it takes the touch floor like every other one. */
+    min-height: var(--tap-min);
+    padding: var(--space-2) var(--space-5);
+    border: var(--border-width) solid var(--border-control);
+    border-radius: var(--radius-sm);
+    background-color: var(--surface-raised);
+    color: var(--ink);
+    text-decoration: none;
+    font-weight: 500;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    a.return:hover {
+      border-color: var(--border-strong);
+      background-color: var(--surface-hover);
+    }
+  }
+  :focus-visible {
+    outline: var(--focus-width) solid var(--focus-ring);
+    outline-offset: var(--focus-offset);
+  }
+</style>
+</head>
+<body>
+<main>
+  <img class="mark" src="/icon.svg" alt="" width="64" height="64" aria-hidden="true">
+  <p class="code">404</p>
+  <h1>This page isn't on the shelf</h1>
+  <p>The path you followed doesn't lead anywhere in this library.</p>
+  <a class="return" href="/">Return to library</a>
+</main>
+</body>
+</html>

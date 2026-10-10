@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="192" height="192" role="img" aria-label="Vibe RP">
+  <rect width="24" height="24" rx="5" fill="#0A0B0E"/>
+  <g fill="none" stroke="#D8B273" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" transform="translate(3.5 3.5) scale(0.7)">
+    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17" />
+    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+  </g>
+</svg>
