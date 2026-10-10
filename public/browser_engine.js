@@ -1168,7 +1168,7 @@ export function planChoiceRequest({
     tail.unshift({ role, content });
     budget -= tokens;
   }
-  const payload = [...head, ...recap, ...tail, { role: "user", content: task }];
+  const payload = [...head, ...recap, ...tail, { role: "user", content: `${task}${steerTail}` }];
 
   const inputTokens = countMessages(payload);
   return {
