@@ -1,0 +1,384 @@
+// Settings modal: one shell for engine, parameters, personas and directives.
+//
+// Contract
+//   - `openSettingsModal(options)` builds the whole Settings surface as a
+//     single `.rp-dialog` with an APG tablist, then delegates each panel to its
+//     own module. `options`:
+//       getSettings() / saveSettings(patch)
+//       fetchModels({endpoint, key})
+//       saveSession(rawText) -> { ok, message }
+//       listPersonas() / savePersona(p) / deletePersona(id) / setDefaultPersona(id)
+//       listDirectives() / saveDirective(d) / deleteDirective(id) / setDefaultDirective(id)
+//       confirm(kind, label) -> Promise<boolean>   (from confirm.js)
+//       host                toast host
+//       tab                 initial tab id, e.g. "settings-personas-tab"
+//   - The persona and directive editors are opened from this module through
+//     their own modules, so editing stays inside the dialog stack.
+//   - Returns `{ close, element, selectTab }`.
+//
+// Exports
+//   openSettingsModal(options) -> { close, element, selectTab }
+
+import { el } from "../dom.js";
+import { openModal, closeModal } from "../modal.js";
+import { initTabs } from "../tabs.js";
+import { mountEnginePanel } from "./engine_panel.js";
+import { mountParamsPanel } from "./params_panel.js";
+import { mountPersonaList } from "./persona_list.js";
+import { mountDirectiveList } from "./directive_list.js";
+import { mountDataPanel } from "./data_panel.js";
+import { openPersonaEditor } from "../editors/persona_editor.js";
+import { openDirectiveEditor } from "../editors/directive_editor.js";
+import { confirmAction } from "../confirm.js";
+
+// Slider rows, declared once so the panel markup stays declarative.
+function sliderRow({ id, valueId, label, hint, min, max, step, value }) {
+  return el("div", { class: "rp-field" }, [
+    el("div", { class: "rp-field__head" }, [
+      el("label", { class: "rp-label", for: id, text: label }),
+      el("span", { class: "rp-badge rp-badge--count rp-tnum", id: valueId, text: String(value) }),
+    ]),
+    el("input", { type: "range", id, class: "rp-range", min, max, step, value }),
+    el("p", { class: "rp-help", text: hint }),
+  ]);
+}
+
+const PARAM_FIELDS = [
+  sliderRow({ id: "popup-slider-temp", valueId: "popup-val-temp", label: "Temperature", hint: "Lower is focused and deterministic; higher is creative and descriptive.", min: 0.1, max: 2, step: 0.05, value: 0.95 }),
+  sliderRow({ id: "popup-slider-topp", valueId: "popup-val-topp", label: "Top P", hint: "Nucleus sampling: considers only the top P probability mass. 1 sends the provider default.", min: 0.1, max: 1, step: 0.05, value: 1 }),
+  sliderRow({ id: "popup-slider-minp", valueId: "popup-val-minp", label: "Min P", hint: "Trims low-probability noise without truncating creative tails. 0 sends the provider default.", min: 0, max: 0.5, step: 0.01, value: 0 }),
+  sliderRow({ id: "popup-slider-tokens", valueId: "popup-val-tokens", label: "Max response tokens", hint: "The longest reply the model may write each turn. 1200 leaves room for a full reply plus the model's own thinking.", min: 200, max: 4096, step: 50, value: 1200 }),
+  sliderRow({ id: "popup-slider-freq", valueId: "popup-val-freq", label: "Frequency penalty", hint: "Higher values reduce repetitive verbal tics. 0 sends the provider default.", min: -2, max: 2, step: 0.05, value: 0 }),
+  sliderRow({ id: "popup-slider-pres", valueId: "popup-val-pres", label: "Presence penalty", hint: "Encourages new topics and vocabulary. 0 sends the provider default.", min: -2, max: 2, step: 0.05, value: 0 }),
+  sliderRow({ id: "popup-slider-context", valueId: "popup-val-context", label: "Context window", hint: "How much the model can hold at once. Match your model's real window; older turns are summarized into a recap once this fills. Lowering it mid-chat makes the model re-read the whole conversation once.", min: 2048, max: 131072, step: 2048, value: 65536 }),
+];
+
+const TABS = [
+  { id: "settings-engine-tab", label: "Engine" },
+  { id: "settings-params-tab", label: "Parameters" },
+  { id: "settings-personas-tab", label: "Personas" },
+  { id: "settings-directives-tab", label: "System prompts" },
+  { id: "settings-data-tab", label: "Data & Storage" },
+];
+
+function guidance(title, text) {
+  return el("div", { class: "rp-settings__guidance" }, [
+    el("p", { class: "rp-settings__guidance-title", text: title }),
+    el("p", { class: "rp-settings__guidance-text", text }),
+  ]);
+}
+
+export function openSettingsModal(options = {}) {
+  const { host, confirm, tab } = options;
+
+  const tablist = el(
+    "div",
+    { class: "rp-tabs rp-settings__tabs" },
+    TABS.map((entry) => el("button", { type: "button", class: "rp-tab", id: `${entry.id}-btn`, text: entry.label }))
+  );
+  TABS.forEach((entry, index) => {
+    tablist.children[index].setAttribute("aria-controls", entry.id);
+  });
+
+  // Engine panel.
+  const enginePanel = el("div", { class: "rp-tabpanel rp-settings__panel", id: "settings-engine-tab" }, [
+    guidance(
+      "Inference engine and models",
+      "Connect any OpenAI-compatible completions API. The base URL, key, and model are yours to fill in; settings stay in this browser."
+    ),
+    el("div", { class: "rp-field" }, [
+      el("label", { class: "rp-label", for: "popup-api-endpoint", text: "API base URL" }),
+      el("input", { type: "text", id: "popup-api-endpoint", class: "rp-input", placeholder: "https://api.example.com/v1" }),
+      el("p", { class: "rp-help", text: "The base URL of your provider, ending in /v1." }),
+    ]),
+    el("div", { class: "rp-field" }, [
+      el("label", { class: "rp-label", for: "popup-api-key", text: "API key" }),
+      el("input", { type: "password", id: "popup-api-key", class: "rp-input", placeholder: "sk-..." }),
+      el("p", { class: "rp-help", text: "Stored in this browser only." }),
+    ]),
+    el("div", { class: "rp-field" }, [
+      el("div", { class: "rp-settings__list-head" }, [
+        el("label", { class: "rp-label", for: "popup-model-select", text: "Primary story model" }),
+        el("div", { style: "display: flex; gap: var(--space-2);" }, [
+          el("button", { type: "button", id: "popup-custom-model-btn", class: "rp-btn rp-btn--ghost rp-btn--sm", text: "Type model" }),
+          el("button", { type: "button", id: "popup-fetch-models-btn", class: "rp-btn rp-btn--ghost rp-btn--sm", text: "Fetch models" }),
+        ]),
+      ]),
+      el("select", { id: "popup-model-select", class: "rp-select" }),
+      el("input", {
+        type: "text",
+        id: "popup-model-input",
+        class: "rp-input",
+        placeholder: "Type model name (e.g. gpt-4o, claude-3-5-sonnet, deepseek-chat)",
+        attrs: { hidden: "true" },
+      }),
+      el("p", { class: "rp-help", text: "Used to generate prose, narration and dialogue." }),
+    ]),
+    el("div", { id: "popup-choice-model-wrap", class: "rp-field" }, [
+      el("label", { class: "rp-label", for: "popup-choice-model-select", text: "Choice generator model" }),
+      el("select", { id: "popup-choice-model-select", class: "rp-select" }),
+      el("p", { class: "rp-help", text: "Dedicated model for generating Choice Mode options. Defaults to main model." }),
+    ]),
+    el("div", { class: "rp-field" }, [
+      el("label", { class: "rp-label", for: "popup-summary-model-select", text: "Recap model" }),
+      el("select", { id: "popup-summary-model-select", class: "rp-select" }),
+      el("p", { class: "rp-help", text: "Writes the recap that older turns are summarized into. It reads and merges rather than writing prose, so a cheaper model usually does it well. Defaults to main model." }),
+    ]),
+    el("div", { class: "rp-field" }, [
+      el("label", { class: "rp-label", for: "popup-reasoning-effort", text: "Reasoning effort" }),
+      el("select", { id: "popup-reasoning-effort", class: "rp-select" }, [
+        el("option", { value: "", text: "Provider default" }),
+        el("option", { value: "low", text: "Low" }),
+        el("option", { value: "medium", text: "Medium" }),
+        el("option", { value: "high", text: "High" }),
+      ]),
+      el("p", { class: "rp-help", text: "Sent as reasoning_effort to models that support it, and dropped automatically when a provider rejects it. Leave on the provider default for non-reasoning models. Changing it mid-chat makes the model re-read the whole conversation once." }),
+    ]),
+    el("div", { class: "rp-field" }, [
+      el("label", { class: "rp-label", for: "popup-choice-deliberation", text: "Choice deliberation" }),
+      el("select", { id: "popup-choice-deliberation", class: "rp-select" }, [
+        el("option", { value: "auto", text: "Auto — skip when a reasoning effort is set" }),
+        el("option", { value: "always", text: "Always — ask the choice model to think first" }),
+        el("option", { value: "never", text: "Never — leanest choice request" }),
+      ]),
+      el("p", { class: "rp-help", text: "A reasoning model works the scene out on its own, so the ask is skipped for it. Use Always for a small local model that benefits from being told to think." }),
+    ]),
+    el("div", { class: "rp-field" }, [
+      el("button", { type: "button", id: "popup-forget-limits-btn", class: "rp-btn rp-btn--ghost rp-btn--sm", text: "Forget learned model limits" }),
+      el("p", { class: "rp-help", text: "The app keeps what this endpoint told it: the model's real context window, any hidden per-request preamble it bills, and which parameters it accepts or ignores. Clear that if you change endpoints under the same name, or if a limit was learned from a response that was not about this model." }),
+    ]),
+    // The session-import control is a library-only concern (it unlocks full
+    // card definitions during import). Only render it when the caller supplies
+    // a `saveSession` handler, so the chat surface does not carry a hidden
+    // import affordance it cannot service.
+    ...(options.saveSession
+      ? [
+          el("div", { class: "rp-field rp-settings__divider", id: "popup-import-session-wrap", hidden: true }, [
+            el("label", { class: "rp-label", for: "popup-import-session-input", text: "Import session" }),
+            el("textarea", {
+              id: "popup-import-session-input",
+              class: "rp-textarea rp-textarea--mono",
+              rows: 3,
+              placeholder: "Paste exported session cookies JSON",
+            }),
+            el("p", { class: "rp-help", text: "Grants access to fetch full character definitions from character pages. Treat it like a password." }),
+            el("div", {}, [
+              el("button", { type: "button", id: "popup-save-import-session-btn", class: "rp-btn rp-btn--secondary rp-btn--sm", text: "Save session" }),
+            ]),
+          ]),
+        ]
+      : []),
+    el("p", { id: "popup-engine-status", class: "rp-settings__status", attrs: { role: "status" } }),
+    el("div", { class: "rp-settings__footer" }, [
+      el("span", { class: "rp-settings__footer-spacer", id: "popup-secret-session-trigger" }),
+      el("button", { type: "button", id: "popup-save-engine-btn", class: "rp-btn rp-btn--primary", text: "Save engine settings" }),
+    ]),
+  ]);
+
+  // Parameters panel. Every control here applies to the next request as soon as
+  // it settles, so there is no confirmation step: the reply ceiling is a
+  // reservation taken out of the window, and the context budget is the window,
+  // which means the effect of a change is visible in the context inspector
+  // immediately and in the next turn's payload.
+  const paramsPanel = el("div", { class: "rp-tabpanel rp-settings__panel", id: "settings-params-tab", hidden: true }, [
+    guidance(
+      "Sampler and context controls",
+      "Balance creative unpredictability against narrative coherence. Every value here is sent with the next request the moment you let go of the control."
+    ),
+    ...PARAM_FIELDS,
+    el("div", { style: "display: flex; justify-content: flex-end; margin-top: var(--space-3);" }, [
+      el("button", {
+        type: "button",
+        id: "popup-reset-params-btn",
+        class: "rp-btn rp-btn--ghost rp-btn--sm",
+        text: "Reset to defaults",
+        title: "Revert all parameters to recommended roleplay defaults",
+      }),
+    ]),
+    el("p", { class: "rp-help", text: "Max response tokens caps a single reply, and is taken out of the window before the story is sized. Context window is the whole request window; older turns are summarized into a recap once the story approaches it." }),
+  ]);
+
+  // Personas panel.
+  const personaRoot = el("div", { class: "rp-settings__list" });
+  const personasPanel = el("div", { class: "rp-tabpanel rp-settings__panel", id: "settings-personas-tab", hidden: true }, [
+    guidance(
+      "Author personas",
+      "A persona is who you are in the scene. Set one as the global default, or override it per character."
+    ),
+    el("div", { class: "rp-settings__list-head" }, [
+      el("span", { class: "rp-settings__list-title", text: "Saved personas" }),
+      el("button", { type: "button", id: "rp-create-persona", class: "rp-btn rp-btn--primary rp-btn--sm", text: "Create persona" }),
+    ]),
+    personaRoot,
+  ]);
+
+  // Directives panel.
+  const directiveRoot = el("div", { class: "rp-settings__list" });
+  const directivesPanel = el("div", { class: "rp-tabpanel rp-settings__panel", id: "settings-directives-tab", hidden: true }, [
+    guidance(
+      "System prompts",
+      "The system prompt is the contract every reply obeys: voice, banned clichés, register and pacing."
+    ),
+    el("div", { class: "rp-settings__list-head" }, [
+      el("span", { class: "rp-settings__list-title", text: "Saved prompts" }),
+      el("button", { type: "button", id: "rp-create-directive", class: "rp-btn rp-btn--primary rp-btn--sm", text: "New prompt" }),
+    ]),
+    directiveRoot,
+  ]);
+
+  // Data & Storage panel.
+  const dataPanel = el("div", { class: "rp-tabpanel rp-settings__panel", id: "settings-data-tab", hidden: true });
+
+  const dialog = el("dialog", { class: "rp-dialog rp-dialog--wide", attrs: { "aria-labelledby": "rp-settings-title" } }, [
+    el("div", { class: "rp-dialog__panel" }, [
+      el("div", { class: "rp-sheet__handle", attrs: { "aria-hidden": "true" } }),
+      el("header", { class: "rp-dialog__header" }, [
+        el("div", {}, [
+          el("h2", { class: "rp-dialog__title", id: "rp-settings-title", text: "Settings" }),
+          el("p", { class: "rp-dialog__desc", text: "Engine, parameters, personas and craft contracts." }),
+        ]),
+        el("button", {
+          type: "button",
+          class: "rp-btn rp-btn--ghost rp-btn--icon rp-dialog__close",
+          text: "\u00d7",
+          attrs: { "aria-label": "Close settings" },
+        }),
+      ]),
+      el("div", { class: "rp-dialog__body" }, [tablist, enginePanel, paramsPanel, personasPanel, directivesPanel, dataPanel]),
+    ]),
+  ]);
+
+  document.body.appendChild(dialog);
+  const tabs = initTabs(tablist, { activation: "auto" });
+
+  const engine = mountEnginePanel(enginePanel, {
+    getSettings: options.getSettings,
+    saveSettings: options.saveSettings,
+    fetchModels: options.fetchModels,
+    saveSession: options.saveSession,
+    host,
+  });
+  const params = mountParamsPanel(paramsPanel, {
+    getParams: options.getSettings,
+    saveParams: options.saveSettings,
+  });
+  const personas = mountPersonaList(personaRoot, {
+    load: options.listPersonas,
+    createButton: dialog.querySelector("#rp-create-persona"),
+    onEdit: (persona) =>
+      openPersonaEditor({
+        persona,
+        compressImage: options.compressImage,
+        host,
+        onSave: async (payload) => {
+          await options.savePersona?.(payload);
+          await personas.refresh();
+        },
+      }),
+    onCreate: () =>
+      openPersonaEditor({
+        persona: null,
+        compressImage: options.compressImage,
+        host,
+        onSave: async (payload) => {
+          await options.savePersona?.(payload);
+          await personas.refresh();
+        },
+      }),
+    onDelete: async (persona) => {
+      const ok = await confirm?.("persona", persona.name);
+      if (!ok) return false;
+      await options.deletePersona?.(persona.id);
+      return true;
+    },
+    onSetDefault: (persona) => options.setDefaultPersona?.(persona.id),
+    host,
+  });
+  const directives = mountDirectiveList(directiveRoot, {
+    load: options.listDirectives,
+    createButton: dialog.querySelector("#rp-create-directive"),
+    onEdit: (directive) =>
+      openDirectiveEditor({
+        directive,
+        host,
+        onSave: async (payload) => {
+          await options.saveDirective?.(payload);
+          await directives.refresh();
+        },
+      }),
+    onCreate: () =>
+      openDirectiveEditor({
+        directive: null,
+        host,
+        onSave: async (payload) => {
+          await options.saveDirective?.(payload);
+          await directives.refresh();
+        },
+      }),
+    onDelete: async (directive) => {
+      const ok = await confirm?.("directive", directive.name);
+      if (!ok) return false;
+      await options.deleteDirective?.(directive.id);
+      return true;
+    },
+    onSetDefault: (directive) => options.setDefaultDirective?.(directive.id),
+    host,
+  });
+
+  const data = mountDataPanel(dataPanel, {
+    confirmAction: options.confirmAction || confirmAction,
+    host,
+    onDataChanged: async () => {
+      refreshAll();
+      await options.onDataChanged?.();
+    },
+  });
+
+  function refreshAll() {
+    engine.refresh();
+    params.refresh();
+    personas.refresh();
+    directives.refresh();
+    data.refresh();
+  }
+  refreshAll();
+
+  let settled = false;
+  function close() {
+    if (settled) return;
+    settled = true;
+    engine.destroy();
+    params.destroy();
+    personas.destroy();
+    directives.destroy();
+    data.destroy();
+    tabs.destroy();
+    closeModal(dialog);
+    dialog.remove();
+    options.onClose?.();
+  }
+
+  dialog.querySelector(".rp-dialog__close").addEventListener("click", close);
+
+  // Select the requested tab BEFORE opening. `openModal` moves focus to the
+  // selected tab on the next frame, and auto activation treats a focus change
+  // as a tab change: selecting afterwards would be undone by that focus.
+  // The routes layer and the chat surface address this panel as
+  // "settings-system-prompts-tab"; the library panel id is
+  // "settings-directives-tab". Accept the alias so /directives and the
+  // history "Manage" button land on Directives instead of the default tab.
+  const initialTab = tab === "settings-system-prompts-tab" ? "settings-directives-tab" : tab;
+  if (initialTab) tabs.select(initialTab);
+
+  openModal({
+    element: dialog,
+    onClose: () => {
+      if (settled) return;
+      settled = true;
+      options.onClose?.();
+    },
+    initialFocus: tablist.querySelector('[aria-selected="true"]'),
+  });
+
+  return { close, element: dialog, selectTab: tabs.select };
+}

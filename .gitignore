@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+
+# OS & Build artifacts
+.DS_Store
+Thumbs.db
+dist/
+.vercel
+*.log
+
+# Local screenshots & development assets
+screenshot/
+
+PERSONA_SYSTEM_PROMPT.md
+
+# Agent workspace: memory notes, audit scratch, third-party research PDFs.
+# Project-related data, never published source.
+.workbuddy-ai/

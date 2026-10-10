@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Chat</title>
+  <meta name="description" content="Read and write a conversation with a character.">
+  <meta name="theme-color" content="#0E1113">
+  <link rel="stylesheet" href="design/tokens.css">
+  <link rel="stylesheet" href="design/components.css">
+  <link rel="stylesheet" href="ui/chat/chat.css">
+  <link rel="icon" href="icon.svg">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <script src="theme-boot.js"></script>
+</head>
+<body class="rp-app">
+
+  <a class="rp-skip-link" href="#chat-main">Skip to the conversation</a>
+
+  <div class="rp-chat" id="chat-shell">
+    <header class="rp-topbar">
+      <div class="rp-container rp-chat__bar">
+        <a href="./" class="rp-btn rp-btn--ghost rp-btn--icon" id="back-catalog-btn" aria-label="Back to the character library">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M19 12H5M12 19l-7-7 7-7" />
+          </svg>
+        </a>
+
+        <div class="rp-chat__bar-character" id="chat-header-identity" role="button" tabindex="0" aria-haspopup="dialog" aria-label="Character profile and saved chats" title="Manage character sessions and presets">
+          <div class="rp-avatar rp-avatar--sm" id="chat-header-avatar" aria-hidden="true"></div>
+          <div class="rp-chat__bar-meta">
+            <span class="rp-chat__bar-name" id="chat-header-name">Character</span>
+            <span class="rp-chat__bar-session" id="chat-header-session" title="Active session">Chat</span>
+          </div>
+        </div>
+
+        <div class="rp-topbar__spacer"></div>
+
+        <button id="toggle-search-btn" class="rp-btn rp-btn--ghost rp-btn--icon" aria-label="Find in this conversation" aria-expanded="false" aria-controls="chat-search">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="11" cy="11" r="7"></circle>
+            <path d="M20 20l-3.5-3.5"></path>
+          </svg>
+        </button>
+        <button id="toggle-ledger-btn" class="rp-btn rp-btn--ghost rp-btn--icon" aria-label="Context" aria-expanded="false" aria-controls="ledger-sheet">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+          </svg>
+        </button>
+        <button id="toggle-context-drawer-btn" class="rp-btn rp-btn--ghost rp-btn--icon" aria-label="Saved chats and scene presets" aria-haspopup="dialog" aria-expanded="false">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M3 6h18M3 12h18M3 18h12" />
+          </svg>
+        </button>
+        <button id="toggle-settings-btn" class="rp-btn rp-btn--ghost rp-btn--icon" aria-label="Settings" aria-haspopup="dialog" aria-expanded="false">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0 .33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="rp-chat__body" id="chat-main" tabindex="-1">
+      <div class="rp-chat__search" id="chat-search" data-open="false" role="search">
+        <label class="visually-hidden" for="chat-search-input">Find in this conversation</label>
+        <input type="search" id="chat-search-input" class="rp-input" placeholder="Find in this conversation" autocomplete="off">
+        <span class="rp-chat__search-count" id="chat-search-count" role="status"></span>
+        <button type="button" class="rp-btn rp-btn--ghost rp-btn--sm" id="chat-search-prev" aria-label="Previous match">Previous</button>
+        <button type="button" class="rp-btn rp-btn--ghost rp-btn--sm" id="chat-search-next" aria-label="Next match">Next</button>
+        <button type="button" class="rp-btn rp-btn--ghost rp-btn--sm" id="chat-search-close">Close</button>
+      </div>
+
+      <h1 class="visually-hidden" id="chat-heading">Conversation</h1>
+
+      <div class="rp-chat__feed rp-scroll" id="chat-feed" tabindex="-1">
+        <div class="rp-container">
+          <div class="rp-well">
+            <div class="rp-measure--wide" id="chat-inner"></div>
+          </div>
+        </div>
+      </div>
+
+      <button type="button" class="rp-btn rp-btn--secondary rp-scroll-bottom" id="scroll-bottom-btn" aria-label="Jump to latest message" hidden>
+        <span class="rp-scroll-bottom__badge" id="scroll-bottom-badge" hidden></span>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M12 5v14M19 12l-7 7-7-7" />
+        </svg>
+      </button>
+
+      <form class="rp-composer" id="composer" data-mode="normal" data-has-choices="false" novalidate>
+        <div class="rp-container">
+          <!-- Choice Mode interaction layer. Sticky with the dock so it never
+               covers the reading area, and never scrolls away from the reply it
+               belongs to. Rendered and owned by ui/chat/choice_panel.js. -->
+          <section
+            class="rp-choices"
+            id="choice-panel"
+            data-status="idle"
+            aria-labelledby="choice-title"
+            hidden></section>
+
+          <div class="rp-composer__box">
+            <label class="visually-hidden" for="author-input">Write your message</label>
+            <p class="visually-hidden" id="composer-keyboard-hint">Enter sends; Shift and Enter starts a new line.</p>
+            <textarea
+              id="author-input"
+              class="rp-composer__input"
+              rows="1"
+              placeholder="Write as you."
+              aria-describedby="composer-keyboard-hint"></textarea>
+
+            <div class="rp-composer__actions">
+              <!-- Mode selector. A chip group, not a disclosure: switching modes
+                   never touches the transcript, only how the next turn is picked. -->
+              <div class="rp-chip-group rp-mode-switch" id="mode-switch" role="group" aria-label="Interaction mode">
+                <button type="button" class="rp-chip rp-chip--interactive" data-mode="normal" aria-pressed="true">Normal RP</button>
+                <button type="button" class="rp-chip rp-chip--interactive" data-mode="choice" aria-pressed="false">Choice Mode</button>
+              </div>
+
+              <div class="rp-composer__identity">
+                <div class="rp-avatar rp-avatar--sm rp-avatar--user" id="composer-speaker-avatar" aria-hidden="true">U</div>
+                <span id="composer-persona-name" class="rp-chat__persona">User</span>
+
+                <span class="rp-composer__figures rp-tnum" id="composer-live-stats">~0 tokens</span>
+              </div>
+
+              <div class="rp-composer__actions--end">
+                <button type="button" id="stop-btn" class="rp-btn rp-btn--secondary rp-btn--md" hidden>Stop</button>
+                <button type="submit" id="send-btn" class="rp-btn rp-btn--primary rp-btn--md" disabled>Send</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Context sheet. Opt-in, never in the reading path. -->
+  <section class="rp-sheet" id="ledger-sheet" data-open="false" role="dialog" aria-modal="false" aria-labelledby="ledger-title" hidden>
+    <div class="rp-sheet__handle" aria-hidden="true"></div>
+    <div class="rp-dialog__header">
+      <div>
+        <h2 class="rp-dialog__title" id="ledger-title">Context</h2>
+        <p class="rp-dialog__desc">What the engine sends with your next message, how much room is left, and how your recent replies were billed.</p>
+      </div>
+      <button type="button" class="rp-btn rp-btn--ghost rp-btn--icon rp-dialog__close" id="close-ledger-btn" aria-label="Close context">&times;</button>
+    </div>
+    <div class="rp-dialog__body">
+      <div class="rp-chat__ledger-body">
+        <div class="rp-ledger" id="ledger-context"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Saved chats and scene presets. -->
+  <dialog class="rp-dialog" id="history-modal" aria-labelledby="history-modal-title">
+    <div class="rp-dialog__panel">
+      <div class="rp-sheet__handle" aria-hidden="true"></div>
+      <div class="rp-dialog__header">
+        <div>
+          <h2 class="rp-dialog__title" id="history-modal-title">Saved chats and scene presets</h2>
+          <p class="rp-dialog__desc">Switch sessions, start fresh, or set the active persona and system prompt.</p>
+        </div>
+        <button type="button" class="rp-btn rp-btn--ghost rp-btn--icon rp-dialog__close" id="close-history-modal-btn" aria-label="Close saved chats">&times;</button>
+      </div>
+      <div class="rp-dialog__body">
+        <div class="rp-field">
+          <label class="rp-label" for="history-persona-select">Speaking persona</label>
+          <div class="rp-field__row">
+            <select id="history-persona-select" class="rp-select"></select>
+            <button type="button" id="history-manage-personas-btn" class="rp-btn rp-btn--ghost rp-btn--md">Manage</button>
+          </div>
+        </div>
+        <div class="rp-field">
+          <label class="rp-label" for="history-directive-select">System prompt</label>
+          <div class="rp-field__row">
+            <select id="history-directive-select" class="rp-select"></select>
+            <button type="button" id="history-manage-directives-btn" class="rp-btn rp-btn--ghost rp-btn--md">Manage</button>
+          </div>
+        </div>
+        <div class="rp-field">
+          <div class="rp-field__head">
+            <span class="rp-label">Saved sessions</span>
+            <button type="button" id="history-new-scene-btn" class="rp-btn rp-btn--secondary rp-btn--sm">New chat</button>
+          </div>
+          <div id="history-threads-list" role="list"></div>
+        </div>
+      </div>
+      <div class="rp-dialog__footer">
+        <button type="button" class="rp-btn rp-btn--secondary" id="close-history-modal-btn-2">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="rp-toast-region" id="toast-region" aria-live="polite" aria-atomic="false"></div>
+  <p class="visually-hidden" id="turn-status" role="status" aria-live="polite"></p>
+
+  <script type="module" src="ui/chat/chat_boot.js"></script>
+</body>
+</html>
