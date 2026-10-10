@@ -287,13 +287,14 @@ bun test test/
 
 ### Stats
 
-794 tests, 11706 expect() calls, 36 files (measured with `bun test`).
+801 tests, 11718 expect() calls, 37 files (measured with `bun test`).
 
 ### Existing Test Files
 
 - `test/card_parse.test.ts`: HTML-to-markup converter (entity decoding, attribute stripping, idempotence)
 - `test/choice_format.test.ts`: the Choice Mode parser (malformed/aliased/line-list output, sanitation, dedupe, clamping) and the auxiliary choice request planner
 - `test/choice_mode.test.ts`: the choice state machine (double-click, staleness, scene-awaiting-player guard, failure recovery, persistence without a refetch)
+- `test/choice_panel_behavior.test.ts`: the steer control driven for real against `test/dom_shim.ts` — a consumed intent is cleared, a failed menu hands it back, a draft survives, and the control stays reachable on an error. Behavioural, because the defect it covers (the field was read on submit and never cleared, so the panel handed the same text back on the next open) was invisible to a source-text guard
 - `test/choice_ui.test.ts`: presentation guards (real buttons, text-not-markup, durable retry affordance, the engine choice seam stays non-streaming and transcript-free)
 - `test/composer.test.ts`: composer clearing on send, fine-pointer Enter, and mobile Enter newline insertion
 - `test/compaction.test.ts`: long-run compaction, adaptive summary budget, and fold boundary/stress invariants

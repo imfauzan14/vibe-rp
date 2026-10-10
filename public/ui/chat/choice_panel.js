@@ -49,6 +49,13 @@ export function createChoicePanel({
   let state = { mode: "normal", status: "idle", choices: [], error: null, selectedId: null };
   let lastStatus = "idle";
   let isCollapsed = false;
+  // The steer intent that has been handed to the caller but whose menu has not
+  // settled yet. It exists so the field can be emptied the moment the intent is
+  // consumed: the panel is built once per page and reused for every later menu,
+  // so a value left in the field came back on the next Steer… and had to be
+  // deleted by hand every time. A menu that *failed* has consumed nothing, so
+  // the intent goes back into the field instead of being lost with the error.
+  let pendingSteer = null;
 
   const header = el("div", { class: "rp-choices__header" });
   const heading = el("h2", { class: "rp-choices__title", id: "choice-title", text: "Next moves" });
@@ -187,6 +194,11 @@ export function createChoicePanel({
   const submitSteer = () => {
     const val = steerInput.value.trim();
     if (!val) return;
+    // Handed over, so the field is emptied here rather than left behind for the
+    // next menu to inherit. `pendingSteer` remembers it only so a failure can
+    // give it back; a menu that arrives clears it (see `render`).
+    pendingSteer = val;
+    steerInput.value = "";
     steerBar.hidden = true;
     onRegenerate(val);
   };
@@ -311,12 +323,30 @@ export function createChoicePanel({
     else if (state.status === "error") notice.textContent = state.error || "Couldn't generate choices.";
     else notice.textContent = "";
 
+    // A submitted intent is settled by the menu that follows it: a menu that
+    // arrived has consumed it, and a menu that failed has not — so the latter
+    // puts the reader's words back in the field rather than making them retype
+    // what the error cost them. A draft that was never submitted is left alone
+    // (Cancel is "never mind", not "discard"), which is why this is gated on a
+    // pending intent rather than clearing the field on every render.
+    if (pendingSteer !== null && ready) {
+      pendingSteer = null;
+    } else if (pendingSteer !== null && state.status === "error") {
+      steerInput.value = pendingSteer;
+      pendingSteer = null;
+    }
+
+    // The steer control belongs to any settled menu, a failed one included: the
+    // reader needs it precisely when the last attempt did not work. It is
+    // hidden only while a request is in flight, where a second intent would
+    // supersede the one already being generated.
+    const steerable = ready || state.status === "error";
     retryBtn.hidden = state.status !== "error";
     regenBtn.hidden = !ready;
     regenBtn.disabled = !ready;
-    steerToggleBtn.hidden = !ready;
-    steerToggleBtn.disabled = !ready;
-    if (!ready) steerBar.hidden = true;
+    steerToggleBtn.hidden = !steerable;
+    steerToggleBtn.disabled = !steerable;
+    if (!steerable) steerBar.hidden = true;
 
     const arrived = ready && lastStatus !== "ready";
     const entering = submitting && lastStatus !== "submitting";
