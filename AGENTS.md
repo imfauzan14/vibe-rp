@@ -50,27 +50,27 @@ The dependency direction is one-way: UI modules depend on controllers, controlle
 
 Top-level logic (all zero DOM unless noted):
 
-- **`public/browser_engine.js`** (2912 lines): `BrowserChatEngine`. Prompt assembly, the four context rules, ledger folding, SSE streaming, the universal allocator, and auxiliary choice generation. Re-exports the pure planning helpers from `context_plan.js` and the session-write accessors from `session_state.js` so callers keep one import surface.
-- **`public/context_plan.js`** (228 lines): pure planning. Token estimation, `cleanPromptText`, the summary budgets, and `allocateContext` — the one allocator. Owns the ledger-framing cost (`LEDGER_OPEN`/`LEDGER_CLOSE`, `ledgerFramingTokens()`) so every charge site reads one value. `browser_engine.js` re-exports `allocateContext` as a thin wrapper, so the engine's own calls and a page's calls go through the same decision.
-- **`public/session_state.js`** (112 lines): the session-write seam (`applyFold`, `resetLedger`, `captureLedgerState`, `restoreLedgerState`, `noteUsage`, `noteUsageReport`, `markLedgerTruncated`, `setOverflowReported`, `setCondensedReported`). The engine decides *when*; this module owns *how* the controller's session is mutated, so the fold returns a value and one place applies it. `resetLedger` handles explicit ledger clears (user transcript edits); the capture/restore pair makes a deletion undoable.
-- **`public/usage_history.js`** (263 lines): the per-chat usage history — the sample shape, the scope key that decides what is comparable, the per-scope caps, and the trend derivation. A leaf module: it imports nothing, reads no store and holds no clock. `session_controller.js` writes the samples; `ui/chat/context_panel.js` renders the trend.
-- **`public/session_controller.js`** (877 lines): `SessionController`. Session lifecycle, modal state machine, message transitions, send/stream flow, retry of an unanswered turn, the Choice Mode state machine, and the one place a usage sample is recorded. Accepts `options.signal` and exposes `cancel()`.
-- **`public/local_db.js`** (907 lines): `LocalDb` plus its two backends. `IdbStore` owns IndexedDB (cards, sessions); `LocalStore` owns localStorage (personas, directives, settings). `LocalDb` is a facade: an instance drives its own stores and accepts injected ones, while the statics delegate to a default instance. `DB_VERSION` is 2.
-- **`public/text.js`** (72 lines): the cycle-free leaf every other pure module may import. `utf8Decoder`, `substitutePlaceholders`, `stripThoughtBlocks`, `renderInlineField`.
-- **`public/safe_html.js`** (37 lines): `escapeHtml` and `escapeAttr`. The single escaping point for the whole app.
-- **`public/message_format.js`** (159 lines): pure `formatProse` and `formatMessages` view models. `formatProse` is the one the app uses; `formatMessages` is consumed only by tests.
-- **`public/choice_format.js`** (328 lines): the Choice Mode prompt and the resilient parser for untrusted model output (zero DOM).
-- **`public/card_parse.js`** (348 lines): character-card parsing (JSONC strip, normalize, PNG/WebP `chara` extraction).
-- **`public/remote_import.js`** (265 lines): URL import, character-page API mapping, direct card-file fetch.
-- **`public/session_refresh.js`** (336 lines): refresh-token exchange, single-flight, proactive refresh.
-- **`public/sw.js`** (447 lines): offline shell cache. Never caches cross-origin or non-GET requests.
+- **`public/browser_engine.js`** (3012 lines): `BrowserChatEngine`. Prompt assembly, the four context rules, ledger folding, SSE streaming, the universal allocator, and auxiliary choice generation. Re-exports the pure planning helpers from `context_plan.js` and the session-write accessors from `session_state.js` so callers keep one import surface.
+- **`public/context_plan.js`** (236 lines): pure planning. Token estimation, `cleanPromptText`, the summary budgets, and `allocateContext` — the one allocator. Owns the ledger-framing cost (`LEDGER_OPEN`/`LEDGER_CLOSE`, `ledgerFramingTokens()`) so every charge site reads one value. `browser_engine.js` re-exports `allocateContext` as a thin wrapper, so the engine's own calls and a page's calls go through the same decision.
+- **`public/session_state.js`** (113 lines): the session-write seam (`applyFold`, `resetLedger`, `captureLedgerState`, `restoreLedgerState`, `noteUsage`, `noteUsageReport`, `markLedgerTruncated`, `setOverflowReported`, `setCondensedReported`). The engine decides *when*; this module owns *how* the controller's session is mutated, so the fold returns a value and one place applies it. `resetLedger` handles explicit ledger clears (user transcript edits); the capture/restore pair makes a deletion undoable.
+- **`public/usage_history.js`** (264 lines): the per-chat usage history — the sample shape, the scope key that decides what is comparable, the per-scope caps, and the trend derivation. A leaf module: it imports nothing, reads no store and holds no clock. `session_controller.js` writes the samples; `ui/chat/context_panel.js` renders the trend.
+- **`public/session_controller.js`** (900 lines): `SessionController`. Session lifecycle, modal state machine, message transitions, send/stream flow, retry of an unanswered turn, the Choice Mode state machine, and the one place a usage sample is recorded. Accepts `options.signal` and exposes `cancel()`.
+- **`public/local_db.js`** (843 lines): `LocalDb` plus its two backends. `IdbStore` owns IndexedDB (cards, sessions); `LocalStore` owns localStorage (personas, directives, settings). `LocalDb` is a facade: an instance drives its own stores and accepts injected ones, while the statics delegate to a default instance. `DB_VERSION` is 2.
+- **`public/text.js`** (165 lines): the cycle-free leaf every other pure module may import. `utf8Decoder`, `substitutePlaceholders`, `stripThoughtBlocks`, `renderInlineField`, `REFUSAL_RE`, and `looksLikeModelRefusal`.
+- **`public/safe_html.js`** (38 lines): `escapeHtml` and `escapeAttr`. The single escaping point for the whole app.
+- **`public/message_format.js`** (160 lines): pure `formatProse` and `formatMessages` view models. `formatProse` is the one the app uses; `formatMessages` is consumed only by tests.
+- **`public/choice_format.js`** (346 lines): the Choice Mode prompt and the resilient parser for untrusted model output (zero DOM).
+- **`public/card_parse.js`** (349 lines): character-card parsing (JSONC strip, normalize, PNG/WebP `chara` extraction).
+- **`public/remote_import.js`** (266 lines): URL import, character-page API mapping, direct card-file fetch.
+- **`public/session_refresh.js`** (337 lines): refresh-token exchange, single-flight, proactive refresh.
+- **`public/sw.js`** (448 lines): offline shell cache. Never caches cross-origin or non-GET requests.
 
 Page shells (markup plus a thin bootstrap only):
 
-- **`public/index.html`** (91 lines): character library shell. Imports `ui/library_page.js`.
-- **`public/chat.html`** (188 lines): conversation shell. Loads `ui/chat/chat_boot.js` with `<script src>`.
+- **`public/index.html`** (92 lines): character library shell. Imports `ui/library_page.js`.
+- **`public/chat.html`** (204 lines): conversation shell. Loads `ui/chat/chat_boot.js` with `<script src>`.
 
-Shared UI modules (**`public/ui/`**, 31 modules, 7923 lines). Reuse these instead of re-implementing:
+Shared UI modules (**`public/ui/`**, 31 modules, 8155 lines). Reuse these instead of re-implementing:
 
 - Shared: `dom.js`, `toast.js`, `modal.js`, `tabs.js`, `confirm.js`, `theme.js`, `image.js`, `data_transfer.js`
 - Library: `library_page.js`, `library_controller.js`, `library_view.js`, `character_card.js`, `detail_modal.js`, `import_flow.js`
@@ -287,7 +287,7 @@ bun test test/
 
 ### Stats
 
-775 tests, 11645 expect() calls, 36 files (measured with `bun test`).
+792 tests, 11700 expect() calls, 36 files (measured with `bun test`).
 
 ### Existing Test Files
 
