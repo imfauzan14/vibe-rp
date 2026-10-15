@@ -2730,7 +2730,14 @@ export class BrowserChatEngine {
     const headers = {};
     if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
     const res = await fetch(`${base}/models`, { headers });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try {
+        const errJson = await res.json();
+        if (errJson?.error?.message) detail = `${detail}: ${errJson.error.message}`;
+      } catch {}
+      throw new Error(detail);
+    }
     const data = await res.json();
     return (data.data || []).map((m) => m.id);
   }
