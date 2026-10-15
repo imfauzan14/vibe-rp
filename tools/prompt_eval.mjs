@@ -66,8 +66,8 @@ const DEFAULT_PERSONA_RESOLVED = (() => {
   // No localStorage in this process: fall back to the shipped default text.
   return (
     "The viewpoint protagonist: the reader's own character, present in the scene and " +
-    "perceiving it from their own point of view. Their turn is written from that " +
-    'perspective — first person ("I") unless their turn establishes otherwise.'
+    "perceiving it from their own narrative distance. Match the point of view, pronouns, " +
+    "language, and register established in the reader's turns and the opening scene."
   );
 })();
 
@@ -141,6 +141,55 @@ const SCENARIOS = [
   { name: "rp/window-2048", card: card({ preset: 400 }), session: session({ turns: 6 }), persona: PERSONA, window: 2048 },
   // Universal contract scenario: adapts inherently across all languages and registers.
   { name: "rp/universal-contract", card: card({ preset: 400 }), session: session({ turns: 5 }), persona: PERSONA },
+  // Multilingual scenario fixtures: validates non-English token estimation and script-agnostic framing.
+  {
+    name: "rp/id-conversational",
+    card: card({ preset: 400 }),
+    session: {
+      id: "eval-id-session",
+      cardId: "eval-card",
+      messages: [
+        { role: "user", content: "Aku melangkah masuk ke dalam ruangan dan menunggu responsnya." },
+        { role: "assistant", content: "Dia tidak langsung menjawab. Hening yang menggantung terasa dingin, dan ia menghela napas panjang." },
+        { role: "user", content: "Aku menatapnya dengan tenang." },
+      ],
+      ledger: "",
+      consumed: 1,
+    },
+    persona: PERSONA,
+  },
+  {
+    name: "rp/ja-cjk-script",
+    card: card({ preset: 400 }),
+    session: {
+      id: "eval-ja-session",
+      cardId: "eval-card",
+      messages: [
+        { role: "user", content: "部屋に入り、静かに相手の反応を待つ。" },
+        { role: "assistant", content: "「待たせたな」彼女は静かに帳簿から目を離し、立ち上がった。" },
+        { role: "user", content: "「問題ない」と答えて席に着く。" },
+      ],
+      ledger: "",
+      consumed: 1,
+    },
+    persona: PERSONA,
+  },
+  {
+    name: "rp/es-inflected-latin",
+    card: card({ preset: 400 }),
+    session: {
+      id: "eval-es-session",
+      cardId: "eval-card",
+      messages: [
+        { role: "user", content: "Doy un paso hacia la mesa y espero su respuesta." },
+        { role: "assistant", content: "—No deberías haber venido tan pronto —murmuró ella mientras cerraba el libro lentamente." },
+        { role: "user", content: "—Era necesario —respondí sin vacilar." },
+      ],
+      ledger: "",
+      consumed: 1,
+    },
+    persona: PERSONA,
+  },
 ];
 
 const contractFor = (_s) => DEFAULT_AGENTS_CONTRACT;

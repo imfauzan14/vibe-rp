@@ -1,71 +1,81 @@
-// public/context_plan.js
-// Universal token estimation, context budget allocation, and language-preserving rolling ledger framing.
+// Pure context planning, token budgeting, and allocation engine (zero DOM).
 
 import { utf8Decoder } from "./text.js";
 
-const utf8Encoder = new TextEncoder();
+const byteLenCache = new Map();
+const BYTE_CACHE_MAX = 4096;
+// Bounded by entries AND bytes: entries alone let a few thousand unique
+// quarter-megabyte transcripts pin ~1GB. Past the byte ceiling the oldest
+// entries go, however few that is.
+const BYTE_CACHE_BYTES_MAX = 32 * 1024 * 1024;
+let byteCacheBytes = 0;
+const textEncoder = new TextEncoder();
 
 /**
- * Script-aware token estimator across Latin, Cyrillic, Arabic, Indic, and CJK scripts.
- * Avoids the 30-55% underestimation of raw (utf8Bytes / 4) on non-ASCII scripts while
- * remaining fast, synchronous, and zero-dependency in the browser.
+ * Token estimate: UTF-8 bytes / 4 with safe multilingual calibration.
+ * Byte-based rather than `String.length`.
  */
 export function estimateTokens(text) {
   if (!text) return 0;
   const str = typeof text === "string" ? text : String(text);
-  const len = str.length;
-  if (len === 0) return 0;
-
-  let asciiChars = 0;
-  let cjkChars = 0;
-  let otherMultiByteChars = 0;
-
-  for (let i = 0; i < len; i++) {
+  let bytes = byteLenCache.get(str);
+  if (bytes === undefined) {
+    bytes = textEncoder.encode(str).length;
+    byteLenCache.set(str, bytes);
+    byteCacheBytes += bytes;
+    while (byteLenCache.size > BYTE_CACHE_MAX || byteCacheBytes > BYTE_CACHE_BYTES_MAX) {
+      const oldest = byteLenCache.keys().next();
+      if (oldest.done) break;
+      const evictedBytes = byteLenCache.get(oldest.value) || 0;
+      byteLenCache.delete(oldest.value);
+      byteCacheBytes = Math.max(0, byteCacheBytes - evictedBytes);
+      // Safety valve against a single entry larger than the whole ceiling.
+      if (byteLenCache.size === 0) break;
+    }
+  }
+  if (bytes === str.length) {
+    return (bytes + 3) >> 2;
+  }
+  let ascii = 0;
+  let cjk = 0;
+  let otherMulti = 0;
+  for (let i = 0; i < str.length; i++) {
     const code = str.charCodeAt(i);
-    if (code <= 0x7f) {
-      asciiChars++;
-    } else if (
+    if (code <= 0x7f) ascii++;
+    else if (
       (code >= 0x2e80 && code <= 0x9fff) ||
       (code >= 0xac00 && code <= 0xd7af) ||
       (code >= 0xf900 && code <= 0xfaff)
     ) {
-      cjkChars++;
+      cjk++;
     } else {
-      otherMultiByteChars++;
+      otherMulti++;
     }
   }
-
-  // Fast path for pure ASCII / Latin text: preserve exact byte-quarter ceiling behavior
-  if (cjkChars === 0 && otherMultiByteChars === 0) {
-    return (asciiChars + 3) >> 2;
+  if (cjk === 0 && otherMulti === 0) {
+    return (bytes + 3) >> 2;
   }
-
-  // Multi-script weighting calibrated against o200k_base / Claude / Llama 3 BPE tokenizers:
-  // - ASCII/Latin: ~0.25 tokens/char (4 chars per token)
-  // - CJK ideographs/kana/hangul: ~0.95 tokens/char
-  // - Cyrillic/Arabic/Indic/extended Latin: ~0.55 tokens/char
-  const estimated =
-    asciiChars * 0.25 + cjkChars * 0.95 + otherMultiByteChars * 0.55;
+  const estimated = ascii * 0.25 + cjk * 0.95 + otherMulti * 0.55;
   return Math.max(1, Math.ceil(estimated));
 }
 
+/** Tokens for a message array, including per-message framing overhead. */
 export function countMessages(messages) {
-  if (!Array.isArray(messages) || messages.length === 0) return 0;
   let total = 0;
-  for (const msg of messages) {
-    if (!msg || typeof msg !== "object") continue;
-    const content = typeof msg.content === "string" ? msg.content : "";
-    total += estimateTokens(content) + 4;
+  for (const m of messages || []) {
+    if (!m || !m.content) continue;
+    total += estimateTokens(m.content) + 4;
   }
   return total;
 }
 
+/** Trims zero-width characters, excessive blank lines, and invisible tokens (RTK). */
 export function cleanPromptText(text) {
-  if (text === null || text === undefined) return "";
   if (typeof text !== "string") return "";
   return text
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF]/g, "")
     .replace(/\r\n?/g, "\n")
-    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    .replace(/[ \t]+$/gm, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
@@ -80,122 +90,110 @@ export const MIN_INPUT_HEADROOM = 512;
 export const MIN_OUTPUT_TOKENS = 256;
 
 export function resolveSafetyMargin(contextWindow) {
-  const cw = Number(contextWindow) || 0;
-  if (cw <= 0) return TOKEN_SAFETY_MARGIN;
-  return Math.max(
-    256,
-    Math.min(TOKEN_SAFETY_MARGIN, Math.floor(cw * 0.05))
-  );
+  const window = Math.max(0, Number(contextWindow) || 0);
+  if (window <= 0) return 256;
+  return Math.max(256, Math.min(4096, Math.floor(window * 0.02)));
 }
 
 export const SUMMARY_TARGET_WORDS = 700;
 export const SUMMARY_UPDATE_TARGET_WORDS = 900;
-
 export const LEDGER_OPEN =
   "The story so far, in ledger form. This is settled continuity: build on it and never contradict it. " +
-  "Each character's knowledge is scoped to what they have witnessed or been told — consult each character's Cast entry if you are unsure. " +
-  "Maintain the active narrative language established by the player, even if older ledger notes differ.\n<ledger>\n";
-
+  "Each character's knowledge is scoped to what they have witnessed or been told — consult each character's Cast entry before writing them; no character may act on, reference, or react to information absent from it.\n\n<ledger>\n";
 export const LEDGER_CLOSE = "\n</ledger>";
 export const LEDGER_HARD_MAX_TOKENS = 16384;
 
-export const SUMMARY_SYSTEM_PROMPT =
-  "You are an objective narrative continuity scribe. Compress story events into a dense, factual continuity ledger inside <ledger>...</ledger> tags.\n\n" +
-  "Core Rules:\n" +
-  "1. LANGUAGE PRESERVATION: Write the ledger in the EXACT same primary language and script used in the <transcript>. Never translate non-English transcripts into English, and preserve all proper nouns, honorifics, and in-world terms verbatim.\n" +
-  "2. DENSE TELEGRAPHIC FACTS: Write concise, objective bullet points—never story prose, dialogue quotes, or literary metaphors.\n" +
-  "3. BOUNDED KNOWLEDGE: Explicitly tag asymmetric or secret facts (e.g., `[Known only to X]`) so characters do not gain omniscient awareness.\n" +
-  "4. CONTINUITY KEYS: Track (a) Cast & Epistemic State, (b) Physical Location, Time, Injuries & Inventory, (c) Relationship & Trust Shifts, and (d) Irreversible Plot Events & Open Threads.";
-
-export const SUMMARY_PROMPT =
-  `Summarize the <transcript> into a structured continuity ledger of roughly ${SUMMARY_TARGET_WORDS} words or fewer. ` +
-  "Preserve the transcript's active language, physical states, relationship shifts, and unresolved threads. " +
-  "Return the ledger content wrapped inside a single `<ledger>...</ledger>` block.";
-
-export const SUMMARY_UPDATE_PROMPT =
-  `Integrate the new events from <transcript> into the existing <prior-ledger>, keeping total length within roughly ${SUMMARY_UPDATE_TARGET_WORDS} words. ` +
-  "Retain all unresolved threads, permanent consequences, and character knowledge boundaries from <prior-ledger>, update changed physical or emotional states, and write in the active language of <transcript>. " +
-  "Return the updated ledger wrapped inside a single `<ledger>...</ledger>` block.";
-
 /**
- * Neutralizes any embedded opening or closing XML fence matching `tag` (case-insensitive,
- * tolerant of whitespace, attributes, or self-closing slashes) so untrusted content cannot
- * break out of `<ledger>`, `<transcript>`, or `<prior-ledger>` containers.
+ * Neutralises a closing tag inside text that is about to be wrapped in it.
+ *
+ * Every fenced block the engine builds (the ledger, the summarizer's transcript
+ * and prior-ledger, the compressor's ledger) wraps text the engine does not
+ * author: a ledger written by the summarizer, a transcript of the model's own
+ * replies, or a ledger restored verbatim from an imported backup. The fence is
+ * what tells the model where "reference material" stops and "instructions"
+ * resume, so a `</ledger>` inside that text closes the block early and whatever
+ * follows reads as engine-authored instruction at the same level as the real
+ * prompt. That is a persistent injection: a ledger is re-sent every turn, so one
+ * successful breakout is permanent.
+ *
+ * The rule is one home rather than one per call site, because the call sites are
+ * exactly where this was missed: only the label was guarded, never the fence.
+ * Both the opening and the closing form are neutralised — an embedded `<ledger>`
+ * opens a nested block that reads as a second, competing continuity record, and
+ * a reader of the payload cannot tell it from the real one.
+ *
+ * A zero-width space after the `<` keeps the text legible to a reader and the
+ * model while making the sequence stop matching the tag.
  */
-export function neutralizeFence(text, tag = "ledger") {
-  const cleaned = cleanPromptText(text);
-  if (!cleaned) return "";
-  const safeTag = String(tag || "ledger").replace(/[^a-zA-Z0-9_-]/g, "");
-  if (!safeTag) return cleaned;
-  const fenceRe = new RegExp(
-    `<\\s*\\/?\\s*${safeTag}(?:\\s[^>]*)?\\s*\\/?>`,
-    "gi"
-  );
-  return cleaned.replace(fenceRe, (match) => {
-    const isClosing = /^<\s*\//.test(match);
-    return isClosing ? `[/${safeTag}]` : `[${safeTag}]`;
-  });
+export function neutralizeFence(text, tag) {
+  const str = typeof text === "string" ? text : String(text ?? "");
+  if (!str) return "";
+  const name = String(tag || "").replace(/[^a-zA-Z0-9-]/g, "");
+  if (!name) return str;
+  return str.replace(new RegExp(`<\\s*/?\\s*${name}(?:\\s[^>]*)?\\s*/?>`, "gi"), (m) => m.replace("<", "<\u200b"));
 }
 
+/** The ledger body, fenced, with any embedded terminator neutralised. */
 export function frameLedger(ledger) {
   const body = neutralizeFence(ledger, "ledger");
   return body ? `${LEDGER_OPEN}${body}${LEDGER_CLOSE}` : "";
 }
 
+/** Token allowance for the ledger's own framing (the open/close wrapper plus
+ * one message's framing overhead). Charged wherever the ledger is measured,
+ * so the planner, the truncator and the allocator all count the same bytes. */
 export function ledgerFramingTokens() {
-  return estimateTokens(LEDGER_OPEN + LEDGER_CLOSE);
+  return estimateTokens(LEDGER_OPEN + LEDGER_CLOSE) + 4;
+}
+export function clipLedgerToTokens(text, maxTokens, marker = "\n- [older ledger material omitted at the size ceiling; the full transcript is preserved]") {
+  const str = typeof text === "string" ? text : String(text ?? "");
+  const limit = Math.max(0, Math.floor(Number(maxTokens) || 0));
+  if (!str) return "";
+  if (limit <= 0) return marker.trim();
+  if (estimateTokens(str) <= limit) return str;
+  const markerTokens = estimateTokens(marker);
+  const byteBudget = Math.max(0, (limit - markerTokens) * 4);
+  const bytes = textEncoder.encode(str);
+  let kept;
+  if (bytes.length <= byteBudget) {
+    kept = str;
+  } else {
+    let end = byteBudget;
+    while (end > 0 && (bytes[end] & 0xc0) === 0x80) end--;
+    if (end > 0) {
+      const lead = bytes[end];
+      let need = 1;
+      if ((lead & 0xe0) === 0xc0) need = 2;
+      else if ((lead & 0xf0) === 0xe0) need = 3;
+      else if ((lead & 0xf8) === 0xf0) need = 4;
+      if (end + need <= byteBudget) {
+        end += need;
+      }
+    }
+    kept = utf8Decoder.decode(bytes.subarray(0, end));
+    const nl = kept.lastIndexOf("\n");
+    const sp = kept.lastIndexOf(" ");
+    const cut = nl > kept.length * 0.5 ? nl : sp > kept.length * 0.5 ? sp : -1;
+    if (cut > 0) kept = kept.slice(0, cut);
+    // Shrink geometrically, not one char at a time: the naive loop is
+    // quadratic on a huge multibyte ledger clipped to a tiny limit.
+    while (kept && estimateTokens(`${kept}${marker}`) > limit) {
+      const over = estimateTokens(`${kept}${marker}`) - limit;
+      const drop = Math.max(1, Math.ceil(over * 4 * 1.1));
+      kept = kept.slice(0, Math.max(0, kept.length - drop));
+    }
+  }
+  return `${kept}${marker}`;
 }
 
-/**
- * Clips ledger text to fit within `maxTokens` without splitting UTF-8 multi-byte codepoints
- * or cutting mid-line when line boundaries are available.
- */
-export function clipLedgerToTokens(
-  text,
-  maxTokens,
-  marker = "\n- [older ledger material omitted at the size ceiling]\n"
-) {
-  const cleaned = cleanPromptText(text);
-  if (!cleaned) return "";
-  const budget = Math.max(0, Math.floor(Number(maxTokens) || 0));
-  if (budget <= 0) return "";
-  if (estimateTokens(cleaned) <= budget) return cleaned;
-
-  const markerTokens = estimateTokens(marker);
-  const targetTokens = Math.max(16, budget - markerTokens);
-
-  const lines = cleaned.split("\n");
-  if (lines.length > 2) {
-    const head = lines[0];
-    const headTokens = estimateTokens(head + "\n");
-    const keptTail = [];
-    let runningTokens = headTokens + markerTokens;
-
-    for (let i = lines.length - 1; i >= 1; i--) {
-      const lineTokens = estimateTokens(lines[i] + "\n");
-      if (runningTokens + lineTokens > budget && keptTail.length > 0) {
-        break;
-      }
-      keptTail.unshift(lines[i]);
-      runningTokens += lineTokens;
-    }
-
-    const candidate = `${head}${marker}${keptTail.join("\n")}`.trim();
-    if (estimateTokens(candidate) <= budget) {
-      return candidate;
-    }
+function scaleSummaryBudget(workload) {
+  if (!(workload > 0)) return SUMMARY_MIN_TOKENS;
+  if (workload < SUMMARY_DEFAULT_TOKENS) {
+    const t = workload / SUMMARY_DEFAULT_TOKENS;
+    return Math.round(SUMMARY_MIN_TOKENS + (SUMMARY_DEFAULT_TOKENS - SUMMARY_MIN_TOKENS) * t);
   }
-
-  // Fallback byte-safe slice via UTF-8 stream decoder
-  const bytes = utf8Encoder.encode(cleaned);
-  const maxBytes = Math.max(32, Math.min(bytes.length, targetTokens * 2));
-  const sliceStart = Math.max(0, bytes.length - maxBytes);
-  let alignedStart = sliceStart;
-  while (alignedStart < bytes.length && (bytes[alignedStart] & 0xc0) === 0x80) {
-    alignedStart++;
-  }
-  const decodedTail = utf8Decoder.decode(bytes.subarray(alignedStart)).trim();
-  return `${marker.trim()}\n${decodedTail}`.trim();
+  const t = Math.min(1, (workload - SUMMARY_DEFAULT_TOKENS) / SUMMARY_DEFAULT_TOKENS);
+  return Math.round(SUMMARY_DEFAULT_TOKENS + (SUMMARY_MAX_TOKENS - SUMMARY_DEFAULT_TOKENS) * t);
 }
 
 export function resolveSummaryBudget({
@@ -206,79 +204,50 @@ export function resolveSummaryBudget({
   hasPriorLedger = false,
   extraTokens = 0,
 } = {}) {
-  const cw = Math.max(0, Number(contextWindow) || 0);
-  const inputUsed =
-    Math.max(0, Number(transcriptTokens) || 0) +
-    Math.max(0, Number(ledgerTokens) || 0) +
-    Math.max(0, Number(promptTokens) || 0) +
-    Math.max(0, Number(extraTokens) || 0);
-
-  const baseTarget = hasPriorLedger
-    ? Math.max(SUMMARY_DEFAULT_TOKENS, Math.ceil(ledgerTokens * 1.15))
-    : SUMMARY_DEFAULT_TOKENS;
-
-  const desired = Math.min(
-    SUMMARY_MAX_TOKENS,
-    Math.max(SUMMARY_MIN_TOKENS, baseTarget)
-  );
-
-  if (cw <= 0) {
-    return desired + SUMMARY_REASONING_HEADROOM;
+  const transcript = Math.max(0, Number(transcriptTokens) || 0);
+  const ledger = Math.max(0, Number(ledgerTokens) || 0);
+  const overhead = Math.max(0, Number(promptTokens) || 0);
+  const workload = transcript + Math.floor(ledger * 0.5);
+  let budget = scaleSummaryBudget(workload) + Math.max(0, Number(extraTokens) || 0);
+  if (hasPriorLedger) budget = Math.min(SUMMARY_MAX_TOKENS, budget + SUMMARY_REASONING_HEADROOM);
+  const window = Math.max(0, Number(contextWindow) || 0);
+  if (window > 0) {
+    const headroom = window - (overhead + transcript + ledger) - TOKEN_SAFETY_MARGIN;
+    budget = Math.max(SUMMARY_FLOOR_TOKENS, Math.min(budget, headroom));
   }
-
-  const safety = resolveSafetyMargin(cw);
-  const available = cw - inputUsed - safety;
-  if (available < SUMMARY_FLOOR_TOKENS) {
-    return Math.max(MIN_OUTPUT_TOKENS, available);
-  }
-  return Math.min(desired + SUMMARY_REASONING_HEADROOM, available);
+  return Math.max(SUMMARY_FLOOR_TOKENS, Math.min(SUMMARY_MAX_TOKENS, budget));
 }
 
-export function fitFoldLedgerTokens({
-  contextWindow = 0,
-  promptTokens = 0,
-  transcriptTokens = 0,
-  ledgerTokens = 0,
-} = {}) {
-  const cw = Math.max(0, Number(contextWindow) || 0);
-  const rawCap = Math.min(
-    LEDGER_HARD_MAX_TOKENS,
-    Math.max(SUMMARY_MIN_TOKENS, Number(ledgerTokens) || SUMMARY_DEFAULT_TOKENS)
-  );
-  if (cw <= 0) return rawCap;
-
-  const safety = resolveSafetyMargin(cw);
-  const reserved =
-    Math.max(0, Number(promptTokens) || 0) +
-    Math.max(0, Number(transcriptTokens) || 0) +
-    SUMMARY_MIN_TOKENS +
-    safety;
-  const maxAllowed = Math.max(SUMMARY_FLOOR_TOKENS, cw - reserved);
-  return Math.min(rawCap, maxAllowed);
+export function fitFoldLedgerTokens({ contextWindow = 0, promptTokens = 0, transcriptTokens = 0, ledgerTokens = 0 } = {}) {
+  const window = Math.max(0, Number(contextWindow) || 0);
+  const ledger = Math.max(0, Number(ledgerTokens) || 0);
+  if (window <= 0 || ledger <= 0) return ledger;
+  const overhead = Math.max(0, Number(promptTokens) || 0);
+  const transcript = Math.max(0, Number(transcriptTokens) || 0);
+  const forLedger = window - overhead - transcript - SUMMARY_FLOOR_TOKENS - TOKEN_SAFETY_MARGIN;
+  if (forLedger >= ledger) return ledger;
+  return Math.max(0, forLedger);
 }
 
 export function resolveContextBudgets(settings = {}) {
-  const contextWindow = Math.max(
-    2048,
-    Number(settings?.maxContextTokens) || 65536
-  );
-  const maxOutputTokens = Math.max(
-    MIN_OUTPUT_TOKENS,
-    Math.min(
-      Math.floor(contextWindow * 0.25),
-      Number(settings?.maxTokens) || 1200
-    )
-  );
+  const contextWindow = Math.max(2048, Number(settings.maxContextTokens) || 16384);
+  const maxOutput = Math.max(MIN_OUTPUT_TOKENS, Number(settings.maxTokens) || 1200);
   const safetyMargin = resolveSafetyMargin(contextWindow);
-  const inputBudget = Math.max(
-    MIN_INPUT_HEADROOM,
-    contextWindow - maxOutputTokens - safetyMargin
+  const reservedOutput = Math.max(
+    MIN_OUTPUT_TOKENS,
+    Math.min(maxOutput, contextWindow - safetyMargin - MIN_INPUT_HEADROOM)
   );
+  const promptBudget = Math.max(512, contextWindow - reservedOutput - safetyMargin);
+  const loreBudget = Math.min(4000, Math.max(512, Math.floor(promptBudget * 0.12)));
+  const fallbackMaxChars = Math.min(16000, Math.max(1200, Math.floor(promptBudget * 3.5)));
   return {
     contextWindow,
-    maxOutputTokens,
+    maxOutput,
+    reservedOutput,
     safetyMargin,
-    inputBudget,
+    promptBudget,
+    loreBudget,
+    fallbackMaxChars,
   };
 }
 
@@ -291,61 +260,47 @@ export function allocateContext({
   optionalItems = [],
   optionalBudgetTokens = null,
 } = {}) {
-  const cw = Math.max(0, Number(contextWindow) || 0);
-  const safety =
-    safetyMargin > 0 ? safetyMargin : cw > 0 ? resolveSafetyMargin(cw) : 0;
-  const req = Math.max(0, Number(requiredTokens) || 0);
-  const floorOut = Math.max(1, Number(minOutput) || MIN_OUTPUT_TOKENS);
-  const wantOut = Math.max(floorOut, Number(desiredOutput) || floorOut);
+  const window = Math.max(0, Number(contextWindow) || 0);
+  const margin = Math.max(0, Number(safetyMargin) || 0);
+  const floor = Math.max(1, Number(minOutput) || MIN_OUTPUT_TOKENS);
+  const desired = Math.max(floor, Number(desiredOutput) || floor);
+  const required = Math.max(0, Number(requiredTokens) || 0);
 
-  const totalAvailableForInputAndOut = Math.max(0, cw - safety);
-  const impossible = cw > 0 && req + floorOut > totalAvailableForInputAndOut;
+  const outputCeiling = window - margin - required;
+  const output = Math.max(floor, Math.min(desired, outputCeiling));
+  const inputBudget = Math.max(0, window - margin - output);
+  const feasible = required + floor + margin <= window;
 
-  const outputBudget =
-    cw > 0
-      ? Math.max(
-          floorOut,
-          Math.min(wantOut, totalAvailableForInputAndOut - req)
-        )
-      : wantOut;
+  // Degradable sections can be sized against a budget other than the required
+  // content. A caller uses this to keep the set — and therefore the shape of the
+  // system message — a function of stable inputs rather than of the turn being
+  // sent. `null` keeps the historical behaviour.
+  const optionalBase =
+    optionalBudgetTokens === null ? required : Math.max(0, Number(optionalBudgetTokens) || 0);
 
-  const remainingForOptional =
-    cw > 0
-      ? Math.max(0, totalAvailableForInputAndOut - req - outputBudget)
-      : Number.MAX_SAFE_INTEGER;
-
-  const optionalCap =
-    optionalBudgetTokens !== null && optionalBudgetTokens !== undefined
-      ? Math.min(remainingForOptional, Math.max(0, Number(optionalBudgetTokens)))
-      : remainingForOptional;
-
-  const acceptedIds = [];
-  const droppedIds = [];
-  let usedOptionalTokens = 0;
-
-  const sorted = [...(Array.isArray(optionalItems) ? optionalItems : [])].sort(
-    (a, b) => (Number(b?.priority) || 0) - (Number(a?.priority) || 0)
-  );
-
-  for (const item of sorted) {
-    if (!item || typeof item !== "object") continue;
-    const cost = Math.max(0, Number(item.tokens) || 0);
-    if (usedOptionalTokens + cost <= optionalCap) {
-      acceptedIds.push(item.id);
-      usedOptionalTokens += cost;
+  let remaining = Math.max(0, inputBudget - optionalBase);
+  const ordered = [...optionalItems].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+  const included = [];
+  const excluded = [];
+  for (const item of ordered) {
+    const tokens = Math.max(0, Number(item.tokens) || 0);
+    if (tokens <= remaining) {
+      included.push(item);
+      remaining -= tokens;
     } else {
-      droppedIds.push(item.id);
+      excluded.push(item);
     }
   }
 
+  const optionalTokens = included.reduce((n, i) => n + Math.max(0, Number(i.tokens) || 0), 0);
   return {
-    impossible,
-    outputBudget,
-    requiredTokens: req,
-    optionalBudget: optionalCap,
-    usedOptionalTokens,
-    totalInputTokens: req + usedOptionalTokens,
-    acceptedIds,
-    droppedIds,
+    output,
+    inputBudget,
+    requiredTokens: required,
+    optionalTokens,
+    historyBudget: remaining,
+    included,
+    excluded,
+    feasible,
   };
 }
