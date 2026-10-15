@@ -779,7 +779,11 @@ export class LocalDb {
     if (ssData && typeof ssData === "object" && typeof sessionStorage !== "undefined") {
       try {
         for (const [k, v] of Object.entries(ssData)) {
-          if (typeof v === "string") sessionStorage.setItem(k, v);
+          // Same namespace boundary as LocalStore.restore(): a backup is
+          // untrusted input, so only this app's own prefix may land.
+          if (typeof k !== "string" || !k.startsWith(KEY_PREFIX)) continue;
+          if (typeof v !== "string") continue;
+          sessionStorage.setItem(k, v);
         }
       } catch (_) {}
     }

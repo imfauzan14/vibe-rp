@@ -17,6 +17,8 @@ import { escapeHtml, escapeAttr } from "../safe_html.js";
 //   cardByline(card)              creator line, never empty
 //   cardTags(card)                array of trimmed tag strings, never empty
 //   cardAvatarUrl(card)           data/http url or ""
+//   isSafeAvatarUrl(url)          the one portrait-URL allowlist
+//   avatarInnerHtml(url, letter)  portrait img or escaped fallback letter
 //   cardInitial(card)             single uppercase letter for the fallback
 //   matchesQuery(card, query)     name, byline, tags and description
 //   sortCards(cards, mode)        new array, "recent" or "name"
@@ -60,6 +62,17 @@ export function cardTags(card) {
 }
 
 /**
+ * True when `url` is a portrait source the app will hand to an `<img>`.
+ * One home for the allowlist: `data:image/…` and `http(s):` only. Anything
+ * else (a bare `data:` payload, `javascript:`, `blob:`, a relative path) is
+ * rejected so a stored card field can never become an unexpected scheme.
+ */
+export function isSafeAvatarUrl(url) {
+  const src = String(url || "").trim();
+  return /^data:image\//i.test(src) || /^https?:\/\//i.test(src);
+}
+
+/**
  * A usable image source, or an empty string when the card has no portrait.
  * Only `data:image/...` and `http(s):` URLs are accepted: anything else (a
  * bare `data:` payload, a `javascript:` URL) is dropped rather than handed to
@@ -68,9 +81,7 @@ export function cardTags(card) {
 export function cardAvatarUrl(card) {
   const { card: source, data } = fields(card);
   const url = String(source.avatar || data.avatar || "").trim();
-  if (/^data:image\//i.test(url)) return url;
-  if (/^https?:\/\//i.test(url)) return url;
-  return "";
+  return isSafeAvatarUrl(url) ? url : "";
 }
 
 /** The single letter shown when there is no portrait. */
@@ -86,7 +97,7 @@ export function cardInitial(card) {
 export function avatarInnerHtml(url, fallbackLetter) {
   const src = String(url || "").trim();
   const letter = String(fallbackLetter ?? "").trim().charAt(0).toUpperCase() || "?";
-  if (/^data:image\//i.test(src) || /^https?:\/\//i.test(src)) {
+  if (isSafeAvatarUrl(src)) {
     return `<img src="${escapeAttr(src)}" alt="" style="width:100%;height:100%;object-fit:cover;">`;
   }
   return escapeHtml(letter);

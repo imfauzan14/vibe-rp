@@ -4,6 +4,11 @@ import { utf8Decoder } from "./text.js";
 
 const byteLenCache = new Map();
 const BYTE_CACHE_MAX = 4096;
+// Bounded by entries AND bytes: entries alone let a few thousand unique
+// quarter-megabyte transcripts pin ~1GB. Past the byte ceiling the oldest
+// entries go, however few that is.
+const BYTE_CACHE_BYTES_MAX = 32 * 1024 * 1024;
+let byteCacheBytes = 0;
 const textEncoder = new TextEncoder();
 
 /**
@@ -16,15 +21,17 @@ export function estimateTokens(text) {
   let bytes = byteLenCache.get(str);
   if (bytes === undefined) {
     bytes = textEncoder.encode(str).length;
-    if (byteLenCache.size >= BYTE_CACHE_MAX) {
-      // Evict oldest quarter instead of clearing the entire cache to prevent thrashing
-      let evicted = 0;
-      for (const k of byteLenCache.keys()) {
-        byteLenCache.delete(k);
-        if (++evicted >= 1024) break;
-      }
-    }
     byteLenCache.set(str, bytes);
+    byteCacheBytes += bytes;
+    while (byteLenCache.size > BYTE_CACHE_MAX || byteCacheBytes > BYTE_CACHE_BYTES_MAX) {
+      const oldest = byteLenCache.keys().next();
+      if (oldest.done) break;
+      const evictedBytes = byteLenCache.get(oldest.value) || 0;
+      byteLenCache.delete(oldest.value);
+      byteCacheBytes = Math.max(0, byteCacheBytes - evictedBytes);
+      // Safety valve against a single entry larger than the whole ceiling.
+      if (byteLenCache.size === 0) break;
+    }
   }
   return (bytes + 3) >> 2;
 }
@@ -100,7 +107,7 @@ export function neutralizeFence(text, tag) {
   if (!str) return "";
   const name = String(tag || "").replace(/[^a-zA-Z0-9-]/g, "");
   if (!name) return str;
-  return str.replace(new RegExp(`<\\s*/?\\s*${name}\\s*>`, "gi"), (m) => m.replace("<", "<\u200b"));
+  return str.replace(new RegExp(`<\\s*/?\\s*${name}(?:\\s[^>]*)?\\s*/?>`, "gi"), (m) => m.replace("<", "<\u200b"));
 }
 
 /** The ledger body, fenced, with any embedded terminator neutralised. */
@@ -145,8 +152,12 @@ export function clipLedgerToTokens(text, maxTokens, marker = "\n- [older ledger 
     const sp = kept.lastIndexOf(" ");
     const cut = nl > kept.length * 0.5 ? nl : sp > kept.length * 0.5 ? sp : -1;
     if (cut > 0) kept = kept.slice(0, cut);
+    // Shrink geometrically, not one char at a time: the naive loop is
+    // quadratic on a huge multibyte ledger clipped to a tiny limit.
     while (kept && estimateTokens(`${kept}${marker}`) > limit) {
-      kept = kept.slice(0, -1);
+      const over = estimateTokens(`${kept}${marker}`) - limit;
+      const drop = Math.max(1, Math.ceil(over * 4 * 1.1));
+      kept = kept.slice(0, Math.max(0, kept.length - drop));
     }
   }
   return `${kept}${marker}`;

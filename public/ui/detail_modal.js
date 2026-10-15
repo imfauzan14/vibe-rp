@@ -26,13 +26,13 @@
 import { el } from "./dom.js";
 import { openModal, closeModal } from "./modal.js";
 import { initTabs } from "./tabs.js";
-import { cardTitle, cardByline, cardTags, cardAvatarUrl, cardInitial } from "./character_card.js";
+import { cardTitle, cardByline, cardTags, cardAvatarUrl, cardInitial, isSafeAvatarUrl } from "./character_card.js";
 
 const FALLBACK_OPENING = "The door closes behind you. Silence settles into the corridor.";
 
 function imageUrl(value) {
   const text = String(value || "");
-  return text.startsWith("data:") || text.startsWith("http") ? text : "";
+  return isSafeAvatarUrl(text) ? text : "";
 }
 
 function section(title, hint, children) {

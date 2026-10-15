@@ -3,6 +3,7 @@
     import { formatProse } from "../../message_format.js";
     import { substitutePlaceholders, stripThoughtBlocks } from "../../text.js";
     import { escapeHtml, escapeAttr } from "../../safe_html.js";
+    import { isSafeAvatarUrl } from "../character_card.js";
     import { LocalDbQuotaError, LocalDbBlockedError } from "../../local_db.js";
 
     import { initTheme, getTheme, toggleTheme } from "../theme.js";
@@ -902,7 +903,7 @@
       if (avatarEl) {
         const card = controller.activeCard;
         const url = card?.avatar || card?.data?.avatar;
-        if (url && (url.startsWith("data:") || url.startsWith("http"))) {
+        if (isSafeAvatarUrl(url)) {
           avatarEl.innerHTML = `<img src="${escapeAttr(url)}" alt="" style="width:100%;height:100%;object-fit:cover;">`;
         } else {
           avatarEl.textContent = (controller.charName?.charAt(0) || controller.initialLetter || "C").toUpperCase();

@@ -1812,8 +1812,10 @@ export class BrowserChatEngine {
     let usage = null;
     let finishReason = null;
     let sawReasoning = false;
+    let sawRefusal = false;
     let sawEvent = false;
     let sawContent = false;
+    let corruptLines = 0;
 
     // One JSON payload → the visible chunk it contributes (or null). Kept as a
     // plain function so the streaming and whole-body paths share identical
@@ -1830,8 +1832,21 @@ export class BrowserChatEngine {
       // Reasoning/thinking tokens are reported on a sibling field by several
       // OpenAI-compatible providers. They are not part of the visible reply,
       // but their presence explains a content-less stream.
-      const reasoning = choice?.delta?.reasoning_content ?? choice?.delta?.reasoning ?? choice?.delta?.thought;
+      const delta = choice?.delta || null;
+      const reasoning =
+        delta?.reasoning_content ?? delta?.reasoning ?? delta?.thought ??
+        choice?.message?.reasoning_content ?? choice?.message?.reasoning ?? null;
       if (typeof reasoning === "string" && reasoning) sawReasoning = true;
+      else if (Array.isArray(reasoning) && reasoning.length) sawReasoning = true;
+      // A provider-side refusal arrives on the delta rather than as visible
+      // prose. It is recorded like reasoning (it explains a content-less
+      // stream) rather than streamed, so the refusal heuristic downstream
+      // sees the same shape as a prose refusal.
+      const refusal = delta?.refusal ?? choice?.message?.refusal ?? null;
+      if (typeof refusal === "string" && refusal) {
+        sawReasoning = true;
+        sawRefusal = true;
+      }
       const text = choice?.delta?.content ?? choice?.message?.content;
       if (typeof text !== "string" || !text) return null;
       return text;
@@ -1850,7 +1865,12 @@ export class BrowserChatEngine {
       try {
         json = JSON.parse(payload);
       } catch {
-        // Partial JSON split across chunk boundaries: the next read completes it.
+        // Partial JSON split across chunk boundaries: the next read completes
+        // it. A line that is complete but unparseable (a truncated flush) is
+        // counted instead of vanishing silently; the empty-reply throw below
+        // stays the backstop when nothing usable arrived.
+        const looksTruncated = /[{[].*$/.test(payload) && !/[{[].*[}\]]\s*$/.test(payload);
+        if (!looksTruncated) corruptLines += 1;
         return [];
       }
       const chunk = readPayload(json);
@@ -1930,12 +1950,20 @@ export class BrowserChatEngine {
     if (usage && onUsage) onUsage(usage);
     noteObservedReasoning(settings?.apiEndpoint, settings?.model, usage);
 
+    // A mid-stream corrupt line between good chunks must not vanish silently:
+    // the reply is kept, but the reader is told a fragment was dropped.
+    if (sawContent && corruptLines > 0 && onLengthCut) {
+      onLengthCut(
+        `The provider sent ${corruptLines} unreadable stream fragment${corruptLines === 1 ? "" : "s"} that ${corruptLines === 1 ? "was" : "were"} skipped; the reply may be missing a sentence.`
+      );
+    }
+
     // A stream that settles with no visible content must fail loudly with the
     // reason, never return an empty success that the UI renders as a blank
     // bubble. This is the generic counterpart to the reasoning-only and
     // length-truncated responses seen in the wild.
     if (!sawContent) {
-      throw this.#emptyCompletionError({ finishReason, sawReasoning, usage });
+      throw this.#emptyCompletionError({ finishReason, sawReasoning, sawRefusal, usage });
     }
     // A stream that settles at finish_reason "length" but DID produce visible
     // content was cut off mid-reply: the output ceiling was too low, or the
@@ -2001,11 +2029,13 @@ export class BrowserChatEngine {
    * length-truncated reply, and a genuinely empty response are distinguishable
    * instead of all surfacing as a blank bubble.
    */
-  static #emptyCompletionError({ finishReason, sawReasoning, usage }) {
+  static #emptyCompletionError({ finishReason, sawReasoning, sawRefusal, usage }) {
     const detail =
       finishReason === "length"
         ? "the output token limit was reached before any visible text was produced"
-        : sawReasoning
+        : sawRefusal
+          ? "the provider refused the request (refusal signal, no visible reply)"
+          : sawReasoning
           ? "the model produced only reasoning/thinking tokens and no visible reply"
           : "the provider returned no message content";
     const completion = usage && typeof usage.completion_tokens === "number" ? ` (completion_tokens: ${usage.completion_tokens})` : "";

@@ -540,6 +540,44 @@ describe("LocalDb storage management, export and import", () => {
     expect(fakeStorage["vibe_rp_bad_value"]).toBeUndefined();
   });
 
+  test("an imported backup cannot write a sessionStorage key outside the app's namespace", async () => {
+    // The sessionStorage half of importAllData had no prefix filter while the
+    // localStorage half did: a crafted backup wrote arbitrary sessionStorage
+    // keys into the origin. Both halves now agree on the KEY_PREFIX boundary.
+    const written: Record<string, string> = {};
+    (globalThis as any).sessionStorage = {
+      getItem: (k: string) => written[k] ?? null,
+      setItem: (k: string, v: string) => { written[k] = String(v); },
+      removeItem: (k: string) => { delete written[k]; },
+      clear: () => { for (const k of Object.keys(written)) delete written[k]; },
+      key: (i: number) => Object.keys(written)[i] || null,
+      get length() { return Object.keys(written).length; },
+    };
+    try {
+      await LocalDb.importAllData({
+        format: "vibe-rp-full-backup",
+        version: 1,
+        data: {
+          indexedDb: { cards: [], sessions: [] },
+          localStorage: {},
+          sessionStorage: {
+            vibe_rp_import_session: "legit",
+            totally_unrelated_key: "written by a stranger",
+            auth_token: "stolen",
+            vibe_rp_bad_value: { not: "a string" },
+          },
+          cookies: [],
+        },
+      }, { mode: "merge" });
+      expect(written["vibe_rp_import_session"]).toBe("legit");
+      expect(written["totally_unrelated_key"]).toBeUndefined();
+      expect(written["auth_token"]).toBeUndefined();
+      expect(written["vibe_rp_bad_value"]).toBeUndefined();
+    } finally {
+      delete (globalThis as any).sessionStorage;
+    }
+  });
+
   test("export then import round-trips exactly the app's own key set", async () => {
     // The two halves of the boundary have to agree: whatever export writes,
     // import must accept, or a legitimate backup silently loses data.

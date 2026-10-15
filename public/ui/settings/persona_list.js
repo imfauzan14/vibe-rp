@@ -18,11 +18,12 @@
 //   mountPersonaList(root, options) -> { refresh, destroy }
 
 import { el } from "../dom.js";
+import { isSafeAvatarUrl } from "../character_card.js";
 import { mountPresetList } from "./preset_list.js";
 
 function avatarUrl(persona) {
   const value = String(persona.avatar || "");
-  return value.startsWith("data:") || value.startsWith("http") ? value : "";
+  return isSafeAvatarUrl(value) ? value : "";
 }
 
 function buildRow(persona, handlers, existing) {

@@ -340,4 +340,43 @@ describe("Controller - engine return value is never dropped", () => {
     expect(text).toBe("Elena smiles.");
     expect(notices.some((n) => n.includes("Trimmed hallucinated player turn"))).toBe(true);
   });
+
+  test("a provider-side refusal delta rejects with a refusal error, not a blank bubble", async () => {
+    globalThis.fetch = async () =>
+      sseResponse('data: {"choices":[{"delta":{"refusal":"I cannot comply"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');
+    await expect(run()).rejects.toThrow(/refused the request/);
+  });
+
+  test("a message-shaped refusal on a non-streaming body rejects the same way", async () => {
+    globalThis.fetch = async () =>
+      jsonResponse({ choices: [{ message: { role: "assistant", content: "", refusal: "Not allowed" }, finish_reason: "stop" }] });
+    await expect(run()).rejects.toThrow(/refused the request/);
+  });
+
+  test("a corrupt mid-stream line keeps the reply but raises a skipped-fragment notice", async () => {
+    const notices: string[] = [];
+    globalThis.fetch = async () =>
+      sseResponse(
+        'data: {"choices":[{"delta":{"content":"Once upon"}}]}\n\n' +
+          "data: NOT-JSON-AT-ALL\n\n" +
+          'data: {"choices":[{"delta":{"content":" a time"}}]}\n\n' +
+          "data: [DONE]\n\n"
+      );
+    const text = await BrowserChatEngine.streamTurn({
+      card: null,
+      session: session(),
+      settings,
+      persona: null,
+      agentsContract: "",
+      onNotice: (n: string) => notices.push(n),
+    });
+    expect(text).toBe("Once upon a time");
+    expect(notices.some((n) => /unreadable stream fragment/i.test(n))).toBe(true);
+  });
+
+  test("reasoning reported as an array still explains a content-less stream", async () => {
+    globalThis.fetch = async () =>
+      sseResponse('data: {"choices":[{"delta":{"reasoning":[{"text":"thinking"}]},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n');
+    await expect(run()).rejects.toThrow(/reasoning\/thinking/);
+  });
 });

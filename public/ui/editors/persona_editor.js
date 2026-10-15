@@ -19,11 +19,12 @@
 //   openPersonaEditor(options) -> Promise<void>
 
 import { el } from "../dom.js";
+import { isSafeAvatarUrl } from "../character_card.js";
 import { openEditorDialog } from "./editor_dialog.js";
 
 function avatarUrl(value) {
   const text = String(value || "");
-  return text.startsWith("data:") || text.startsWith("http") ? text : "";
+  return isSafeAvatarUrl(text) ? text : "";
 }
 
 export function openPersonaEditor({ persona = null, onSave, compressImage, host } = {}) {

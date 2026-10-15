@@ -11,6 +11,8 @@
 
 const MAX_INPUT_PX = 200;
 
+import { isSafeAvatarUrl } from "../character_card.js";
+
 export function createComposer({
   root,
   input,
@@ -88,7 +90,7 @@ export function createComposer({
       personaNameEl.title = name;
     }
     if (personaAvatarEl) {
-      if (avatar && (avatar.startsWith("data:") || avatar.startsWith("http"))) {
+      if (isSafeAvatarUrl(avatar)) {
         const img = document.createElement("img");
         img.src = avatar;
         img.alt = "";

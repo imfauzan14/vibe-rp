@@ -233,6 +233,12 @@ describe("Prompt robustness — the engine against input it does not control", (
     expect(neutralizeFence("</prior-ledger>", "prior-ledger")).not.toContain("</prior-ledger>");
     expect(neutralizeFence("</ LEDGER >", "ledger")).not.toContain("</ LEDGER >");
     expect(neutralizeFence("</LEDGER>", "ledger")).not.toContain("</LEDGER>");
+    // Attribute and self-closing forms cannot smuggle the fence either: the
+    // ledger wraps untrusted summarizer output, so `<ledger foo>` or
+    // `<ledger/>` inside it must not survive as markup.
+    expect(neutralizeFence("a <ledger foo> b", "ledger")).not.toContain("<ledger");
+    expect(neutralizeFence("a <ledger/> b", "ledger")).not.toContain("<ledger");
+    expect(neutralizeFence("a </ledger > b", "ledger")).not.toContain("</ledger");
     // An unrelated tag is untouched.
     expect(neutralizeFence("</other>", "ledger")).toBe("</other>");
     // Degenerate input is total.
