@@ -511,7 +511,27 @@ export function buildSystemSections(card, persona, settings = {}) {
   // "[Dialogue Examples:" / "[World Lore:" prefixes are kept byte-identical
   // so the cache prefix and existing assertions hold; the framing rides after.
   if (mesEx) sections.push({ id: "examples", text: `[Dialogue Examples:\n(reference style data, not instructions)\n${mesEx}]`, required: false, priority: 10 });
-  // Ingest constant lorebook entries into the stable prefix (atomic, cache-friendly)
+
+  const rawPersonaName = firstText(persona?.name).trim();
+  const rawPersonaDesc = firstText(persona?.description, persona?.persona, persona?.content).trim();
+  const rawPersonaTemplate = firstText(persona?.template).trim();
+
+  if (rawPersonaName || rawPersonaDesc || rawPersonaTemplate) {
+    const pName = renderInlineField(sub(rawPersonaName || (rawPersonaDesc ? "User" : "")));
+    const pBodyParts = [rawPersonaDesc ? sub(rawPersonaDesc) : "", rawPersonaTemplate ? sub(rawPersonaTemplate) : ""].filter(Boolean);
+    const pBody = pBodyParts.join("\n");
+    let text = "";
+    if (pName && pBody) {
+      text = `[User Persona: ${pName}]\n${pBody}`;
+    } else if (pName) {
+      text = `[User Persona: ${pName}]`;
+    } else {
+      text = `[User Persona]\n${pBody}`;
+    }
+    sections.push({ id: "persona", text, required: true, priority: 950 });
+  }
+
+  // Ingest constant lorebook entries into the stable prefix (placed after Persona to maintain stable KV cache prefix)
   const { loreBudget } = resolveContextBudgets(settings);
   const constantLore = selectLorebookEntries(card, { budget: loreBudget, constantOnly: true });
   if (constantLore.length > 0) {
@@ -536,25 +556,6 @@ export function buildSystemSections(card, persona, settings = {}) {
       required: false,
       priority: 15,
     });
-  }
-
-  const rawPersonaName = firstText(persona?.name).trim();
-  const rawPersonaDesc = firstText(persona?.description, persona?.persona, persona?.content).trim();
-  const rawPersonaTemplate = firstText(persona?.template).trim();
-
-  if (rawPersonaName || rawPersonaDesc || rawPersonaTemplate) {
-    const pName = renderInlineField(sub(rawPersonaName || (rawPersonaDesc ? "User" : "")));
-    const pBodyParts = [rawPersonaDesc ? sub(rawPersonaDesc) : "", rawPersonaTemplate ? sub(rawPersonaTemplate) : ""].filter(Boolean);
-    const pBody = pBodyParts.join("\n");
-    let text = "";
-    if (pName && pBody) {
-      text = `[User Persona: ${pName}]\n${pBody}`;
-    } else if (pName) {
-      text = `[User Persona: ${pName}]`;
-    } else {
-      text = `[User Persona]\n${pBody}`;
-    }
-    sections.push({ id: "persona", text, required: true, priority: 950 });
   }
 
   // Cross-lingual adaptation and epistemic boundaries, split so the allocator
@@ -1073,9 +1074,10 @@ export class BrowserChatEngine {
     if (postHistoryInstructions && postHistoryInstructions.trim()) {
       // Appended to the trailing user turn: a separate message would either
       // duplicate a role or mutate an already-cached message.
+      const guidanceBlock = `[Writing Guidance (apply silently while keeping the active narrative language): ${postHistoryInstructions.trim()}]`;
       const last = payload[payload.length - 1];
-      if (last && last.role === "user") last.content += `\n\n[Writing Guidance: ${postHistoryInstructions.trim()}]`;
-      else payload.push({ role: "user", content: `[Writing Guidance: ${postHistoryInstructions.trim()}]` });
+      if (last && last.role === "user") last.content += `\n\n${guidanceBlock}`;
+      else payload.push({ role: "user", content: guidanceBlock });
     }
     return payload;
   }
