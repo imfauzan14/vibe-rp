@@ -110,3 +110,40 @@ export function setCondensedReported(session, reported) {
   session.ledgerCondensedReported = next;
   return previous !== next;
 }
+
+/**
+ * Whether the stored ledger's description of the transcript is broken by a
+ * mutation at absolute index `idx`.
+ *
+ * The ledger summarizes the range `[1, consumed)`. Index 0 is the pinned
+ * opening and is never folded, so rewriting it leaves the ledger intact.
+ * Rewriting anything inside the range makes the ledger assert a fact the
+ * story no longer contains — and the model is told to treat the ledger as
+ * settled canon it must never contradict, so the stale fact wins over the
+ * transcript the reader is looking at.
+ *
+ * Deleting also breaks coverage from the other side: removing the pinned
+ * opening shifts the message that was at index 1 into the pinned slot, so it
+ * would be sent verbatim *and* summarized in the same request. `removes`
+ * separates the two, because an edit at index 0 changes nothing the ledger
+ * describes.
+ */
+export function ledgerDescribes(session, idx, { removes = false } = {}) {
+  if (!session?.ledger) return false;
+  const consumed = Math.max(1, Number(session.consumed) || 1);
+  if (removes && idx === 0) return consumed > 1;
+  return idx >= 1 && idx < consumed;
+}
+
+/**
+ * Resets the ledger if a transcript mutation at `idx` invalidates its continuity.
+ * Returns true if the ledger was invalidated and reset.
+ */
+export function resetLedgerIfInvalidated(session, idx, options = {}) {
+  if (ledgerDescribes(session, idx, options)) {
+    resetLedger(session);
+    return true;
+  }
+  return false;
+}
+

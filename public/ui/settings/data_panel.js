@@ -85,6 +85,18 @@ export function mountDataPanel(root, options = {}) {
           ])
         );
       }
+
+      if (typeof stats.persisted === "boolean") {
+        statsWrap.append(
+          el("div", { class: "rp-storage-stat" }, [
+            el("span", { class: "rp-storage-stat__label", text: "Durability" }),
+            el("span", {
+              class: `rp-badge ${stats.persisted ? "rp-badge--accent" : ""}`,
+              text: stats.persisted ? "Persistent" : "Best-effort",
+            }),
+          ])
+        );
+      }
     } catch (err) {
       // Swallowing this left the block empty, which reads as "nothing stored"
       // rather than "the figures could not be read".

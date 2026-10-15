@@ -11,6 +11,8 @@ import {
   markLedgerTruncated,
   setOverflowReported,
   setCondensedReported,
+  ledgerDescribes,
+  resetLedgerIfInvalidated,
 } from "../public/session_state.js";
 
 describe("applyFold", () => {
@@ -97,5 +99,37 @@ describe("transition latches", () => {
     expect(session.ledgerCondensedReported).toBeUndefined();
     expect(setCondensedReported(session, true)).toBe(true);
     expect(session.ledgerOverflowReported).toBe(true);
+  });
+});
+
+describe("ledgerDescribes and resetLedgerIfInvalidated", () => {
+  test("reports false when session has no ledger", () => {
+    const session = { ledger: "", consumed: 5 };
+    expect(ledgerDescribes(session, 2)).toBe(false);
+    expect(resetLedgerIfInvalidated(session, 2)).toBe(false);
+  });
+
+  test("reports true for an edit inside [1, consumed)", () => {
+    const session = { ledger: "fact", consumed: 4 };
+    expect(ledgerDescribes(session, 0)).toBe(false); // pinned opener edit does not invalidate
+    expect(ledgerDescribes(session, 1)).toBe(true);
+    expect(ledgerDescribes(session, 3)).toBe(true);
+    expect(ledgerDescribes(session, 4)).toBe(false); // live tail edit does not invalidate
+  });
+
+  test("reports true for deleting the pinned opening (idx: 0) when consumed > 1", () => {
+    const session = { ledger: "fact", consumed: 3 };
+    expect(ledgerDescribes(session, 0, { removes: true })).toBe(true);
+    const emptySess = { ledger: "fact", consumed: 1 };
+    expect(ledgerDescribes(emptySess, 0, { removes: true })).toBe(false);
+  });
+
+  test("resetLedgerIfInvalidated clears the ledger only when invalidated", () => {
+    const session = { ledger: "fact", consumed: 4 };
+    expect(resetLedgerIfInvalidated(session, 5)).toBe(false);
+    expect(session.ledger).toBe("fact");
+    expect(resetLedgerIfInvalidated(session, 2)).toBe(true);
+    expect(session.ledger).toBe("");
+    expect(session.consumed).toBe(0);
   });
 });

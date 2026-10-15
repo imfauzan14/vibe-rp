@@ -10,8 +10,8 @@
 
 import { LocalDb } from "./local_db.js";
 import { BrowserChatEngine } from "./browser_engine.js";
-import { applyFold, resetLedger, captureLedgerState, restoreLedgerState } from "./session_state.js";
-import { recordUsageSample, scopeKeyOf } from "./usage_history.js";
+import { applyFold, resetLedger, captureLedgerState, restoreLedgerState, resetLedgerIfInvalidated, ledgerDescribes } from "./session_state.js";
+import { recordUsageSample, scopeKeyOf, buildUsageScopeKey } from "./usage_history.js";
 import { looksLikeModelRefusal } from "./text.js";
 
 const GREETING_FALLBACK = "The door closes behind you. Silence settles into the corridor.";
@@ -234,23 +234,11 @@ export class SessionController {
    * kilobytes) never enters the key.
    */
   usageScope() {
-    const card = this.activeCard;
-    const data = card?.data || card || {};
-    return scopeKeyOf({
-      endpoint: this.settings?.apiEndpoint,
-      model: this.settings?.model,
-      cardId: card?.id,
-      personaId: this.currentPersona?.id,
-      directiveId: this.currentDirective?.id,
-      cardText: [data.name, data.description, data.personality, data.scenario, data.system_prompt]
-        .filter(Boolean)
-        .join("\u0000"),
-      personaText: this.currentPersona
-        ? [this.currentPersona.name, this.currentPersona.description, this.currentPersona.template]
-            .filter(Boolean)
-            .join("\u0000")
-        : "",
-      directiveText: this.currentDirective?.content || this.settings?.agentsContract || "",
+    return buildUsageScopeKey({
+      card: this.activeCard,
+      persona: this.currentPersona,
+      directive: this.currentDirective,
+      settings: this.settings,
     });
   }
 
@@ -289,31 +277,6 @@ export class SessionController {
   }
 
   /**
-   * Whether the stored ledger's description of the transcript is broken by a
-   * mutation at absolute index `idx`.
-   *
-   * The ledger summarizes the range `[1, consumed)`. Index 0 is the pinned
-   * opening and is never folded, so rewriting it leaves the ledger intact.
-   * Rewriting anything inside the range makes the ledger assert a fact the
-   * story no longer contains — and the model is told to treat the ledger as
-   * settled canon it must never contradict, so the stale fact wins over the
-   * transcript the reader is looking at.
-   *
-   * Deleting also breaks coverage from the other side: removing the pinned
-   * opening shifts the message that was at index 1 into the pinned slot, so it
-   * would be sent verbatim *and* summarized in the same request. `removes`
-   * separates the two, because an edit at index 0 changes nothing the ledger
-   * describes.
-   */
-  #ledgerDescribes(idx, { removes = false } = {}) {
-    const sess = this.activeSession;
-    if (!sess?.ledger) return false;
-    const consumed = Math.max(1, Number(sess.consumed) || 1);
-    if (removes && idx === 0) return consumed > 1;
-    return idx >= 1 && idx < consumed;
-  }
-
-  /**
    * Forks a message instead of mutating it (append-only invariant). The new
    * revision keeps the original's id and position — so the transcript stays
    * append-only and the provider's byte-stable prefix is undisturbed — while the
@@ -328,7 +291,7 @@ export class SessionController {
     // The ledger is a summary of this message, so it now states something the
     // story does not. Drop it and let the next turn rebuild one from what
     // remains, rather than send the model a fact the reader edited away.
-    if (this.#ledgerDescribes(idx)) resetLedger(this.activeSession);
+    resetLedgerIfInvalidated(this.activeSession, idx);
     const fork = {
       ...original,
       content,
@@ -353,7 +316,7 @@ export class SessionController {
     // model reciting a turn the reader deleted, so the summary is dropped
     // instead. The transcript becomes the continuity again, and the next fold
     // rebuilds a ledger from it.
-    if (this.#ledgerDescribes(idx, { removes: true })) resetLedger(sess);
+    resetLedgerIfInvalidated(sess, idx, { removes: true });
     msgs.splice(idx, 1);
     // The scene the choices described has been altered.
     this.invalidateChoices();

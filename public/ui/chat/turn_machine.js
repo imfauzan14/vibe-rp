@@ -41,6 +41,9 @@ export function describeFailure(err) {
   if (/\b5\d\d\b|server error/i.test(raw)) return { text: "The provider had a server error. Retry in a moment.", retry: true };
   if (/HTTP \d+/.test(raw)) return { text: `The provider returned ${raw}.`, retry: true };
   if (/quota/i.test(raw)) return { text: "Storage quota exceeded. Free some space, then retry.", retry: false };
+  if (/failed to fetch|networkerror|load failed/i.test(raw) || (typeof navigator !== "undefined" && navigator?.onLine === false)) {
+    return { text: "Network unreachable or offline. Check your connection, then retry.", retry: true };
+  }
   return { text: raw || "The reply failed.", retry: true };
 }
 

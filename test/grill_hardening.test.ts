@@ -9,6 +9,15 @@ import fs from "node:fs";
 import path from "node:path";
 import { isSafeAvatarUrl, cardAvatarUrl, avatarInnerHtml } from "../public/ui/character_card.js";
 import { clipLedgerToTokens, estimateTokens } from "../public/context_plan.js";
+import { formatTranscriptMarkdown } from "../public/ui/data_transfer.js";
+import {
+  getModelCapability,
+  updateModelCapability,
+  clearModelCapabilities,
+  promptOverheadTokens,
+  effectiveContextWindow,
+} from "../public/model_capability.js";
+import { LocalDb } from "../public/local_db.js";
 
 const PUBLIC = path.join(import.meta.dir, "..", "public");
 
@@ -78,3 +87,26 @@ describe("estimateTokens under cache pressure", () => {
     expect(estimateTokens("")).toBe(0);
   });
 });
+
+describe("model_capability standalone module", () => {
+  test("operates cleanly in isolation without engine dependencies", () => {
+    clearModelCapabilities();
+    const ep = "https://isolated.test/v1";
+    const model = "m-iso";
+    expect(promptOverheadTokens({ apiEndpoint: ep, model })).toBe(0);
+    updateModelCapability(ep, model, { promptOverheadTokens: 42, contextWindow: 8192 });
+    expect(getModelCapability(ep, model).promptOverheadTokens).toBe(42);
+    expect(effectiveContextWindow({ apiEndpoint: ep, model, maxContextTokens: 16384 })).toBe(8192);
+    clearModelCapabilities();
+  });
+});
+
+describe("LocalStore memoization", () => {
+  test("presets() returns stable store adapter instance", () => {
+    const db = new LocalDb();
+    const p1 = db.local.presets({ key: "vibe_rp_test_memo", defaultFactory: () => ({ id: "1" }) });
+    const p2 = db.local.presets({ key: "vibe_rp_test_memo", defaultFactory: () => ({ id: "1" }) });
+    expect(p1).toBe(p2);
+  });
+});
+

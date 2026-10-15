@@ -100,3 +100,41 @@ export async function readBackupFile(file) {
     throw new Error("The selected file is not valid JSON.");
   }
 }
+
+/**
+ * Formats a chat session transcript as clean Markdown.
+ */
+export function formatTranscriptMarkdown(session, { charName = "Character", userName = "You" } = {}) {
+  const title = session?.title || "Conversation";
+  const lines = [`# ${title}\n`];
+  if (session?.ledger) {
+    lines.push(`> Continuity Ledger:\n> ${session.ledger.replace(/\n/g, "\n> ")}\n`);
+  }
+  for (const m of session?.messages || []) {
+    if (!m || !m.content) continue;
+    const speaker = m.role === "user" ? userName : charName;
+    lines.push(`### ${speaker}\n\n${m.content.trim()}\n`);
+  }
+  return lines.join("\n");
+}
+
+/**
+ * Triggers a client-side download of the conversation transcript as a Markdown file.
+ * Returns the downloaded filename.
+ */
+export function downloadTranscriptFile(session, options = {}) {
+  const title = String(session?.title || "chat").toLowerCase().replace(/[^a-z0-9_-]+/gi, "-").slice(0, 40);
+  const filename = `${title}-${fileTimestamp()}.md`;
+  const mdText = formatTranscriptMarkdown(session, options);
+  const blob = new Blob([mdText], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 100);
+  return filename;
+}
+

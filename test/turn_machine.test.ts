@@ -91,6 +91,9 @@ describe("describeFailure", () => {
     expect(describeFailure(new Error("HTTP 429 too many requests"))).toMatchObject({ retry: true });
     expect(describeFailure(new Error("HTTP 500 boom"))).toMatchObject({ retry: true });
     expect(describeFailure(new Error("storage quota exceeded"))).toMatchObject({ retry: false });
+    expect(describeFailure(new TypeError("Failed to fetch"))?.retry).toBe(true);
+    expect(describeFailure(new TypeError("Failed to fetch"))?.text).toMatch(/network unreachable or offline/i);
+    expect(describeFailure(new Error("NetworkError when attempting to fetch resource."))?.retry).toBe(true);
   });
 
   test("an unknown failure still retries with the raw text", () => {

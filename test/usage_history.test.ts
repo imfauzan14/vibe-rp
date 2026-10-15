@@ -13,6 +13,7 @@ import {
   USAGE_HISTORY_CAP,
   USAGE_SCOPE_CAP,
   scopeKeyOf,
+  buildUsageScopeKey,
   usageSampleFrom,
   rateOf,
   recordUsageSample,
@@ -69,6 +70,22 @@ describe("The scope key decides what is comparable", () => {
     // And the ids-only key is exactly what it was, so samples recorded before
     // the digest existed still group together.
     expect(scopeOf()).toBe("https://a.test/v1|m|card_1|persona_default|directive_default");
+  });
+
+  test("buildUsageScopeKey encapsulates domain entity fields correctly", () => {
+    const card = { id: "c1", data: { name: "Card 1", description: "Desc", personality: "Pers", scenario: "Scen", system_prompt: "Sys" } };
+    const persona = { id: "p1", name: "User", description: "Protagonist", template: "First person" };
+    const directive = { id: "d1", content: "Contract content" };
+    const settings = { apiEndpoint: "https://api.test", model: "gpt" };
+
+    const key = buildUsageScopeKey({ card, persona, directive, settings });
+    expect(key).toContain("https://api.test|gpt|c1|p1|d1|");
+
+    // Modifying persona description changes the digest
+    const alteredPersona = { ...persona, description: "Different" };
+    const alteredKey = buildUsageScopeKey({ card, persona: alteredPersona, directive, settings });
+    expect(alteredKey).not.toBe(key);
+    expect(alteredKey.split("|").slice(0, 5)).toEqual(key.split("|").slice(0, 5));
   });
 
   test("each chat keeps its own array, so two chats never share a history", () => {

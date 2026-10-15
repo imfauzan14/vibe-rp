@@ -86,6 +86,31 @@ export function scopeKeyOf(parts = {}) {
   return text.length ? `${base}|${digest(text.join("\u0000"))}` : base;
 }
 
+/**
+ * Derives the canonical scope key from the active domain records.
+ * Encapsulates which card/persona/directive fields constitute prefix identity,
+ * avoiding leaking this knowledge across callers.
+ */
+export function buildUsageScopeKey({ card, persona, directive, settings } = {}) {
+  const data = card?.data || card || {};
+  return scopeKeyOf({
+    endpoint: settings?.apiEndpoint,
+    model: settings?.model,
+    cardId: card?.id,
+    personaId: persona?.id,
+    directiveId: directive?.id,
+    cardText: [data.name, data.description, data.personality, data.scenario, data.system_prompt]
+      .filter(Boolean)
+      .join("\u0000"),
+    personaText: persona
+      ? [persona.name, persona.description, persona.template]
+          .filter(Boolean)
+          .join("\u0000")
+      : "",
+    directiveText: directive?.content || settings?.agentsContract || "",
+  });
+}
+
 const finite = (value) => (typeof value === "number" && Number.isFinite(value) ? value : null);
 
 /**

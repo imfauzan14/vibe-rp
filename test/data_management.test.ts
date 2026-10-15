@@ -8,6 +8,7 @@ import {
   readBrowserCookies,
   restoreBrowserCookies,
   clearBrowserCookies,
+  formatTranscriptMarkdown,
 } from "../public/ui/data_transfer.js";
 import { createFakeIndexedDB } from "./helpers.ts";
 
@@ -387,6 +388,34 @@ describe("LocalDb storage management, export and import", () => {
     expect(stats.quota).toBe(1073741824);
 
     delete (globalThis as any).navigator;
+  });
+
+  test("getStorageStats surfaces durability when navigator.storage.persisted is available", async () => {
+    (globalThis as any).navigator = {
+      storage: {
+        estimate: async () => ({ usage: 500, quota: 1000 }),
+        persisted: async () => true,
+      },
+    };
+    const stats = await LocalDb.getStorageStats();
+    expect(stats.persisted).toBe(true);
+    delete (globalThis as any).navigator;
+  });
+
+  test("formatTranscriptMarkdown generates clean markdown with ledger and turns", () => {
+    const session = {
+      title: "The Quiet Street",
+      ledger: "Snow is falling.\nThe shop is closed.",
+      messages: [
+        { role: "user", content: "Do you hear that?" },
+        { role: "assistant", content: "Only the wind in the eaves." },
+      ],
+    };
+    const md = formatTranscriptMarkdown(session, { charName: "Rowan", userName: "Aria" });
+    expect(md).toContain("# The Quiet Street");
+    expect(md).toContain("> Continuity Ledger:\n> Snow is falling.\n> The shop is closed.");
+    expect(md).toContain("### Aria\n\nDo you hear that?");
+    expect(md).toContain("### Rowan\n\nOnly the wind in the eaves.");
   });
 
   test("exportAllData produces a self-describing vibe-rp-full-backup document", async () => {

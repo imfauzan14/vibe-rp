@@ -129,6 +129,7 @@ written back to the session. See ADR-0001.
 | Turn lifecycle | `ui/chat/turn_machine.js` | `createTurnMachine({ collaborators })` |
 | Persistence | `local_db.js` | `LocalDb` facade over `IdbStore` + `LocalStore` |
 | Shared text rules & delimiters | `text.js` | leaf module, no imports |
+| Model capabilities & telemetry | `model_capability.js` | pure functions, leaf |
 | Choice prompt + parser | `choice_format.js` | pure functions |
 | Escaping | `safe_html.js` | `escapeHtml`, `escapeAttr` |
 

@@ -429,12 +429,17 @@ class IdbStore {
  * and transactional, the other is a synchronous string map.
  */
 class LocalStore {
+  #presetStores = new Map();
+
   /**
    * A preset store over one localStorage key. `cardField`/`dataField` name the
    * card fields that point at a preset id; the resolution rule (card root,
    * then card.data, then default) lives here and only here.
    */
-  presets({ key, prefix, defaultFactory, cardField, dataField, builtins }) {
+  presets(spec) {
+    const existing = this.#presetStores.get(spec.key);
+    if (existing) return existing;
+    const { key, prefix, defaultFactory, cardField, dataField, builtins } = spec;
     // A store may ship more than one built-in. `defaultFactory()` stays the
     // single-object answer everywhere else; `seed()` is the only place that
     // needs the plural, so the plural lives here and nowhere else.
@@ -451,7 +456,7 @@ class LocalStore {
       localStorage.setItem(key, JSON.stringify(fresh));
       return fresh;
     };
-    return {
+    const store = {
       async list() {
         return read();
       },
@@ -490,6 +495,8 @@ class LocalStore {
         return this.getDefault();
       },
     };
+    this.#presetStores.set(key, store);
+    return store;
   }
 
   getSettings() {
@@ -689,6 +696,12 @@ export class LocalDb {
         storageEstimate = await navigator.storage.estimate();
       } catch (_) {}
     }
+    let isPersisted = null;
+    if (typeof navigator !== "undefined" && navigator.storage?.persisted) {
+      try {
+        isPersisted = Boolean(await navigator.storage.persisted());
+      } catch (_) {}
+    }
 
     return {
       cardCount: cards.length,
@@ -697,6 +710,7 @@ export class LocalDb {
       directiveCount: directives.length,
       usage: storageEstimate?.usage || 0,
       quota: storageEstimate?.quota || 0,
+      persisted: isPersisted,
     };
   }
 
