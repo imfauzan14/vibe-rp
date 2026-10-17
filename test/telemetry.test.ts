@@ -751,6 +751,59 @@ describe("cache breakpoints", () => {
     const anthropic = BrowserChatEngine.buildRequestBody({ apiEndpoint: "https://api.anthropic.com/v1", model: "claude-x", maxTokens: 100 }, messages);
     expect(JSON.stringify(anthropic)).toContain("cache_control");
   });
+
+  test("marks both the prior turn's frozen tail and the latest frozen tail, and steps back over synthetic guidance in choice payloads", () => {
+    const isMarked = (m: Record<string, unknown>) => Array.isArray(m.content);
+    const choiceShaped = withCacheBreakpoints([
+      { role: "system", content: "system" },
+      { role: "user", content: `${LEDGER_OPEN}canon${LEDGER_CLOSE}` },
+      { role: "user", content: "u1" },
+      { role: "assistant", content: "a1" },
+      { role: "user", content: "u2" },
+      { role: "assistant", content: "a2" },
+      { role: "user", content: "[Writing Guidance: - Turn scope: write Elena.]" },
+      { role: "user", content: "Propose the next moves for [Rowan]." },
+    ]);
+    // System (0), ledger (1), prior frozen assistant turn a1 (3), and latest
+    // frozen assistant turn a2 (5) are marked; the ephemeral synthetic guidance
+    // (6) and task (7) are not.
+    expect(isMarked(choiceShaped[0] as Record<string, unknown>)).toBe(true);
+    expect(isMarked(choiceShaped[1] as Record<string, unknown>)).toBe(true);
+    expect(isMarked(choiceShaped[3] as Record<string, unknown>)).toBe(true);
+    expect(isMarked(choiceShaped[5] as Record<string, unknown>)).toBe(true);
+    expect(isMarked(choiceShaped[6] as Record<string, unknown>)).toBe(false);
+    expect(isMarked(choiceShaped[7] as Record<string, unknown>)).toBe(false);
+  });
+
+  test("caps auxiliary reasoning_effort to 'low' while preserving 'high' on main RP prose", async () => {
+    const mainBody = BrowserChatEngine.buildRequestBody(
+      { apiEndpoint: EP, model: MODEL, maxTokens: 1200, reasoningEffort: "high" },
+      payload()
+    );
+    expect(mainBody.reasoning_effort).toBe("high");
+
+    const calls: Array<Record<string, unknown>> = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      calls.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: '{"choices":[{"text":"Wait."}]}' } }] }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    }) as unknown as typeof fetch;
+    try {
+      await BrowserChatEngine.generateChoices({
+        card: { data: { name: "Elena" } },
+        session: { messages: [{ role: "assistant", content: "Greeting." }], ledger: "", consumed: 1 },
+        settings: { apiEndpoint: EP, model: MODEL, maxContextTokens: 8192, maxTokens: 2048, reasoningEffort: "high" },
+        persona: { name: "Rowan" },
+      });
+      expect(calls[0].reasoning_effort).toBe("low");
+      expect(calls[0].max_tokens).toBeLessThanOrEqual(768);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
 });
 
 // ───────────────────────── summary model ─────────────────────────

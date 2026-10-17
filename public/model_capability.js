@@ -316,7 +316,23 @@ export function withCacheBreakpoints(messages) {
     marks.add(1);
   }
   // The newest message changes every turn; the one before it does not.
-  if (messages.length >= 3) marks.add(messages.length - 2);
+  // When a choice request appends its task after a synthetic `[Writing Guidance:`
+  // user message, step back one more slot to land on the frozen assistant turn
+  // that the next main turn will share.
+  if (messages.length >= 3) {
+    const penultimate = messages[messages.length - 2];
+    const isSyntheticGuidance =
+      messages.length >= 4 &&
+      penultimate?.role === "user" &&
+      typeof penultimate.content === "string" &&
+      penultimate.content.startsWith("[Writing Guidance:");
+    const tailMark = isSyntheticGuidance ? messages.length - 3 : messages.length - 2;
+    marks.add(tailMark);
+    // Use the fourth allowed breakpoint on the prior turn's frozen tail so
+    // endpoints that match strictly at marked blocks hit the previous turn's
+    // cache before extending it to `tailMark`.
+    if (tailMark - 2 >= 2) marks.add(tailMark - 2);
+  }
   return messages.map((m, i) => {
     if (!marks.has(i) || typeof m?.content !== "string") return m;
     return { ...m, content: [{ type: "text", text: m.content, cache_control: { type: "ephemeral" } }] };

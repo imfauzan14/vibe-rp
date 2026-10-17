@@ -133,7 +133,7 @@ export const LEDGER_COMPRESS_PROMPT = `The continuity ledger above has grown too
 
 Rules:
 - Keep every fact: names, roles, relationships, places, objects, numbers, dates, promises, wounds, unresolved threads, knowledge states, current conditions.
-- Cut wording, repetition, and atmosphere, while keeping every fact.
+- Cut wording, repetition, and atmosphere.
 - Use the input's own sections (Cast, Timeline, World, Threads, Voice).
 - Preserve proper nouns, terms, and dialogue in their original language exactly as written. Record what the ledger states, and let every entry trace back to it.
 - Anything left out is lost forever.
@@ -165,7 +165,7 @@ Use exactly these sections, omitting any that would be empty:
 - [Name]: [role, appearance, voice, present or absent; what they know — witnessed or told, tracked per character so nobody acts on information they could not have; and where they stand now: condition, disposition toward the user, and how they have changed. Record the change with the event that caused it, keeping core identity apart from the state it is passing through.]
 
 ## Timeline
-- [What happened, in order, with its concrete outcome. Anchor each event relative to the story's start (e.g. "earlier", "recently", "the night before").]
+- [What happened, in order, with its concrete outcome.]
 
 ## World
 - [Places, factions, objects, and rules as they now stand, not as they began. A burned archive, a broken alliance, a flooded road: the alteration is the fact.]
@@ -187,7 +187,7 @@ export const SUMMARY_UPDATE_PROMPT = `The transcript above continues the story. 
 Rules:
 - Keep every fact already in the prior ledger, and change it only where the transcript changes it.
 - Move resolved threads out of Threads; record how they resolved in Timeline.
-- Add new cast, places, and objects, keeping every existing entry under its own name.
+- Add new cast, places, and objects.
 - Update each Cast entry's knowledge state: add what this character learned, keeping what they already knew.
 - Mark each Cast entry present or absent in the latest events; a departed character stays listed with their last known state, present in the record rather than in the scene.
 - Carry each Cast entry's state forward: record what the transcript changed about them — trust, injury, stance, what they now carry — together with the event that caused it. A character's state moves; their core identity holds.
@@ -640,14 +640,12 @@ export function buildSystemSections(card, persona, settings = {}) {
       // backstory still permits a character whose whole manner is oriented
       // around it, which is the leak a reader reported.
       text:
-        "[Epistemic Boundary (Anti-Omniscience): the character has no telepathic or out-of-character " +
-        "knowledge of the user's unintroduced name, backstory, or thoughts. Unless the scenario or " +
-        "history has established a prior relationship, they meet the user as a stranger, and must NOT " +
-        "know or call them by their persona name, cite their backstory, or presume unearned familiarity " +
-        "before the user reveals it. The persona section above describes the reader for the story's " +
-        "benefit: the character knows only what the story has shown or the reader has said, and treats " +
-        "them on that basis. What they perceive is the observable — demeanour, body language, " +
-        "vocal tension, hesitation — and no more than that.]",
+        "[Epistemic Boundary (Anti-Omniscience): The persona section above describes the reader for the " +
+        "story's benefit: the character knows only what the story has shown or the reader has said, and " +
+        "treats them on that basis. Unless the scenario or history establishes a prior bond, they meet as " +
+        "strangers and must NOT know or call them by their persona name, cite their backstory, or presume " +
+        "familiarity before it is revealed. What they perceive is the observable — demeanour, body " +
+        "language, vocal tension — and no more than that.]",
       required: false,
       priority: 20,
     });
@@ -677,6 +675,10 @@ export const CHOICE_LEDGER_TOKENS = 700;
 // How much of the recent transcript a choice request may carry. The latest
 // assistant turn must always fit; this bounds everything before it.
 export const CHOICE_RECENT_TOKENS = 2200;
+// Ceiling on a choice-menu completion. Five choices at the 320-char text limit
+// plus 80-char labels take ~500 visible tokens; 768 leaves headroom for JSON
+// framing and light reasoning without reserving a full 1200–4096 prose budget.
+export const CHOICE_MAX_OUTPUT_TOKENS = 768;
 
 /**
  * Builds the choice-generation request for the scene the reader just finished.
@@ -813,7 +815,7 @@ export function planChoiceRequest({
     const fullInput = countMessages(fullPayload);
     const fullOut = Math.max(
       MIN_OUTPUT_TOKENS,
-      Math.min(fullMain.outputTokens, baseWindow - margin - fullInput - fullMain.overheadTokens)
+      Math.min(CHOICE_MAX_OUTPUT_TOKENS, fullMain.outputTokens, baseWindow - margin - fullInput - fullMain.overheadTokens)
     );
     if (!fullMain.impossible && !fullMain.plan.compacted && fullInput + fullOut + fullMain.overheadTokens <= baseWindow) {
       main = { ...fullMain, outputTokens: fullOut };
@@ -821,12 +823,17 @@ export function planChoiceRequest({
   }
 
   const mainPayload = [...main.payload, { role: "user", content: taskContent }];
-  const mainFits = !main.impossible && countMessages(mainPayload) + main.outputTokens + main.overheadTokens <= baseWindow;
+  const mainInputTokens = countMessages(mainPayload);
+  const choiceOutput = Math.max(
+    MIN_OUTPUT_TOKENS,
+    Math.min(CHOICE_MAX_OUTPUT_TOKENS, main.outputTokens, baseWindow - margin - mainInputTokens - main.overheadTokens)
+  );
+  const mainFits = !main.impossible && mainInputTokens + choiceOutput + main.overheadTokens <= baseWindow;
   if (mainFits) {
     return {
       payload: mainPayload,
-      inputTokens: countMessages(mainPayload),
-      outputTokens: main.outputTokens,
+      inputTokens: mainInputTokens,
+      outputTokens: choiceOutput,
       contextWindow: baseWindow,
       overheadTokens: main.overheadTokens,
       ledgerIncluded: Boolean(main.requestLedger),
@@ -887,7 +894,7 @@ export function planChoiceRequest({
   return {
     payload,
     inputTokens,
-    outputTokens: Math.max(MIN_OUTPUT_TOKENS, Math.min(main.outputTokens, baseWindow - main.overheadTokens - inputTokens - margin)),
+    outputTokens: Math.max(MIN_OUTPUT_TOKENS, Math.min(CHOICE_MAX_OUTPUT_TOKENS, main.outputTokens, baseWindow - main.overheadTokens - inputTokens - margin)),
     contextWindow: baseWindow,
     overheadTokens: main.overheadTokens,
     // Both figures are read off the payload that was actually assembled. They
@@ -1317,7 +1324,10 @@ export class BrowserChatEngine {
       body.temperature = 0.1; // Near-zero temperature for strictly deterministic, factual extraction
     }
     if (settings?.reasoningEffort && cap.supportsReasoningEffort !== false) {
-      body.reasoning_effort = settings.reasoningEffort;
+      // Factual extraction does not benefit from medium/high reasoning spend,
+      // which can consume ~72% of the output allowance and trigger length-cut
+      // retries. Cap auxiliary fold reasoning to "low".
+      body.reasoning_effort = "low";
     }
     return {
       body,
@@ -2438,7 +2448,10 @@ export class BrowserChatEngine {
           body.temperature = tempFloor === null ? wanted : Math.min(wanted, tempFloor);
         }
         if (activeSettings?.reasoningEffort && cap.supportsReasoningEffort !== false) {
-          body.reasoning_effort = activeSettings.reasoningEffort;
+          // Choice Mode is a non-streaming auxiliary request for 4 short menu
+          // lines; cap reasoning effort to "low" so high prose reasoning settings
+          // do not burn thousands of hidden tokens or stall the menu.
+          body.reasoning_effort = "low";
         }
         return this.#postChat(base, headers, body, signal);
       };
@@ -2730,7 +2743,7 @@ export class BrowserChatEngine {
         body.temperature = 0.1;
       }
       if (settings?.reasoningEffort && cap.supportsReasoningEffort !== false) {
-        body.reasoning_effort = settings.reasoningEffort;
+        body.reasoning_effort = "low";
       }
       const res = await this.#postChat(base, headers, body, signal);
       if (res.ok) {

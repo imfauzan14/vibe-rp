@@ -55,19 +55,18 @@ const WRAPPING_QUOTES = [
 // by choicePrompt(), so the weak-model path is preserved without taxing the
 // strong one.
 export const CHOICE_SYSTEM_PROMPT =
-  "You propose the player's next moves at the current beat of an ongoing roleplay scene.\n\n" +
-  "Write from the player's perspective, or the narrator's when they cannot act. Each choice is something the player does or says next, or an observational lens through which they watch the scene unfold.\n\n" +
+  "You propose the player's next moves at the current beat of an ongoing roleplay scene, written from the player's perspective (or the narrator's when they cannot act).\n\n" +
   "Condition Assessment\n" +
   "Read the player's physical state first: injury, consciousness, restraint, presence. What they can do follows from that state, and every condition takes time to change.\n" +
-  "  * Player Agency vs. Story Continuation: while the player can act, propose player actions; while they cannot, propose the scene advancing around them — an environmental shift, the passage of time — and keep continuation distinct from action.\n" +
-  "  * Observational Perspective Shifts: when the dramatic rhythm benefits from shifting focus to another character, location, or time skip, frame the choice as watching events unfold. Other characters keep their own independent agency; the option focuses the narrative lens on their observable actions rather than directing their inner will.\n" +
-  "  * Limited Agency: when the player can barely act, draw on transition (stirring, coming round), internal (resolve, decision), endurance (holding on), or perception (watching, working something out) before reaching for an action the state does not permit.\n" +
-  "  * Plausible Recovery: when a condition changes and action becomes possible again (waking, bonds cut), return to player actions. At a permanent end, acknowledge the conclusion instead of looping recoveries.\n" +
+  "  * Player Agency vs. Story Continuation: while the player can act, propose player actions; while they cannot, propose the scene advancing around them — an environmental shift or passage of time — keeping continuation distinct from action.\n" +
+  "  * Observational Perspective Shifts: when dramatic rhythm benefits from shifting focus to another character, location, or time skip, frame the choice as watching events unfold, focusing on observable actions while other characters keep independent agency.\n" +
+  "  * Limited Agency: when the player can barely act, draw on transition (stirring), internal (resolve), endurance (holding on), or perception (watching, working something out) before reaching for actions the state does not permit.\n" +
+  "  * Plausible Recovery: when a condition changes and action becomes possible again (waking, bonds cut), return to player actions; at a permanent end, acknowledge the conclusion.\n" +
   "  * Distinct NPC Agency: other characters keep their own reactions and answers; an NPC's move stays the NPC's own.\n\n" +
   "Agency\n" +
-  "Each choice names what the player attempts in the immediate beat, not its outcome. Leave other characters' responses and the consequences unwritten.\n\n" +
+  "Each choice names what the player attempts in the immediate beat, not its outcome. Leave other characters' responses and consequences unwritten.\n\n" +
   "Four Dramatic Angles\n" +
-  "Draw each set from distinct archetypes, so the options are different paths rather than variations on one:\n" +
+  "Draw each set from distinct archetypes:\n" +
   "  1. Direct / Assertive — step forward, speak plainly, commit.\n" +
   "  2. Inquisitive / Diplomatic — probe, negotiate, draw someone out.\n" +
   "  3. Cautious / Observant — watch, wait, test the ground, withdraw.\n" +
@@ -75,18 +74,14 @@ export const CHOICE_SYSTEM_PROMPT =
   "Craft\n" +
   "  * Scene Beats & Physical Grounding: concrete action, posture, movement, sensory detail.\n" +
   "  * Subtext over Exposition: let tension and implication carry the line.\n" +
-  "  * Anti-Echo Rule: each choice advances the scene rather than restating what the other character just said.\n\n" +
+  "  * Anti-Echo Rule: advance the scene rather than restating what the other character just said.\n\n" +
   "Narrative Perspective\n" +
-  "Match the player's point of view (\"I\" or third person) and speech cadence; keep their persona's traits, voice, and hesitations. A guarded character stays guarded; an anxious one stays anxious. When presenting a cutaway, phrase the text as observing the moment unfold from the outside.\n\n" +
+  "Match the player's point of view (\"I\" or third person), speech cadence, traits, and hesitations; phrase cutaways as observing the moment unfold from the outside.\n\n" +
   "Language Lock & Register Adaptation\n" +
-  "The User Persona, the Directives, and the player's own dialogue are the active operational authority for language and register. Write every choice in the player's active language, following the language the scene is already using rather than the preset's source language.\n\n" +
+  "The User Persona, Directives, and player dialogue are the active operational authority for language and register. Write every choice in the player's active language, following the language the scene is already using rather than the preset's source language.\n\n" +
   "Output\n" +
-  "Return only this JSON.\n" +
-  '  {"choices":[{"label":"Step forward","text":"Step forward into the light to ask who sent them.","type":"action","pov":"player"},{"label":"Watch from shadows","text":"From the edge of the lot, Freya and Alexis argue in low voices by the sedan.","type":"cutaway","pov":"Freya"}]}\n' +
-  '  * "label": the intent in 3 to 7 words, in the player\'s active language.\n' +
-  '  * "text": the full in-character action, dialogue, or observed cutaway beat to send, in the player\'s active language and established point of view.\n' +
-  '  * "type": "action" (the player can act), "cutaway" (watching another character or location unfold), "continuation" (the scene progresses around them), or "story" (an external beat). Omit when none applies.\n' +
-  '  * "pov": optional perspective indicator ("player", the observed character\'s name, or "scene").';
+  "Return only this JSON:\n" +
+  '  {"choices":[{"label":"Step forward","text":"Step forward into the light to ask who sent them.","type":"action","pov":"player"},{"label":"Watch from shadows","text":"From the edge of the lot, Freya and Alexis argue in low voices by the sedan.","type":"cutaway","pov":"Freya"}]}';
 
 // Appended only when the model has no native reasoning step to lean on. Kept
 // short and explicitly silent: it asks for the thinking to happen, not to be
@@ -154,13 +149,12 @@ export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the cha
   // restating them here put two copies of each rule in one payload, which is the
   // redundancy the contract work removed everywhere else.
   return (
-    `Propose the next moves for [${safePlayer}] in the scene above, opposite [${safeChar}].\n\n` +
-    `Provide ${target} choices, phrased from [${safePlayer}]'s perspective (or the narrator's if they cannot act).\n\n` +
-    `For each:\n` +
-    `- "label": the intent in 3 to 7 words, under ${CHOICE_LABEL_MAX_CHARS} characters, in [${safePlayer}]'s active language.\n` +
-    `- "text": the full in-character action or dialogue to send, under ${CHOICE_TEXT_MAX_CHARS} characters, in [${safePlayer}]'s active language and point of view.\n` +
-    `- "type": "action", "cutaway", "continuation", or "story" — or omit the key.\n` +
-    `- "pov": "player", the observed character's name, or "scene" — or omit the key.` +
+    `Propose the next moves for [${safePlayer}] in the scene above, opposite [${safeChar}]. ` +
+    `Provide ${target} choices from [${safePlayer}]'s perspective (or the narrator's if they cannot act):\n` +
+    `- "label": 3 to 7 word intent (under ${CHOICE_LABEL_MAX_CHARS} chars) in [${safePlayer}]'s active language.\n` +
+    `- "text": in-character action, dialogue, or observed beat (under ${CHOICE_TEXT_MAX_CHARS} chars) in [${safePlayer}]'s active language and POV.\n` +
+    `- "type": "action", "cutaway", "continuation", or "story" (optional).\n` +
+    `- "pov": "player", observed character name, or "scene" (optional).` +
     freshVariationHint +
     (deliberate ? CHOICE_DELIBERATION_HINT : "")
   );
