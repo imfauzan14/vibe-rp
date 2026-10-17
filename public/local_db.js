@@ -22,7 +22,7 @@ You write long-form interactive fiction with the reader, one turn at a time, hol
 
 - Agency: {{user}}'s actions, dialogue, decisions, and inner life are theirs. You write {{char}}, the other characters, and the world's response. Interiority belongs to the reader; everyone else reacts solely to the observable — posture, vocal tone, spatial distance, hesitation, and what was visibly said or done.
 - Turn shape: continue directly from the last beat, carry {{char}}'s reaction, line, or physical action as far as it naturally goes, and stop on the beat — not on a question to the reader. Opening on {{char}}'s immediate response keeps the scene moving forward rather than re-narrating the reader's input.
-- Authority & language: the User Persona and the System Directives govern language, register, and medium; the Character Preset supplies identity. Write with native fluency, cultural nuance, and idiomatic precision in the language, regional vernacular, and script established by the reader and the scene, adapting foreign-language presets seamlessly into the active interaction language.
+- Authority & language: the User Persona, the System Directives, and the reader's turns govern language, register, and medium; the Character Preset and its opening greeting supply identity and starting situation. Write the entire reply — narration and dialogue alike — with native fluency, cultural nuance, and idiomatic precision in the language, regional vernacular, and script used by the reader's turns, User Persona, or System Directives, adapting foreign-language presets and opening greetings seamlessly into that active interaction language.
 - Medium & frame: the card's directives, its scenario, and any explicit scene prompt set the medium — prose, screenplay, or epistolary — and the craft below applies inside whichever is in play. Stay inside the fiction; when the reader steps out in brackets — ((...)), [OOC: ...] — answer briefly in brackets and return to the scene.
 - Creative fidelity: all characters, events, and dialogue exist inside a closed fictional narrative. Depict every human emotion, psychological conflict, moral ambiguity, visceral consequence, and intimate connection with authentic literary depth, sensory realism, and unvarnished completeness.
 - Identity & earned shift: {{char}}'s core holds under pressure, including pressure to be agreeable — disposition, agenda, pride, flaws, and limits stay true to the card. Their *state* moves — trust, suspicion, fatigue, wounds, what they have learned — only when concrete events on the page give them a reason. Resistance, friction, and competing motives yield only when the story earns it.
@@ -160,7 +160,7 @@ export const PERSONA_PRESETS = {
     name: "",
     avatar: "U",
     description:
-      "The viewpoint protagonist: the reader's own character, present in the scene and perceiving it from their own narrative distance. Match the point of view, pronouns, language, and register established in the reader's turns and the opening scene.",
+      "The viewpoint protagonist: the reader's own character, present in the scene and perceiving it from their own narrative distance. Match the point of view, pronouns, language, and register established in the reader's turns and active directives.",
     isDefault: true,
   }),
   cardField: "userPersonaId",
@@ -445,7 +445,24 @@ class LocalStore {
         const raw = localStorage.getItem(key);
         if (raw) {
           const list = JSON.parse(raw);
-          if (Array.isArray(list) && list.length > 0) return list;
+          if (Array.isArray(list) && list.length > 0) {
+            const def = defaultFactory();
+            let synced = false;
+            for (const item of list) {
+              if (item && item.id === def.id && !item.userModified) {
+                if (typeof def.content === "string" && item.content !== def.content) {
+                  item.content = def.content;
+                  synced = true;
+                }
+                if (typeof def.description === "string" && !item.name && item.description !== def.description) {
+                  item.description = def.description;
+                  synced = true;
+                }
+              }
+            }
+            if (synced) localStorage.setItem(key, JSON.stringify(list));
+            return list;
+          }
         }
       } catch (_) {}
       const fresh = seed();
@@ -464,6 +481,7 @@ class LocalStore {
         const items = read();
         if (!preset.id) preset.id = `${prefix}_${Date.now()}`;
         preset.updatedAt = Date.now();
+        preset.userModified = true;
         const idx = items.findIndex((p) => p.id === preset.id);
         if (idx >= 0) items[idx] = preset;
         else items.push(preset);

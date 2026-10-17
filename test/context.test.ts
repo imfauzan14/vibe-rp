@@ -1527,5 +1527,51 @@ describe("Adaptive steering - guidance assembly and budgeting", () => {
     const r = BrowserChatEngine.planRequest({ card, session, settings, persona: { name: "Rowan" } });
     expect(r.postHistory).toContain("Seraphina carries the brass astrolabe.");
   });
+
+  test("cross-lingual shift automatically injects languageShift at the tail when Persona, Directives, or turn is non-English against an English greeting", () => {
+    const settings = { apiEndpoint: "https://x.test/v1", model: "m", maxContextTokens: 16384, maxTokens: 800 };
+    const card = {
+      data: {
+        name: "Elena",
+        description: "A cold archivist guarding the royal vault.",
+      },
+    };
+    const englishGreeting = "She did not look up from the heavy ledger as the door creaked open in the rain.";
+
+    // Case 1: User only has an Indonesian Persona (no explicit language instruction, even with a minimal user turn)
+    const idPersona = {
+      name: "Raka",
+      description: "Menyesuaikan diri secara otomatis dengan situasi, namun memilih diam ketika kelelahan dalam tekanan.",
+    };
+    const turn1 = BrowserChatEngine.planRequest({
+      card,
+      session: {
+        messages: [
+          { role: "assistant", content: englishGreeting },
+          { role: "user", content: "..." },
+        ],
+      },
+      settings,
+      persona: idPersona,
+    });
+    expect(turn1.adaptiveNotes).toContain("languageShift");
+    expect(turn1.postHistory).toContain("Language adaptation:");
+
+    // Case 2: Once the assistant replies in Indonesian, languageShift turns off automatically to save tokens
+    const turn2 = BrowserChatEngine.planRequest({
+      card,
+      session: {
+        messages: [
+          { role: "assistant", content: englishGreeting },
+          { role: "user", content: "Aku melangkah masuk dan menutup pintu dengan pelan." },
+          { role: "assistant", content: "Elena tidak langsung mengangkat wajahnya dari buku besar di atas meja kayu itu." },
+          { role: "user", content: "Aku menunggu di dekat meja." },
+        ],
+      },
+      settings,
+      persona: idPersona,
+    });
+    expect(turn2.adaptiveNotes).not.toContain("languageShift");
+  });
 });
 

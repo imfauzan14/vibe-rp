@@ -616,8 +616,10 @@ export function buildSystemSections(card, persona, settings = {}) {
     sections.push({
       id: "cardReading",
       text:
-        "[Card Reading: a preset's dialogue examples demonstrate the character's personality, not the " +
-        "language of the scene or its canon.]",
+        "[Card Reading: a preset's fields, opening greeting, and dialogue examples demonstrate the character's " +
+        "personality and starting situation, not the output language or settled canon. When the User Persona, " +
+        "System Directives, or reader's turns are written in another language, write the entire reply (narration " +
+        "and dialogue) in that language.]",
       required: true,
       priority: 960,
     });
@@ -1961,12 +1963,19 @@ export class BrowserChatEngine {
     // The allowance scales with the window: a correction is a few lines, never a
     // second preset, and on a small window even that must be smaller.
     const adaptiveBudget = Math.max(80, Math.min(GUIDANCE_MAX_TOKENS, Math.floor(contextWindow * 0.012)));
+    const personaText = activePersona
+      ? [activePersona.description, activePersona.persona, activePersona.content, activePersona.template]
+          .filter(Boolean)
+          .join("\n")
+      : "";
     const sceneState = analyzeTurnState({
       messages: all,
       charName: card ? card.data?.name || card.name || "" : "",
       playerName: activePersona?.name || "",
       castNames: ensembleCast(card).map((member) => member.name),
       folded: Boolean(session?.ledger),
+      personaText,
+      contractText: activeSettings?.agentsContract || "",
     });
     const adaptive = buildSceneGuidance(sceneState, {
       identity: characterIdentity(card, activePersona),

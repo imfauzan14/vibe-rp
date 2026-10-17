@@ -67,7 +67,7 @@ const DEFAULT_PERSONA_RESOLVED = (() => {
   return (
     "The viewpoint protagonist: the reader's own character, present in the scene and " +
     "perceiving it from their own narrative distance. Match the point of view, pronouns, " +
-    "language, and register established in the reader's turns and the opening scene."
+    "language, and register established in the reader's turns and active directives."
   );
 })();
 
@@ -341,6 +341,7 @@ const GUIDANCE_FRAMING_FIXTURE = buildSceneGuidance(
     playerName: "Rowan",
     assistantTurns: 8,
     folded: true,
+    crossLingual: true,
     puppetBleed: 1,
     slopHits: SLOP_CLUSTER_THRESHOLD,
     absentCast: ["Marek", "Idris"],

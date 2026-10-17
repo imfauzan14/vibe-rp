@@ -292,12 +292,29 @@ const NON_EN_LATIN_MARKERS_RE =
 export function isLikelyEnglish(text) {
   if (!text || typeof text !== "string") return false;
   if (latinShare(text) < 0.6) return false;
-  const words = countWords(text);
-  if (words < 8) return true; // Short sample in Latin script retains default analysis
   const enHits = (text.match(EN_FUNCTION_WORDS_RE) || []).length;
   const nonEnHits = (text.match(NON_EN_LATIN_MARKERS_RE) || []).length;
   if (nonEnHits > enHits) return false;
+  const words = countWords(text);
+  if (words < 8) return true; // Short sample in Latin script retains default analysis
   return enHits / Math.max(1, words) >= 0.02;
+}
+
+/**
+ * Detects whether a user turn, persona, or directive is written in a
+ * non-English language (either non-Latin script or Latin script with
+ * non-English function words outnumbering English ones).
+ */
+export function isNonEnglishText(text) {
+  if (!text || typeof text !== "string") return false;
+  const cleaned = text.trim();
+  if (!cleaned) return false;
+  const letters = cleaned.match(/\p{L}/gu) || [];
+  if (letters.length === 0) return false;
+  if (latinShare(cleaned) < 0.6) return true;
+  const enHits = countMatches(cleaned, EN_FUNCTION_WORDS_RE);
+  const nonEnHits = countMatches(cleaned, NON_EN_LATIN_MARKERS_RE);
+  return nonEnHits > 0 && nonEnHits > enHits;
 }
 
 /**
@@ -398,6 +415,8 @@ export function analyzeTurnState({
   playerName = "",
   castNames = [],
   folded = false,
+  personaText = "",
+  contractText = "",
 } = {}) {
   const list = (Array.isArray(messages) ? messages : []).filter((m) => m && m.content);
   const assistant = list.filter((m) => m.role !== "user");
@@ -439,7 +458,8 @@ export function analyzeTurnState({
   const userTurns = list.filter((m) => m.role === "user");
   const replyWords = replies.map(countWords);
   const sortedWords = replyWords.slice().sort((a, b) => a - b);
-  const playerWords = countWords(userTurns.length ? userTurns[userTurns.length - 1].content : "");
+  const lastUserTurn = userTurns.length ? String(userTurns[userTurns.length - 1].content || "") : "";
+  const playerWords = countWords(lastUserTurn);
   const ticContext = {
     playerWords,
     medianReplyWords: sortedWords.length ? sortedWords[Math.floor(sortedWords.length / 2)] : 0,
@@ -457,6 +477,21 @@ export function analyzeTurnState({
     }
   }
 
+  // Cross-lingual shift detection: fires when the user's turn, User Persona, or
+  // System Directives are written in a non-English language while the latest
+  // assistant message in the transcript (typically the preset's opening
+  // greeting `first_mes`) is still in English. Once the assistant replies in the
+  // non-English language, `isLikelyEnglish(latestReply)` becomes false and the
+  // extra reminder turns off automatically.
+  const hasNonEnglishAuthority =
+    isNonEnglishText(lastUserTurn) ||
+    isNonEnglishText(personaText) ||
+    isNonEnglishText(contractText);
+  const latestReply = replies.length ? replies[replies.length - 1] : "";
+  const crossLingual = Boolean(
+    hasNonEnglishAuthority && (!latestReply || isLikelyEnglish(latestReply))
+  );
+
   return {
     assistantTurns: assistant.length,
     analyzed: replies.length,
@@ -469,6 +504,7 @@ export function analyzeTurnState({
     puppetBleed,
     absentCast,
     folded: Boolean(folded),
+    crossLingual,
     playerWords,
     playerTurns: userTurns.length,
     charName: renderInlineField(charName, 60),
@@ -575,7 +611,7 @@ export function buildSceneGuidance(signals, { maxTokens = GUIDANCE_MAX_TOKENS, i
   add(
     "scope",
     96,
-    `- Turn scope: write ${who} and the immediate consequence, opening on ${who} rather than on a restatement of what ${player} just did. Perceive ${player} only where ${who} is there to see or hear it. Answer as ${who}: the card sets the stance, not the cues alone.`
+    `- Turn scope: write ${who} in ${player}'s language, opening on ${who} rather than on a restatement of ${player}. Perceive ${player} only where ${who} is there to see or hear it. Answer as ${who}: the card sets the stance, not the cues alone.`
   );
 
   // The drift anchors. Both are generic — a persona reminder and a register
@@ -636,6 +672,14 @@ export function buildSceneGuidance(signals, { maxTokens = GUIDANCE_MAX_TOKENS, i
   corrections.sort((a, b) => a.priority - b.priority);
   for (const correction of corrections) {
     add(correction.id, correction.keep ?? correction.priority, `- ${correction.note.replace(/^\s*-\s*/, "")}`);
+  }
+
+  if (s.crossLingual) {
+    add(
+      "languageShift",
+      95,
+      `- Language adaptation: the preset and opening greeting above are in a different language from ${player}'s active language. Write ${who}'s entire reply — narration, action, and dialogue — in the language used by ${player}'s turn, User Persona, or System Directives.`
+    );
   }
 
   // The most severe agency failure, and the last line the model reads. It is a
