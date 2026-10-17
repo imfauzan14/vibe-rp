@@ -113,49 +113,60 @@ export function neutralizeDelimiters(value, maxChars = 80) {
 export function findImpersonationBoundary(text, { user = "" } = {}) {
   if (typeof text !== "string" || !text) return -1;
   const safeUser = user ? String(user).trim() : "";
-  const names = [
+  const metaLabels = [
     "\\{\\{user\\}\\}",
     "\\[User(?: Persona)?\\]",
     "User",
     "Player",
-    "You",
     "Pengguna",
     "Pemain",
-    "Kamu",
-    "Anda",
     "Usuario",
     "Usuário",
     "Jogador",
-    "Tú",
-    "Usted",
-    "Você",
     "Utilisateur",
     "Joueur",
-    "Vous",
     "Benutzer",
     "Spieler",
-    "Du",
-    "Sie",
     "Utente",
     "Giocatore",
     "用户",
     "玩家",
-    "你",
-    "您",
     "ユーザー",
     "プレイヤー",
-    "あなた",
     "Пользователь",
     "Игрок",
     "사용자",
-    "당신",
     "플레이어",
   ];
-  if (safeUser && !names.includes(safeUser)) {
+  // Natural-language pronouns and the player's in-story name require a colon
+  // (`:` or `：`) to count as a speaker header. Allowing em-dashes or hyphens
+  // after pronouns/names amputated valid narration such as
+  // `\n\nYou — soaked to the bone — waited.` or German `\n\nSie — erschöpft — schwieg.`.
+  const speakerLabels = [
+    "You",
+    "Kamu",
+    "Anda",
+    "Tú",
+    "Usted",
+    "Você",
+    "Vous",
+    "Du",
+    "Sie",
+    "你",
+    "您",
+    "あなた",
+    "당신",
+  ];
+  if (safeUser) {
     const escaped = safeUser.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    names.push(escaped);
+    if (!metaLabels.includes(escaped) && !speakerLabels.includes(escaped)) {
+      speakerLabels.push(escaped);
+    }
   }
-  const pattern = new RegExp(`(?:\\r?\\n)+(?:${names.join("|")})\\s*[:：—–-]\\s*(?:["“*「『\\w\\p{L}]|$)`, "iu");
+  const pattern = new RegExp(
+    `(?:\\r?\\n)+(?:\\*{1,2})?(?:(?:${metaLabels.join("|")})(?:\\*{1,2})?\\s*[:：—–-]|(?:${speakerLabels.join("|")})(?:\\*{1,2})?\\s*[:：])(?:\\*{1,2})?\\s*(?:["“*「『\\w\\p{L}]|$)`,
+    "iu"
+  );
   const match = pattern.exec(text);
   return match ? match.index : -1;
 }
@@ -215,13 +226,48 @@ export const REFUSAL_RE = new RegExp(
   "iu"
 );
 
+const EXPLICIT_POLICY_REFUSAL_RE = new RegExp(
+  "(?:as\\s+an?\\s+(?:ai|artificial\\s+intelligence|language\\s+model|assistant))|" +
+    "(?:(?:against|violates?)\\s+(?:my\\s+)?(?:safety\\s+policies|guidelines|terms\\s+of\\s+service|content\\s+policy|ethics))|" +
+    "(?:出于(?:安全|合规|伦理|隐私))|" +
+    "(?:作为(?:一个?)?(?:AI|人工智能|语言模型))|" +
+    "(?:AI(?:言語)?モデルとして)|" +
+    "(?:AI\\s*(?:언어\\s*)?모델로서)|" +
+    "(?:sebagai\\s+(?:ai|kecerdasan\\s+buatan|model\\s+bahasa))|" +
+    "(?:как\\s+(?:ии|искусственный\\s+интеллект|языковая\\s+модель))|" +
+    "(?:como\\s+(?:ia|inteligencia\\s+artificial|modelo\\s+de\\s+lenguaje))|" +
+    "(?:als\\s+(?:ki|künstliche\\s+intelligenz|sprachmodell))|" +
+    "(?:en\\s+tant\\s+qu'(?:ia|intelligence\\s+artificielle|modèle\\s+de\\s+langue))",
+  "iu"
+);
+
 /**
  * Checks whether the given completion text exhibits model refusal characteristics.
+ * Strips reasoning scratchpads and quoted in-character dialogue first so a
+ * character saying `"I cannot comply with the council's demand"` or `"Maaf, aku
+ * tidak bisa"` in fiction never triggers a false-positive refusal wipe.
  */
 export function looksLikeModelRefusal(text) {
   if (typeof text !== "string") return false;
-  const trimmed = text.trim();
+  const trimmed = stripThoughtBlocks(text);
   if (trimmed.length < 8) return false;
-  return REFUSAL_RE.test(trimmed);
+  // Strip quoted dialogue spans so in-character speech cannot masquerade as an
+  // assistant refusal.
+  const unquoted = trimmed
+    .replace(/"[^"]*"/g, " ")
+    .replace(/[\u201C\u201E\u201A][^\u201D\u201F\u2018\u2019]*[\u201D\u201F\u2018\u2019]/g, " ")
+    .replace(/[\u00AB\u2039][^\u00BB\u203A]*[\u00BB\u203A]/g, " ")
+    .replace(/[「『《][^」』》]*[」』》]/g, " ")
+    .trim();
+  if (unquoted.length < 8) return false;
+  if (EXPLICIT_POLICY_REFUSAL_RE.test(unquoted) && REFUSAL_RE.test(unquoted)) {
+    return true;
+  }
+  // Without an explicit AI/policy self-reference, a genuine model refusal is a
+  // short standalone meta-decline at the start of the turn, never a multi-paragraph
+  // narrative or a sentence buried mid-story.
+  if (unquoted.length > 360 || /\n\s*\n/.test(unquoted)) return false;
+  const match = REFUSAL_RE.exec(unquoted);
+  return Boolean(match && match.index <= 80);
 }
 

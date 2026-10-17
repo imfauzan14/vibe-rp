@@ -1470,5 +1470,62 @@ describe("Adaptive steering - guidance assembly and budgeting", () => {
     expect(planLarge.breakdown.adaptiveTokens).toBeLessThanOrEqual(GUIDANCE_MAX_TOKENS + 4);
     expect(planLarge.breakdown.lore).toBe(planLarge.breakdown.loreTokens + planLarge.breakdown.adaptiveTokens);
   });
+
+  test("structural prose tics fire across CJK and non-Latin scripts while lexical tics stay gated", () => {
+    const cjkQuestions = [
+      { role: "user", content: "扉を開けて中を覗き込んだ。" },
+      { role: "assistant", content: "彼女は静かに振り返った。「どうしてここに来たのですか？」" },
+      { role: "user", content: "ただ確かめたかっただけだ。" },
+      { role: "assistant", content: "彼女は一歩下がり、影に身を隠した。「本当にそれだけですか？」" },
+      { role: "user", content: "ああ、嘘じゃない。" },
+      { role: "assistant", content: "彼女の瞳がわずかに揺れた。「私を信じろと言うのですか？」" },
+    ];
+    const signals = analyzeTurnState({ messages: cjkQuestions, charName: "凛", playerName: "蓮" });
+    expect(signals.latinScript).toBe(false);
+    expect(signals.tics.map((t) => t.id)).toContain("askedThePlayer");
+  });
+
+  test("breakdown buckets sum to inputTokens even with a large pinned opening greeting", () => {
+    const settings = { apiEndpoint: "https://x.test/v1", model: "m", maxContextTokens: 65536, maxTokens: 1200 };
+    const card = { data: { name: "Elena", description: "A watchmaker." } };
+    const session = {
+      messages: [
+        { role: "assistant", content: "Opening scene. ".repeat(300) },
+        { role: "user", content: "I step inside the workshop." },
+      ],
+      ledger: "",
+      consumed: 1,
+    };
+    const r = BrowserChatEngine.describeRequest({ card, session, settings, persona: { name: "Rowan" } });
+    const b = r.breakdown;
+    const sum = b.requiredStatic + b.optionalStatic + b.persona + b.lore + b.ledger + b.history + b.currentInput;
+    expect(Math.abs(r.inputTokens - sum)).toBeLessThan(16);
+    expect(b.history).toBeGreaterThan(500);
+  });
+
+  test("dynamic lore queryText resolves {{char}} and {{user}} placeholders before matching keys", () => {
+    const settings = { apiEndpoint: "https://x.test/v1", model: "m", maxContextTokens: 16384, maxTokens: 800 };
+    const card = {
+      data: {
+        name: "Seraphina",
+        description: "An archivist.",
+        character_book: {
+          entries: [
+            { keys: ["Seraphina"], content: "Seraphina carries the brass astrolabe.", enabled: true },
+          ],
+        },
+      },
+    };
+    const session = {
+      messages: [
+        { role: "assistant", content: "{{char}} waits by the desk." },
+        { role: "user", content: "I ask {{char}} about the astrolabe." },
+      ],
+      ledger: "",
+      consumed: 1,
+    };
+    const r = BrowserChatEngine.planRequest({ card, session, settings, persona: { name: "Rowan" } });
+    expect(r.postHistory).toContain("Seraphina carries the brass astrolabe.");
+  });
 });
 

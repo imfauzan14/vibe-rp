@@ -159,7 +159,7 @@ export function choicePrompt(count = CHOICE_COUNT_DEFAULT, { charName = "the cha
     `For each:\n` +
     `- "label": the intent in 3 to 7 words, under ${CHOICE_LABEL_MAX_CHARS} characters, in [${safePlayer}]'s active language.\n` +
     `- "text": the full in-character action or dialogue to send, under ${CHOICE_TEXT_MAX_CHARS} characters, in [${safePlayer}]'s active language and point of view.\n` +
-    `- "type": "action", "continuation", or "story" — or omit the key.\n` +
+    `- "type": "action", "cutaway", "continuation", or "story" — or omit the key.\n` +
     `- "pov": "player", the observed character's name, or "scene" — or omit the key.` +
     freshVariationHint +
     (deliberate ? CHOICE_DELIBERATION_HINT : "")

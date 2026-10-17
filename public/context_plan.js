@@ -2,7 +2,7 @@
 
 import { utf8Decoder } from "./text.js";
 
-const byteLenCache = new Map();
+const tokenCache = new Map();
 const BYTE_CACHE_MAX = 4096;
 // Bounded by entries AND bytes: entries alone let a few thousand unique
 // quarter-megabyte transcripts pin ~1GB. Past the byte ceiling the oldest
@@ -13,33 +13,20 @@ const textEncoder = new TextEncoder();
 
 /**
  * Token estimate: UTF-8 bytes / 4 with safe multilingual calibration.
- * Byte-based rather than `String.length`.
+ * Caches the computed token count directly so repeated measurements on
+ * non-ASCII or CJK strings resolve in O(1) without allocating a Uint8Array.
  */
 export function estimateTokens(text) {
   if (!text) return 0;
   const str = typeof text === "string" ? text : String(text);
-  let bytes = byteLenCache.get(str);
-  if (bytes === undefined) {
-    bytes = textEncoder.encode(str).length;
-    byteLenCache.set(str, bytes);
-    byteCacheBytes += bytes;
-    while (byteLenCache.size > BYTE_CACHE_MAX || byteCacheBytes > BYTE_CACHE_BYTES_MAX) {
-      const oldest = byteLenCache.keys().next();
-      if (oldest.done) break;
-      const evictedBytes = byteLenCache.get(oldest.value) || 0;
-      byteLenCache.delete(oldest.value);
-      byteCacheBytes = Math.max(0, byteCacheBytes - evictedBytes);
-      // Safety valve against a single entry larger than the whole ceiling.
-      if (byteLenCache.size === 0) break;
-    }
-  }
-  if (bytes === str.length) {
-    return (bytes + 3) >> 2;
-  }
+  const cached = tokenCache.get(str);
+  if (cached !== undefined) return cached;
+
   let ascii = 0;
   let cjk = 0;
   let otherMulti = 0;
-  for (let i = 0; i < str.length; i++) {
+  const len = str.length;
+  for (let i = 0; i < len; i++) {
     const code = str.charCodeAt(i);
     if (code <= 0x7f) ascii++;
     else if (
@@ -52,11 +39,24 @@ export function estimateTokens(text) {
       otherMulti++;
     }
   }
-  if (cjk === 0 && otherMulti === 0) {
-    return (bytes + 3) >> 2;
+  const tokens =
+    cjk === 0 && otherMulti === 0
+      ? (len + 3) >> 2
+      : Math.max(1, Math.ceil(ascii * 0.25 + cjk * 0.95 + otherMulti * 0.55));
+
+  const footprint = len * 2;
+  tokenCache.set(str, tokens);
+  byteCacheBytes += footprint;
+  while (tokenCache.size > BYTE_CACHE_MAX || byteCacheBytes > BYTE_CACHE_BYTES_MAX) {
+    const oldest = tokenCache.keys().next();
+    if (oldest.done) break;
+    const evictedFootprint = oldest.value.length * 2;
+    tokenCache.delete(oldest.value);
+    byteCacheBytes = Math.max(0, byteCacheBytes - evictedFootprint);
+    // Safety valve against a single entry larger than the whole ceiling.
+    if (tokenCache.size === 0) break;
   }
-  const estimated = ascii * 0.25 + cjk * 0.95 + otherMulti * 0.55;
-  return Math.max(1, Math.ceil(estimated));
+  return tokens;
 }
 
 /** Tokens for a message array, including per-message framing overhead. */

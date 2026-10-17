@@ -1309,4 +1309,52 @@ describe("the ledger carries character development, not just facts", () => {
     expect(SUMMARY_PROMPT).toMatch(/the alteration is the fact/);
     expect(SUMMARY_UPDATE_PROMPT).toContain("recording alterations rather than restoring the opening description");
   });
+
+  test("ensemble speaker tags support multi-word and Unicode cast names without duplicating the prefix", async () => {
+    let summaryTranscript = "";
+    globalThis.fetch = (async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body));
+      if (body.stream === false) {
+        summaryTranscript = body.messages[1]?.content || "";
+      }
+      return new Response(JSON.stringify({ choices: [{ message: { content: "## Cast\n- Marek Idris: present" } }] }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    const ensembleCard = {
+      data: {
+        name: "Elena",
+        description: "The watchtower.",
+        extensions: {
+          characters: [
+            { name: "Marek Idris", role: "Archivist" },
+            { name: "凛", role: "Scout" },
+          ],
+        },
+      },
+    };
+    const settings = { apiEndpoint: "https://x.test/v1", model: "m", maxContextTokens: 2048, maxTokens: 256 };
+    const session = {
+      messages: [
+        { role: "assistant", content: "The gate opens." },
+        { role: "user", content: words(250) },
+        { role: "assistant", content: `**Marek Idris**: Hold the lantern steady. ${words(250)}` },
+        { role: "user", content: words(250) },
+        { role: "assistant", content: `凛: 足音が近づいている。 ${words(250)}` },
+        { role: "user", content: words(250) },
+        { role: "assistant", content: `Elena steps forward. ${words(250)}` },
+        { role: "user", content: "What now?" },
+      ],
+      ledger: "",
+      consumed: 1,
+    };
+    await BrowserChatEngine.streamTurn({ card: ensembleCard, session, settings, persona: { name: "Rowan" }, agentsContract: "" });
+    expect(summaryTranscript).toContain("Marek Idris: Hold the lantern steady.");
+    expect(summaryTranscript).not.toContain("Marek Idris: Marek Idris:");
+    expect(summaryTranscript).not.toContain("Marek Idris: **Marek Idris**:");
+    expect(summaryTranscript).toContain("凛: 足音が近づいている。");
+    expect(summaryTranscript).not.toContain("凛: 凛:");
+  });
 });
+

@@ -487,6 +487,47 @@ describe("planChoiceRequest", () => {
     const lastMsg = req.payload.at(-1);
     expect(lastMsg?.content).toContain("Fresh Dramatic Angles Required");
     expect(lastMsg?.content).toContain("Draw weapon: I unsheath my steel.");
+    expect(lastMsg?.content).toContain('"cutaway"');
+  });
+
+  test("avoids a phantom fold when the un-compacted main prefix still fits inside the base window", () => {
+    // Construct a session whose live history fits under baseWindow (8192) without
+    // compacting, but crosses the fold threshold when taskTokens (~1150) is
+    // subtracted from the planning window.
+    const modestCard = { data: { name: "Elena", description: words(200) } };
+    const nearFoldSession = {
+      id: "s_near",
+      cardId: "c",
+      messages: [
+        { id: "g", role: "assistant", content: "The greeting." },
+        { id: "u1", role: "user", content: words(600) },
+        { id: "a1", role: "assistant", content: words(600) },
+        { id: "u2", role: "user", content: words(600) },
+        { id: "a2", role: "assistant", content: words(600) },
+        { id: "u3", role: "user", content: words(600) },
+        { id: "a3", role: "assistant", content: words(600) },
+      ],
+      ledger: "",
+      consumed: 1,
+    };
+    const mainTurn = BrowserChatEngine.describeRequest({
+      card: modestCard,
+      session: nearFoldSession,
+      settings,
+      persona: { name: "Rowan" },
+    });
+    expect(mainTurn.plan.compacted).toBe(false);
+
+    const choiceReq = planChoiceRequest({
+      card: modestCard,
+      session: nearFoldSession,
+      settings,
+      persona: { name: "Rowan" },
+      count: 4,
+    });
+    expect(choiceReq.sharedPrefix).toBe(true);
+    expect(choiceReq.historyIncluded).toBe(mainTurn.plan.history.length);
+    expect(choiceReq.inputTokens + choiceReq.outputTokens).toBeLessThanOrEqual(choiceReq.contextWindow);
   });
 });
 

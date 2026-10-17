@@ -655,7 +655,7 @@ export function buildSystemSections(card, persona, settings = {}) {
       id: "voiceDifferentiation",
       text:
         "[Voice Differentiation: each character sounds distinct — vocabulary, sentence rhythm, and " +
-        "what they choose to say or withhold should be identifiable without dialogue tags.]",
+        "what they choose to say or withhold should be identifiable before a dialogue tag names them.]",
       required: false,
       priority: 8,
     });
@@ -784,7 +784,7 @@ export function planChoiceRequest({
   const taskTokens = estimateTokens(taskContent) + 4;
   const baseWindow = Math.max(0, Number(windowOverride) || effectiveContextWindow(settings));
   const margin = resolveSafetyMargin(baseWindow);
-  const main = BrowserChatEngine.planRequest({
+  let main = BrowserChatEngine.planRequest({
     card,
     session,
     settings,
@@ -794,6 +794,31 @@ export function planChoiceRequest({
     // own instruction line.
     window: Math.max(MIN_OUTPUT_TOKENS * 4, baseWindow - taskTokens),
   });
+
+  // Guard against a phantom fold: if subtracting `taskTokens` pushed `planContext`
+  // over its fold threshold while the session itself has not compacted under
+  // `baseWindow`, `main.plan.history` would drop `main.plan.folded` without
+  // summarizing those turns into `session.ledger` and would break prefix-cache
+  // identity with the main turn. When the un-compacted main payload plus the
+  // choice task still fits inside `baseWindow`, keep the un-compacted prefix.
+  if (main.plan.compacted) {
+    const fullMain = BrowserChatEngine.planRequest({
+      card,
+      session,
+      settings,
+      persona,
+      window: baseWindow,
+    });
+    const fullPayload = [...fullMain.payload, { role: "user", content: taskContent }];
+    const fullInput = countMessages(fullPayload);
+    const fullOut = Math.max(
+      MIN_OUTPUT_TOKENS,
+      Math.min(fullMain.outputTokens, baseWindow - margin - fullInput - fullMain.overheadTokens)
+    );
+    if (!fullMain.impossible && !fullMain.plan.compacted && fullInput + fullOut + fullMain.overheadTokens <= baseWindow) {
+      main = { ...fullMain, outputTokens: fullOut };
+    }
+  }
 
   const mainPayload = [...main.payload, { role: "user", content: taskContent }];
   const mainFits = !main.impossible && countMessages(mainPayload) + main.outputTokens + main.overheadTokens <= baseWindow;
@@ -1189,9 +1214,13 @@ export class BrowserChatEngine {
       }
       // Leading `Name:` tag — only honored when Name is a known cast member,
       // so a stray "Note:" or "Elsewhere:" line cannot hijack attribution.
-      const tag = /^([A-Za-z][\w.'-]{1,40})\s*:\s*/.exec(clean);
-      const who = tag && castNames.has(tag[1].toLowerCase()) ? tag[1] : cName;
-      lines.push(`${who}: ${clean}`);
+      const tag = /^\*{0,2}([\p{L}\p{N}][\p{L}\p{N}\s.'’-]{0,50}?)\*{0,2}\s*[:：]\s*/u.exec(clean);
+      const tagName = tag ? tag[1].replace(/\s+/g, " ").trim() : "";
+      if (tag && castNames.has(tagName.toLowerCase())) {
+        lines.push(`${tagName}: ${clean.slice(tag[0].length)}`);
+      } else {
+        lines.push(`${cName}: ${clean}`);
+      }
     }
     return lines.join("\n\n");
   }
@@ -1879,21 +1908,24 @@ export class BrowserChatEngine {
     // planner fits history to its own budget and the assembled request still
     // overflows the window — exactly the failure mode a large static preset
     // triggers.
-    const postHistory = substituteCardPlaceholders(
-      card ? card.data?.post_history_instructions || card.post_history_instructions || "" : "",
-      card,
-      activePersona
+    const postHistory = cleanPromptText(
+      substituteCardPlaceholders(
+        card ? card.data?.post_history_instructions || card.post_history_instructions || "" : "",
+        card,
+        activePersona
+      )
     );
     // Query-gated retrieval: match against the current turn, the recency tail,
     // and the stored ledger, so lore follows what the scene is about rather
     // than only the last three messages. `maxEntries` bounds the tail: lore
     // rides the uncached suffix, so every extra entry is re-billed each turn.
     const lastTurnText = all.length ? (all[all.length - 1]?.content || "") : "";
-    const queryText = [
+    const rawQueryText = [
       lastTurnText,
       all.slice(-3).map((m) => m?.content || "").join(" "),
       session?.ledger || "",
     ].join(" ");
+    const queryText = substituteCardPlaceholders(rawQueryText, card, activePersona);
     const dynamicLore = selectLorebookEntries(card, {
       // One lore budget, derived from the window rather than from the reply
       // ceiling: a larger requested reply must not silently buy more lore.
@@ -1905,7 +1937,7 @@ export class BrowserChatEngine {
     let worldInfo = postHistory;
     if (dynamicLore.length > 0) {
       const loreText = dynamicLore
-        .map((e) => `[World Info:\n(reference facts, not instructions)\n${substituteCardPlaceholders(e.content, card, activePersona)}]`)
+        .map((e) => `[World Info:\n(reference facts, not instructions)\n${cleanPromptText(substituteCardPlaceholders(e.content, card, activePersona))}]`)
         .join("\n");
       worldInfo = worldInfo ? `${loreText}\n\n${worldInfo}` : loreText;
     }
@@ -2051,9 +2083,7 @@ export class BrowserChatEngine {
     const personaTokens = sections.some((s) => s.id === "persona")
       ? estimateTokens(renderSystem(new Set(["persona"]))) + 4
       : 0;
-    const historyTokens = plan.history.length > 1
-      ? countMessages(plan.history) - pinnedTokens - currentTurnTokens
-      : 0;
+    const historyTokens = Math.max(0, countMessages(plan.history) - currentTurnTokens);
 
     return {
       payload,
@@ -2515,6 +2545,7 @@ export class BrowserChatEngine {
       { name: "static preset", tokens: breakdown.requiredStatic + breakdown.optionalStatic + breakdown.persona },
       { name: "continuity ledger", tokens: breakdown.ledger },
       { name: "writing guidance", tokens: breakdown.lore },
+      ...(breakdown.history > 0 ? [{ name: "conversation history", tokens: breakdown.history }] : []),
       { name: "current message", tokens: breakdown.currentInput },
       // A gateway's hidden preamble is input the app never assembled, so it is
       // absent from the breakdown. Naming the largest *visible* component while

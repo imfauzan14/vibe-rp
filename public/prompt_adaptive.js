@@ -144,6 +144,7 @@ export const PROSE_TICS = [
     id: "askedThePlayer",
     priority: 68,
     threshold: 3,
+    structural: true,
     note: "Land on a line, an action, or a silence. The last replies each ended by handing the scene back.",
     count: (_text, replies) => replies.filter((r) => /[?\uFF1F\u061F\u037E\u055E]\s*["'”»」』）)]*\s*$/u.test(r.trim())).length,
   },
@@ -151,6 +152,7 @@ export const PROSE_TICS = [
     id: "shrank",
     priority: 60,
     threshold: 3,
+    structural: true,
     // A reply that is short is a choice. Three short replies in a row while the
     // player is still writing paragraphs is a decay: the scene stops building.
     // Growth from the session's own earlier replies counts as decay too, which
@@ -196,6 +198,7 @@ export const PROSE_TICS = [
     id: "uniformBlocks",
     priority: 42,
     threshold: 1,
+    structural: true,
     note: "Vary paragraph lengths: sharp lines for pivotal beats, expansive passages for immersion. The last replies ran at one uniform length.",
     count: (_text, replies) => {
       // The newest replies, matching the note and every other detector here.
@@ -441,11 +444,16 @@ export function analyzeTurnState({
     playerWords,
     medianReplyWords: sortedWords.length ? sortedWords[Math.floor(sortedWords.length / 2)] : 0,
   };
+  const nonEnLatin =
+    latinScript && countMatches(recent, NON_EN_LATIN_MARKERS_RE) > countMatches(recent, EN_FUNCTION_WORDS_RE);
   const tics = [];
-  if (latinScript) {
+  if (replies.length > 0) {
     for (const tic of PROSE_TICS) {
+      if (!tic.structural && (!latinScript || nonEnLatin)) continue;
       const hits = tic.count(recent, replies, ticContext);
-      if (hits >= tic.threshold) tics.push({ id: tic.id, priority: tic.priority, note: tic.note, hits });
+      if (hits >= tic.threshold) {
+        tics.push({ id: tic.id, priority: tic.priority, keep: tic.keep ?? tic.priority, note: tic.note, hits });
+      }
     }
   }
 

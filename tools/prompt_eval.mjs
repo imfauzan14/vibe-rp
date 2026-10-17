@@ -232,12 +232,12 @@ const CONFLICT_PAIRS = [
     a: /\[User Persona: Rowan\]/, b: /must NOT know or call them by their persona name/ },
   { id: "mirror-vs-expand", kind: "competing calibration",
     a: /match the reader's density, sentence length, and register/,
-    b: /Write into the scene's momentum/ },
+    b: /Write into the (?:scene's )?momentum/ },
   { id: "density-vs-momentum", kind: "competing calibration",
     a: /scale description to the world the reader built/,
-    b: /Write into the scene's momentum/ },
+    b: /Write into the (?:scene's )?momentum/ },
   { id: "handoff-duplicated", kind: "redundancy",
-    a: /on the beat — not on a question to the reader/, b: /handing the scene back with a question/ },
+    a: /on the beat — not on a question to the reader/, b: /handing the scene back/ },
   // The authority rule has one home: the contract. The engine's fixed sections
   // used to restate it ("the User Persona and System Directives are the active
   // authority..."), so both sides of this pair could appear in one request.

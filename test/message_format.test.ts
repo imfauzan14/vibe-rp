@@ -405,6 +405,31 @@ describe("agency boundary enforcement (impersonation pruning)", () => {
     expect(findImpersonationBoundary(text)).toBe(-1);
     expect(pruneImpersonation(text)).toBe(text);
   });
+
+  test("does not amputate narrative em-dashes or hyphens after pronouns or player names", () => {
+    const secondPersonDash = "Elena watched the door.\n\nYou — soaked to the bone and shivering — stood on the threshold.";
+    expect(findImpersonationBoundary(secondPersonDash)).toBe(-1);
+    expect(pruneImpersonation(secondPersonDash)).toBe(secondPersonDash);
+
+    const playerDash = "Elena watched the door.\n\nRowan — still clutching the broken lantern — said nothing.";
+    expect(findImpersonationBoundary(playerDash, { user: "Rowan" })).toBe(-1);
+    expect(pruneImpersonation(playerDash, { user: "Rowan" })).toBe(playerDash);
+
+    const germanSheDash = "Elena blickte auf.\n\nSie — völlig erschöpft — setzte sich auf die Bank.";
+    expect(findImpersonationBoundary(germanSheDash)).toBe(-1);
+    expect(pruneImpersonation(germanSheDash)).toBe(germanSheDash);
+  });
+
+  test("catches markdown-bolded speaker labels and meta-label dashes", () => {
+    const boldUser = 'Elena stepped back.\n\n**Rowan**: "Wait for me."';
+    expect(pruneImpersonation(boldUser, { user: "Rowan" })).toBe("Elena stepped back.");
+
+    const boldColonInside = 'Elena stepped back.\n\n**Rowan:** "Wait for me."';
+    expect(pruneImpersonation(boldColonInside, { user: "Rowan" })).toBe("Elena stepped back.");
+
+    const metaDash = "Elena nodded.\nUser — I agree with that.";
+    expect(pruneImpersonation(metaDash)).toBe("Elena nodded.");
+  });
 });
 
 describe("model refusal detection (looksLikeModelRefusal)", () => {
@@ -413,6 +438,7 @@ describe("model refusal detection (looksLikeModelRefusal)", () => {
     expect(looksLikeModelRefusal("I'm sorry, but I cannot assist with this scenario.")).toBe(true);
     expect(looksLikeModelRefusal("As an AI language model, I am unable to generate explicit scenes.")).toBe(true);
     expect(looksLikeModelRefusal("Sorry, I can't write that.")).toBe(true);
+    expect(looksLikeModelRefusal("<think>Checking policy...</think>\nI'm sorry, but I cannot assist with this scenario.")).toBe(true);
   });
 
   test("detects multilingual refusal patterns across supported languages", () => {
@@ -429,6 +455,10 @@ describe("model refusal detection (looksLikeModelRefusal)", () => {
 
   test("does not trigger false positives on legitimate in-character dramatic fiction", () => {
     expect(looksLikeModelRefusal('Elena drew her blade. "I cannot let you pass," she whispered.')).toBe(false);
+    expect(looksLikeModelRefusal('Elena shook her head. "I cannot comply with the council\'s demand," she whispered.')).toBe(false);
+    expect(looksLikeModelRefusal('"Sorry, I can\'t continue this mission," Marcus said, setting his badge on the table.')).toBe(false);
+    expect(looksLikeModelRefusal('Она покачала головой. «Я не могу помочь тебе в этом», — тихо сказала она.')).toBe(false);
+    expect(looksLikeModelRefusal('Ia menggeleng pelan. "Maaf, saya tidak bisa melanjutkan perjalanan ini," ucapnya.')).toBe(false);
     expect(looksLikeModelRefusal('"I am sorry for what happened," he said, turning toward the window.')).toBe(false);
     expect(looksLikeModelRefusal("The rain lashed against the stone parapet as the gate shuddered.")).toBe(false);
   });
