@@ -415,6 +415,7 @@ export function analyzeTurnState({
   playerName = "",
   castNames = [],
   folded = false,
+  cardText = "",
   personaText = "",
   contractText = "",
 } = {}) {
@@ -477,16 +478,17 @@ export function analyzeTurnState({
     }
   }
 
-  // Cross-lingual shift detection: fires when the user's turn, User Persona, or
-  // System Directives are written in a non-English language while the latest
-  // assistant message in the transcript (typically the preset's opening
-  // greeting `first_mes`) is still in English. Once the assistant replies in the
+  // Cross-lingual shift detection: fires when the user's turn, User Persona,
+  // System Directives, or the preset's scene are written in a non-English
+  // language while the latest assistant message in the transcript (or an absent
+  // opening turn) is still in English. Once the assistant replies in the
   // non-English language, `isLikelyEnglish(latestReply)` becomes false and the
   // extra reminder turns off automatically.
   const hasNonEnglishAuthority =
     isNonEnglishText(lastUserTurn) ||
     isNonEnglishText(personaText) ||
-    isNonEnglishText(contractText);
+    isNonEnglishText(contractText) ||
+    isNonEnglishText(cardText);
   const latestReply = replies.length ? replies[replies.length - 1] : "";
   const crossLingual = Boolean(
     hasNonEnglishAuthority && (!latestReply || isLikelyEnglish(latestReply))
@@ -678,7 +680,7 @@ export function buildSceneGuidance(signals, { maxTokens = GUIDANCE_MAX_TOKENS, i
     add(
       "languageShift",
       95,
-      `- Language adaptation: the preset and opening greeting above are in a different language from ${player}'s active language. Write ${who}'s entire reply — narration, action, and dialogue — in the language used by ${player}'s turn, User Persona, or System Directives.`
+      `- Language adaptation: adapt seamlessly across languages and write ${who}'s entire reply — narration, action, and dialogue — in the active language established by ${player}'s turn, custom Persona or Directives, or the preset's scene.`
     );
   }
 

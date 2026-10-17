@@ -1572,6 +1572,25 @@ describe("Adaptive steering - guidance assembly and budgeting", () => {
       persona: idPersona,
     });
     expect(turn2.adaptiveNotes).not.toContain("languageShift");
+
+    // Case 3: Non-English preset with built-in English directive and default English persona
+    const idCard = {
+      data: {
+        name: "Kirana",
+        description: "Penjaga perpustakaan kuno yang selalu berbicara dengan tenang namun penuh kewaspadaan terhadap orang asing.",
+      },
+    };
+    const turn3 = BrowserChatEngine.planRequest({
+      card: idCard,
+      session: {
+        messages: [{ role: "user", content: "..." }],
+      },
+      settings,
+      persona: { name: "Reader" },
+    });
+    expect(turn3.adaptiveNotes).toContain("languageShift");
+    expect(turn3.postHistory).toContain("the preset's scene");
   });
 });
+
 

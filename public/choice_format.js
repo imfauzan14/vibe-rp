@@ -78,7 +78,7 @@ export const CHOICE_SYSTEM_PROMPT =
   "Narrative Perspective\n" +
   "Match the player's point of view (\"I\" or third person), speech cadence, traits, and hesitations; phrase cutaways as observing the moment unfold from the outside.\n\n" +
   "Language Lock & Register Adaptation\n" +
-  "The User Persona, Directives, and player dialogue are the active operational authority for language and register. Write every choice in the language of the player's turns, User Persona, or Directives rather than the preset's source language or opening greeting.\n\n" +
+  "The User Persona, Directives, and player dialogue are the active operational authority for language and register. Write every choice in the active language established by the player's turns, custom Persona/Directives, or the scene rather than the preset's source language when they differ.\n\n" +
   "Output\n" +
   "Return only this JSON (with label and text in that active language):\n" +
   '  {"choices":[{"label":"Step forward","text":"Step forward into the light to ask who sent them.","type":"action","pov":"player"},{"label":"Watch from shadows","text":"From the edge of the lot, Freya and Alexis argue in low voices by the sedan.","type":"cutaway","pov":"Freya"}]}';

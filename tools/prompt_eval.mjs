@@ -67,7 +67,7 @@ const DEFAULT_PERSONA_RESOLVED = (() => {
   return (
     "The viewpoint protagonist: the reader's own character, present in the scene and " +
     "perceiving it from their own narrative distance. Match the point of view, pronouns, " +
-    "language, and register established in the reader's turns and active directives."
+    "language, and register established in the reader's turns, custom persona, and the scene."
   );
 })();
 

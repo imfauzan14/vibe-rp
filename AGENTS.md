@@ -144,8 +144,6 @@ run concurrently.
 - **`public/design/`**: Design system. `DESIGN.md` is the class and contrast contract; `tokens.css` owns every colour value
 - **`test/`**: Bun test suite (`*.test.ts`)
 - **`tools/`**: `prompt_eval.mjs` (`bun run eval`) gates the prompts; `story_eval.mjs` is the longitudinal story-development evaluation, whose own header warns that its metrics are lexical proxies over one sample per arm and are a prompt to read the transcript rather than a result
-- **`docs/adr/`**: Architecture Decision Records. Read before proposing a refactor that touches a recorded seam
-- **`CONTEXT.md`**: the domain model — core concepts and the modules/seams that own them. Read this before an architecture change
 - **`serve.js`**: Dev server, SPA routing, security headers
 - **`vercel.json`**: Deployment routing, rewrites, and headers
 - **`bunfig.toml`**: sets the test root to `test`

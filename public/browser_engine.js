@@ -616,10 +616,10 @@ export function buildSystemSections(card, persona, settings = {}) {
     sections.push({
       id: "cardReading",
       text:
-        "[Card Reading: a preset's fields, opening greeting, and dialogue examples demonstrate the character's " +
-        "personality and starting situation, not the output language or settled canon. When the User Persona, " +
-        "System Directives, or reader's turns are written in another language, write the entire reply (narration " +
-        "and dialogue) in that language.]",
+        "[Card Reading: a preset's dialogue examples demonstrate the character's personality, not the language of " +
+        "the scene or its canon. Match the language of the preset's scene by default, or adapt the entire reply " +
+        "(narration and dialogue) into the reader's language whenever the reader's turns, User Persona, or custom " +
+        "Directives use another language.]",
       required: true,
       priority: 960,
     });
@@ -1968,6 +1968,14 @@ export class BrowserChatEngine {
           .filter(Boolean)
           .join("\n")
       : "";
+    const cardText = card
+      ? [
+          firstText(card.data?.description, card.description),
+          firstText(card.data?.scenario, card.scenario),
+        ]
+          .filter(Boolean)
+          .join("\n")
+      : "";
     const sceneState = analyzeTurnState({
       messages: all,
       charName: card ? card.data?.name || card.name || "" : "",
@@ -1976,6 +1984,7 @@ export class BrowserChatEngine {
       folded: Boolean(session?.ledger),
       personaText,
       contractText: activeSettings?.agentsContract || "",
+      cardText,
     });
     const adaptive = buildSceneGuidance(sceneState, {
       identity: characterIdentity(card, activePersona),
